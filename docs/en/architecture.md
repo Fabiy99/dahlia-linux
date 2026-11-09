@@ -7,15 +7,24 @@ listed in the README under "Milestones".
 
 ## Installation
 
-The ISO is a Debian 13 installer with a preseed file. It only asks for the target disk,
-hostname and language. At the end, `preseed/late_command` adds the Dahlia apt repository
-and installs the `dahlia-*` packages.
+The ISO is the current Debian 13 netinst image, remastered by `iso/build-iso.sh`.
+`iso/preseed.cfg` is embedded in the installer initrd, so the install runs without
+questions. The one exception is the target disk: `iso/pick-disk.sh` picks it
+automatically when there is exactly one candidate (the install medium does not count).
+With several disks the installer asks. At the end, `iso/late-command.sh` installs the
+Dahlia packages shipped on the ISO under `/dahlia/pool`.
 
-Root filesystem: Btrfs with subvolumes `@` and `@home`. `snapper` takes a snapshot before
-and after every apt run; `grub-btrfs` makes the snapshots bootable from the GRUB menu.
+Hostname (`dahlia`), language (English, German keyboard) and timezone (Europe/Berlin) are
+preset and changed later in the setup wizard. The installer creates the user
+`dahlia-admin` (UID 1001, sudo) with the initial password `dahlia`, which must be changed
+on first login. root has no password.
+
+Root filesystem: Btrfs; the installer creates the subvolume `@rootfs`. `snapper` takes a
+snapshot before and after every apt run; `grub-btrfs` makes the snapshots bootable from
+the GRUB menu.
 
 On first boot, the dashboard only shows the setup wizard. It is protected by a one-time
-code printed on tty1 and in `/etc/motd`.
+code printed on tty1 and in `/etc/motd` (from milestone 5).
 
 ## Packages
 

@@ -7,15 +7,24 @@ steht in der README unter "Meilensteine".
 
 ## Installation
 
-Die ISO ist ein Debian-13-Installer mit Preseed. Abgefragt werden nur Zielplatte, Hostname
-und Sprache. Am Ende bindet `preseed/late_command` das Dahlia-apt-Repo ein und installiert
-die `dahlia-*`-Pakete.
+Die ISO ist das aktuelle Debian-13-netinst-Image, umgebaut von `iso/build-iso.sh`.
+`iso/preseed.cfg` steckt im Installer-initrd, die Installation läuft ohne Fragen durch.
+Einzige Ausnahme ist die Zielplatte: `iso/pick-disk.sh` nimmt sie automatisch, wenn es
+genau eine Kandidatin gibt (das Installationsmedium zählt nicht). Bei mehreren Platten
+fragt der Installer nach. Am Ende installiert `iso/late-command.sh` die Dahlia-Pakete,
+die auf der ISO unter `/dahlia/pool` liegen.
 
-Root-Dateisystem: Btrfs mit den Subvolumes `@` und `@home`. `snapper` legt vor und nach
-jedem apt-Lauf einen Snapshot an, `grub-btrfs` macht die Snapshots im Bootmenü startbar.
+Hostname (`dahlia`), Sprache (Englisch, Tastatur Deutsch) und Zeitzone (Europe/Berlin)
+sind vorbelegt und werden später im Einrichtungsassistenten geändert. Angelegt wird der
+Benutzer `dahlia-admin` (UID 1001, sudo) mit dem Startpasswort `dahlia`, das beim ersten
+Login geändert werden muss. root hat kein Passwort.
+
+Root-Dateisystem: Btrfs, der Installer legt das Subvolume `@rootfs` an. `snapper` legt vor
+und nach jedem apt-Lauf einen Snapshot an, `grub-btrfs` macht die Snapshots im Bootmenü
+startbar.
 
 Beim ersten Start zeigt das Dashboard nur den Einrichtungsassistenten. Er ist mit einem
-Einmal-Code geschützt, der auf tty1 und in `/etc/motd` steht.
+Einmal-Code geschützt, der auf tty1 und in `/etc/motd` steht (ab Meilenstein 5).
 
 ## Pakete
 
