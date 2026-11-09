@@ -3,7 +3,7 @@
 # the installed system and wait for the Dahlia login banner on the serial port.
 #
 # Usage: iso/test-install.sh <bios|uefi> <path-to-iso>
-# Needs: qemu-system-x86_64, qemu-img, xorriso, /dev/kvm; for uefi also OVMF
+# Needs: qemu-system-x86_64, qemu-img, xorriso, sshpass, /dev/kvm; for uefi also OVMF
 # Logs:  build/test-<mode>/install.log and boot.log
 set -euo pipefail
 
@@ -15,6 +15,7 @@ OUTDIR="$ROOT/build/test-$MODE"
 
 INSTALL_TIMEOUT=3600
 BOOT_TIMEOUT=600
+SSH_PORT=2222
 
 OVMF_CODE=/usr/share/OVMF/OVMF_CODE_4M.fd
 OVMF_VARS=/usr/share/OVMF/OVMF_VARS_4M.fd
@@ -28,7 +29,7 @@ qemu_args=(
     -enable-kvm -cpu host -m 2048 -smp 2
     -display none
     -drive "file=$OUTDIR/disk.qcow2,if=virtio,format=qcow2"
-    -netdev user,id=net0 -device virtio-net-pci,netdev=net0
+    -netdev "user,id=net0,hostfwd=tcp:127.0.0.1:$SSH_PORT-:22" -device virtio-net-pci,netdev=net0
 )
 case "$MODE" in
     bios) ;;
@@ -98,7 +99,7 @@ while [ "$SECONDS" -lt "$deadline" ]; do
             && grep -q "login:" "$OUTDIR/boot.log"; then
         echo "OK: installed system booted and shows the Dahlia banner"
         grep -a "Dahlia Linux $VERSION" "$OUTDIR/boot.log" | head -n1
-        exit 0
+        break
     fi
     if ! kill -0 "$qemu_pid" 2>/dev/null; then
         echo "QEMU exited before the login prompt appeared" >&2
@@ -107,6 +108,32 @@ while [ "$SECONDS" -lt "$deadline" ]; do
     sleep 5
 done
 
-echo "FAIL: no Dahlia banner/login prompt within ${BOOT_TIMEOUT}s" >&2
-tail -n 80 "$OUTDIR/boot.log" >&2 || true
+if ! grep -q "login:" "$OUTDIR/boot.log" 2>/dev/null; then
+    echo "FAIL: no Dahlia banner/login prompt within ${BOOT_TIMEOUT}s" >&2
+    tail -n 80 "$OUTDIR/boot.log" >&2 || true
+    exit 1
+fi
+
+# SSH with the initial password. It is expired on purpose, so a correct
+# password ends in the forced password change; a wrong one in "denied".
+echo "== ssh password login ($MODE)"
+for _ in $(seq 1 24); do
+    out="$(timeout 30 sshpass -p dahlia ssh -p "$SSH_PORT" \
+        -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+        -o PubkeyAuthentication=no -o ConnectTimeout=10 \
+        dahlia-admin@127.0.0.1 true 2>&1 || true)"
+    printf '%s\n' "$out" >> "$OUTDIR/ssh.log"
+    if grep -qi "password has expired\|change your password" <<<"$out"; then
+        echo "OK: ssh accepts the initial password and forces a change"
+        exit 0
+    fi
+    if grep -qi "permission denied" <<<"$out"; then
+        echo "FAIL: ssh rejected the initial password" >&2
+        cat "$OUTDIR/ssh.log" >&2
+        exit 1
+    fi
+    sleep 5
+done
+echo "FAIL: no ssh answer on port $SSH_PORT" >&2
+tail -n 40 "$OUTDIR/ssh.log" >&2
 exit 1

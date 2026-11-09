@@ -83,5 +83,6 @@ weekly `scrub`. Mover and SnapRAID share a lock and never run at the same time.
 
 - Debian security updates via `unattended-upgrades`.
 - Dahlia packages and other updates are applied from the UI, always with a snapshot first.
-- The apt repository is built and signed in CI. The private key exists only as a GitHub
-  secret.
+- The apt repository is built and signed in CI and published on GitHub Pages
+  (`https://fabiy99.github.io/dahlia-linux/`). The private key exists only as a GitHub
+  secret. Details: [apt-repo.md](apt-repo.md).

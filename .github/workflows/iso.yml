@@ -38,7 +38,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             xorriso cpio apt-utils gnupg dirmngr \
-            qemu-system-x86 qemu-utils ovmf
+            qemu-system-x86 qemu-utils ovmf sshpass
 
       - name: Enable KVM
         run: |
