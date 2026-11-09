@@ -44,10 +44,16 @@ case "$MODE" in
 esac
 
 # The default menu entries use the screen only. Remap both boot menus so the
-# serial-console entry is the default; everything else is the release ISO.
+# serial-console entry is the default and d-i sends its syslog to the host
+# (QEMU user networking maps 10.0.2.2 to the host's 127.0.0.1); everything
+# else is the release ISO.
 TEST_ISO="$OUTDIR/serial.iso"
-sed 's/^set default=0$/set default=1/' "$ROOT/iso/grub.cfg" > "$OUTDIR/grub.cfg"
-sed 's/^default dahlia$/default dahlia-serial/' "$ROOT/iso/isolinux.cfg" > "$OUTDIR/isolinux.cfg"
+SYSLOG_PORT=5140
+log_opts="priority=critical log_host=10.0.2.2 log_port=$SYSLOG_PORT ---"
+sed -e 's/^set default=0$/set default=1/' -e "s/priority=critical ---/$log_opts/" \
+    "$ROOT/iso/grub.cfg" > "$OUTDIR/grub.cfg"
+sed -e 's/^default dahlia$/default dahlia-serial/' -e "s/priority=critical ---/$log_opts/" \
+    "$ROOT/iso/isolinux.cfg" > "$OUTDIR/isolinux.cfg"
 grep -q '^set default=1$' "$OUTDIR/grub.cfg"
 grep -q '^default dahlia-serial$' "$OUTDIR/isolinux.cfg"
 xorriso -indev "$ISO" -outdev "$TEST_ISO" \
@@ -55,15 +61,30 @@ xorriso -indev "$ISO" -outdev "$TEST_ISO" \
     -map "$OUTDIR/isolinux.cfg" /isolinux/isolinux.cfg \
     -boot_image any replay 2>"$OUTDIR/xorriso.log"
 
+# Collect the installer syslog: the serial console only shows the dialog
+# screen, the syslog shows what late_command and apt are doing.
+python3 -I -c '
+import socket, sys
+s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+s.bind(("127.0.0.1", int(sys.argv[2])))
+with open(sys.argv[1], "ab", buffering=0) as f:
+    while True:
+        f.write(s.recv(65535).rstrip(b"\n") + b"\n")
+' "$OUTDIR/installer-syslog.log" "$SYSLOG_PORT" &
+syslog_pid=$!
+trap 'kill "$syslog_pid" 2>/dev/null || true' EXIT
+
 echo "== install ($MODE)"
 # d-i reboots at the end; -no-reboot turns that into a clean QEMU exit.
 if ! timeout "$INSTALL_TIMEOUT" qemu-system-x86_64 "${qemu_args[@]}" \
         -cdrom "$TEST_ISO" -boot d -no-reboot \
         -serial "file:$OUTDIR/install.log"; then
     echo "install did not finish within ${INSTALL_TIMEOUT}s or QEMU failed" >&2
-    tail -n 50 "$OUTDIR/install.log" >&2 || true
+    echo "--- installer syslog (last 150 lines)" >&2
+    tail -n 150 "$OUTDIR/installer-syslog.log" >&2 || true
     exit 1
 fi
+kill "$syslog_pid" 2>/dev/null || true
 
 echo "== first boot ($MODE)"
 qemu-system-x86_64 "${qemu_args[@]}" -boot c \
