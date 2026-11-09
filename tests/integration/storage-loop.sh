@@ -4,6 +4,9 @@
 # Creates disks with existing data (ext4, XFS, Btrfs) plus a parity disk,
 # adds them with dahlia-disk and checks: data untouched, systemd units
 # active, mergerfs pools grow and shrink at runtime, SnapRAID config.
+# Then a Btrfs RAID1 cache: new files land on it, dahlia-mover moves them
+# to the data disks without changing the path; dahlia-snapraid syncs and
+# stops above the delete threshold.
 #
 # Must run as root on a disposable machine (CI runner or test VM) with the
 # dahlia-storage package installed.
@@ -18,8 +21,11 @@ step() { echo; echo "== $*"; }
 
 cleanup() {
     set +e
-    for unit in mnt-user.mount mnt-storage.mount; do systemctl stop "$unit" 2>/dev/null; done
-    for m in /mnt/disk* /mnt/parity*; do
+    exec 9<&- 2>/dev/null
+    for unit in mnt-user.mount mnt-storage.mount mnt-cache.mount; do
+        systemctl stop "$unit" 2>/dev/null
+    done
+    for m in /mnt/disk* /mnt/parity* /mnt/cache; do
         [ -d "$m" ] && umount "$m" 2>/dev/null
     done
     for l in "${LOOPS[@]}"; do losetup -d "$l" 2>/dev/null; done
@@ -120,6 +126,70 @@ for i in 1 2 3; do
     grep -qx "data d$i /mnt/disk$i/" "$WORK/snapraid.conf" || fail "data d$i missing"
 done
 
+step "add a Btrfs RAID1 cache: first branch of /mnt/user, not in /mnt/storage"
+truncate -s 300M "$WORK/c1.img" "$WORK/c2.img"
+c1="$(losetup --find --show "$WORK/c1.img")"; LOOPS+=("$c1")
+c2="$(losetup --find --show "$WORK/c2.img")"; LOOPS+=("$c2")
+mkfs.btrfs -q -L cache -d raid1 -m raid1 "$c1" "$c2"
+udevadm trigger --action=change "$c1" "$c2"
+udevadm settle
+cache_uuid="$(blkid -s UUID -o value "$c1")"
+user_mount_id="$(findmnt -no ID /mnt/user 2>/dev/null || stat -c %d /mnt/user)"
+dahlia-disk add "$cache_uuid" --role cache
+mountpoint -q /mnt/cache || fail "/mnt/cache not mounted"
+[ -d /mnt/cache/shares ] || fail "/mnt/cache/shares missing"
+[ "$(branches /mnt/user)" = "/mnt/cache/shares=RW:/mnt/disk1=RW:/mnt/disk2=RW:/mnt/disk3=RW" ] \
+    || fail "unexpected /mnt/user branches: $(branches /mnt/user)"
+[ "$(branches /mnt/storage)" = "/mnt/disk1=RW:/mnt/disk2=RW:/mnt/disk3=RW" ] \
+    || fail "cache ended up in /mnt/storage: $(branches /mnt/storage)"
+[ "$(findmnt -no ID /mnt/user 2>/dev/null || stat -c %d /mnt/user)" = "$user_mount_id" ] \
+    || fail "/mnt/user was remounted"
+[ "$(getfattr --only-values -n user.mergerfs.category.create /mnt/user/.mergerfs)" = "ff" ] \
+    || fail "/mnt/user does not fill the cache first"
+
+step "new files land on the cache, existing files stay visible"
+head -c 262144 /dev/urandom > /mnt/user/shares/media/cached.bin
+head -c 65536 /dev/urandom > /mnt/user/shares/media/open.bin
+(cd /mnt/user && sha256sum shares/media/cached.bin) > "$WORK/cached.sha256"
+[ -f /mnt/cache/shares/shares/media/cached.bin ] || fail "new file not on the cache"
+for name in d1 d2 d3; do check_data "$name" /mnt/user; done
+
+step "a cache with files cannot be removed by accident"
+if dahlia-disk remove "$cache_uuid" 2>/dev/null; then fail "removed a cache that holds files"; fi
+
+step "mover: moves to the data disks, path unchanged, open files stay"
+exec 9< /mnt/user/shares/media/open.bin
+dahlia-mover
+[ -e /mnt/cache/shares/shares/media/cached.bin ] && fail "cached.bin still on the cache"
+ls /mnt/disk*/shares/media/cached.bin >/dev/null 2>&1 || fail "cached.bin not on a data disk"
+(cd /mnt/user && sha256sum -c --quiet "$WORK/cached.sha256") || fail "cached.bin changed by the move"
+[ -f /mnt/cache/shares/shares/media/open.bin ] || fail "mover moved an open file"
+exec 9<&-
+dahlia-mover
+[ -e /mnt/cache/shares/shares/media/open.bin ] && fail "open.bin not moved after close"
+[ -d /mnt/cache/shares ] || fail "mover removed the shares directory"
+
+step "remove the empty cache: /mnt/user keeps running on the data disks"
+dahlia-disk remove "$cache_uuid"
+mountpoint -q /mnt/cache && fail "/mnt/cache still mounted"
+[ "$(branches /mnt/user)" = "/mnt/disk1=RW:/mnt/disk2=RW:/mnt/disk3=RW" ] \
+    || fail "unexpected /mnt/user branches after cache removal: $(branches /mnt/user)"
+(cd /mnt/user && sha256sum -c --quiet "$WORK/cached.sha256") || fail "cached.bin lost"
+
+step "snapraid: first sync builds the parity"
+dahlia-snapraid sync
+[ -s /mnt/parity1/snapraid.parity ] || fail "no parity file after sync"
+dahlia-snapraid sync | grep -q "parity is up to date" || fail "second sync not a no-op"
+
+step "snapraid: sync stops above the delete threshold, --force overrides"
+dahlia-disk set-option snapraid_delete_threshold 1
+rm /mnt/disk1/shares/media/d1.bin
+find /mnt/disk*/shares/media -name cached.bin -delete
+if dahlia-snapraid sync; then fail "sync ran although 2 files were removed (threshold 1)"; fi
+dahlia-snapraid sync --force
+dahlia-snapraid sync | grep -q "parity is up to date" || fail "forced sync did not update parity"
+dahlia-snapraid scrub
+
 step "remove a data disk: leaves pool at runtime, data stays on the disk"
 dahlia-disk remove "$(uuid_of d3)"
 [ "$(branches /mnt/storage)" = "/mnt/disk1=RW:/mnt/disk2=RW" ] \
@@ -136,11 +206,10 @@ dahlia-disk apply
 for m in /mnt/disk1 /mnt/disk2 /mnt/parity1 /mnt/storage /mnt/user; do
     mountpoint -q "$m" || fail "$m not mounted after apply"
 done
-check_data d1 /mnt/user
 check_data d2 /mnt/user
 
 step "existing data never touched"
-for name in d1 d2; do check_data "$name" /mnt/storage; done
+check_data d2 /mnt/storage
 
 echo
 echo "OK: storage integration test passed"

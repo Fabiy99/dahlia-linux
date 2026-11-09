@@ -17,8 +17,11 @@ from dataclasses import asdict, dataclass, field
 
 STATE_PATH = os.environ.get("DAHLIA_STORAGE_STATE", "/etc/dahlia/storage.json")
 LOCK_PATH = os.environ.get("DAHLIA_STORAGE_LOCK", "/run/dahlia/storage.lock")
+# Held for the whole run of the mover and of SnapRAID: they never overlap.
+ARRAY_LOCK_PATH = os.environ.get("DAHLIA_ARRAY_LOCK", "/run/dahlia/array.lock")
 
-ROLES = ("data", "parity", "external")
+ROLES = ("data", "parity", "cache", "external")
+CACHE_MOUNTPOINT = "/mnt/cache"
 SIZE_RE = re.compile(r"^\d+[KMGT]?$")
 
 
@@ -26,7 +29,7 @@ SIZE_RE = re.compile(r"^\d+[KMGT]?$")
 class Disk:
     uuid: str
     role: str
-    index: int  # data: /mnt/diskN, parity: /mnt/parityN, external: unused
+    index: int  # data: /mnt/diskN, parity: /mnt/parityN, cache/external: unused
     fstype: str
     name: str = ""  # external: directory name under /mnt/external
     serial: str | None = None
@@ -39,6 +42,8 @@ class Disk:
             return f"/mnt/disk{self.index}"
         if self.role == "parity":
             return f"/mnt/parity{self.index}"
+        if self.role == "cache":
+            return CACHE_MOUNTPOINT
         return f"/mnt/external/{self.name}"
 
 
@@ -46,6 +51,23 @@ class Disk:
 class Settings:
     # mergerfs stops placing new files on a branch below this free space.
     minfreespace: str = "50G"
+    # The mover leaves files alone that were modified less than this ago.
+    mover_min_age_minutes: int = 0
+    # SnapRAID sync is aborted when diff reports more removed files.
+    snapraid_delete_threshold: int = 50
+    # Weekly scrub: percentage of the array, only blocks older than N days.
+    scrub_percent: int = 8
+    scrub_older_than_days: int = 10
+
+    def validate(self) -> None:
+        if not SIZE_RE.match(self.minfreespace):
+            raise ValueError(f"invalid minfreespace: {self.minfreespace!r}")
+        for name in ("mover_min_age_minutes", "snapraid_delete_threshold", "scrub_older_than_days"):
+            value = getattr(self, name)
+            if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+                raise ValueError(f"invalid {name}: {value!r}")
+        if not isinstance(self.scrub_percent, int) or not 0 < self.scrub_percent <= 100:
+            raise ValueError(f"invalid scrub_percent: {self.scrub_percent!r}")
 
 
 @dataclass
@@ -55,6 +77,10 @@ class State:
 
     def by_role(self, role: str) -> list[Disk]:
         return sorted((d for d in self.disks if d.role == role), key=lambda d: d.index)
+
+    @property
+    def cache(self) -> Disk | None:
+        return next((d for d in self.disks if d.role == "cache"), None)
 
     def find(self, uuid: str) -> Disk | None:
         return next((d for d in self.disks if d.uuid == uuid), None)
@@ -76,12 +102,13 @@ class State:
     @classmethod
     def from_dict(cls, data: dict) -> State:
         settings = Settings(**(data.get("settings") or {}))
-        if not SIZE_RE.match(settings.minfreespace):
-            raise ValueError(f"invalid minfreespace: {settings.minfreespace!r}")
+        settings.validate()
         disks = [Disk(**d) for d in data.get("disks") or []]
         for d in disks:
             if d.role not in ROLES:
                 raise ValueError(f"invalid role {d.role!r} for {d.uuid}")
+        if sum(d.role == "cache" for d in disks) > 1:
+            raise ValueError("more than one cache filesystem")
         return cls(disks=disks, settings=settings)
 
 
@@ -115,7 +142,7 @@ def save(state: State, path: str = STATE_PATH) -> None:
 
 @contextmanager
 def locked(path: str = LOCK_PATH):
-    """Serialise all storage changes (CLI, agent, mover, SnapRAID)."""
+    """Serialise changes to the storage layout (CLI, agent)."""
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w") as f:
         fcntl.flock(f, fcntl.LOCK_EX)
@@ -123,3 +150,8 @@ def locked(path: str = LOCK_PATH):
             yield
         finally:
             fcntl.flock(f, fcntl.LOCK_UN)
+
+
+def array_locked():
+    """Exclusive lock for long array jobs (mover, SnapRAID sync and scrub)."""
+    return locked(ARRAY_LOCK_PATH)

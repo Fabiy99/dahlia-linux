@@ -1,0 +1,9 @@
+[Unit]
+Description=Dahlia SnapRAID sync with delete threshold
+After=dahlia-storage.target dahlia-mover.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/sbin/dahlia-snapraid sync
+Nice=19
+IOSchedulingClass=idle
