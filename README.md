@@ -29,6 +29,7 @@ noch ohne Web-UI und Storage-Funktionen.
    Für Rechner ohne Bildschirm gibt es den Menüeintrag "serial console" (ttyS0, 115200 Baud).
 4. Anmelden als `dahlia-admin` mit Passwort `dahlia`, danach ein neues Passwort setzen.
    Per SSH: `ssh dahlia-admin@dahlia.local`.
+5. Updates: `sudo apt update && sudo apt upgrade` (siehe [docs/de/apt-repo.md](docs/de/apt-repo.md)).
 
 **Achtung:** Hat der Rechner nur eine Platte, wird sie ohne Rückfrage gelöscht.
 
@@ -106,6 +107,7 @@ without web UI or storage features yet.
    Headless machines use the "serial console" menu entry (ttyS0, 115200 baud).
 4. Log in as `dahlia-admin` with password `dahlia`, then set a new password.
    Via SSH: `ssh dahlia-admin@dahlia.local`.
+5. Updates: `sudo apt update && sudo apt upgrade` (see [docs/en/apt-repo.md](docs/en/apt-repo.md)).
 
 **Warning:** On a machine with a single disk, that disk is wiped without asking.
 

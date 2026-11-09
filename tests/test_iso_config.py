@@ -80,6 +80,8 @@ def test_scripts_are_executable():
         ROOT / "tools" / "build-packages.sh",
         ROOT / "iso" / "build-iso.sh",
         ROOT / "iso" / "test-install.sh",
+        ROOT / "tools" / "sign-repo.sh",
+        ROOT / "tests" / "integration" / "apt-repo.sh",
         ROOT / "packages" / "dahlia-base" / "DEBIAN" / "postinst",
         ROOT / "packages" / "dahlia-base" / "etc" / "update-motd.d" / "10-dahlia",
     ]
@@ -92,3 +94,25 @@ def test_package_control_files_use_version_marker():
         text = control.read_text(encoding="utf-8")
         assert "Version: @VERSION@" in text, control
         assert "Architecture: all" in text, control
+
+
+def test_apt_source_uses_shipped_keyring():
+    pkg = ROOT / "packages" / "dahlia-archive-keyring"
+    sources = (pkg / "etc" / "apt" / "sources.list.d" / "dahlia.sources").read_text(
+        encoding="utf-8"
+    )
+    fields = dict(
+        line.split(": ", 1) for line in sources.splitlines() if line and not line.startswith("#")
+    )
+    assert fields["URIs"].startswith("https://")
+    assert fields["Suites"] == "./"
+    keyring = fields["Signed-By"]
+    assert (pkg / keyring.lstrip("/")).is_file(), keyring
+    assert "BEGIN PGP PUBLIC KEY BLOCK" in (pkg / keyring.lstrip("/")).read_text(encoding="utf-8")
+
+
+def test_base_pulls_in_keyring_of_same_version():
+    control = (ROOT / "packages" / "dahlia-base" / "DEBIAN" / "control").read_text(
+        encoding="utf-8"
+    )
+    assert "dahlia-archive-keyring (= @VERSION@)" in control

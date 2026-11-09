@@ -83,5 +83,6 @@ gleichzeitig.
 
 - Debian-Sicherheitsupdates über `unattended-upgrades`.
 - Dahlia-Pakete und übrige Updates per Klick im UI, immer mit Snapshot vorher.
-- Das apt-Repo wird in CI gebaut und signiert. Der private Schlüssel existiert nur als
-  GitHub-Secret.
+- Das apt-Repo wird in CI gebaut, signiert und auf GitHub Pages veröffentlicht
+  (`https://fabiy99.github.io/dahlia-linux/`). Der private Schlüssel existiert nur als
+  GitHub-Secret. Details: [apt-repo.md](apt-repo.md).
