@@ -23,10 +23,13 @@ noch ohne Web-UI und Storage-Funktionen.
    Ergebnis: `build/dahlia-linux-<version>-amd64.iso`. Getaggte Versionen hängen die ISO
    zusätzlich an ein GitHub-Release.
 2. VM anlegen: 2 GB RAM, eine Platte ab 20 GB, Netzwerk gebridged. Hyper-V: Generation 2,
-   Secure Boot mit der Vorlage "Microsoft UEFI Certificate Authority".
+   Secure Boot mit der Vorlage "Microsoft UEFI Certificate Authority", fester Arbeitsspeicher
+   (kein dynamischer).
 3. Von der ISO booten. Die Installation läuft ohne Fragen durch und startet neu.
+   Für Rechner ohne Bildschirm gibt es den Menüeintrag "serial console" (ttyS0, 115200 Baud).
 4. Anmelden als `dahlia-admin` mit Passwort `dahlia`, danach ein neues Passwort setzen.
    Per SSH: `ssh dahlia-admin@dahlia.local`.
+5. Updates: `sudo apt update && sudo apt upgrade` (siehe [docs/de/apt-repo.md](docs/de/apt-repo.md)).
 
 **Achtung:** Hat der Rechner nur eine Platte, wird sie ohne Rückfrage gelöscht.
 
@@ -64,8 +67,10 @@ Details: [docs/de/architektur.md](docs/de/architektur.md)
 5. Dashboard: Backend, Login, Frontend mit DE/EN
 6. App-Store (eigenes Repo `dahlia-apps`)
 7. Domains, Reverse-Proxy, Zertifikate
-8. Überwachung, Benachrichtigungen, USV, Release 1.0
-9. Version 2: VMs und LXC über Incus
+8. Geführter Installer: Zielplatte auswählen, Servername, Passwort, Netzwerk, Zusammenfassung
+   mit Lösch-Warnung. Der unbeaufsichtigte Modus bleibt als eigener Menüeintrag.
+9. Überwachung, Benachrichtigungen, USV, Release 1.0
+10. Version 2: VMs und LXC über Incus
 
 ### Mitmachen
 
@@ -98,10 +103,13 @@ without web UI or storage features yet.
    Output: `build/dahlia-linux-<version>-amd64.iso`. Tagged versions also attach the ISO to
    a GitHub release.
 2. Create a VM: 2 GB RAM, one disk of 20 GB or more, bridged network. Hyper-V: generation 2,
-   Secure Boot with the "Microsoft UEFI Certificate Authority" template.
+   Secure Boot with the "Microsoft UEFI Certificate Authority" template, static memory
+   (not dynamic).
 3. Boot from the ISO. The install runs without questions and reboots.
+   Headless machines use the "serial console" menu entry (ttyS0, 115200 baud).
 4. Log in as `dahlia-admin` with password `dahlia`, then set a new password.
    Via SSH: `ssh dahlia-admin@dahlia.local`.
+5. Updates: `sudo apt update && sudo apt upgrade` (see [docs/en/apt-repo.md](docs/en/apt-repo.md)).
 
 **Warning:** On a machine with a single disk, that disk is wiped without asking.
 
@@ -138,8 +146,10 @@ Details: [docs/en/architecture.md](docs/en/architecture.md)
 5. Dashboard: backend, login, frontend with DE/EN
 6. App store (separate repository `dahlia-apps`)
 7. Domains, reverse proxy, certificates
-8. Monitoring, notifications, UPS, release 1.0
-9. Version 2: VMs and LXC via Incus
+8. Guided installer: pick the target disk, server name, password, network, summary with a
+   wipe warning. The unattended mode stays as a separate menu entry.
+9. Monitoring, notifications, UPS, release 1.0
+10. Version 2: VMs and LXC via Incus
 
 ### Contributing
 
