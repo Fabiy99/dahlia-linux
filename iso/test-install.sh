@@ -13,7 +13,7 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 VERSION="$(tr -d '[:space:]' < "$ROOT/VERSION")"
 OUTDIR="$ROOT/build/test-$MODE"
 
-INSTALL_TIMEOUT=3600
+INSTALL_TIMEOUT=1800
 BOOT_TIMEOUT=600
 SSH_PORT=2222
 
@@ -79,6 +79,10 @@ install_failed() {
     echo "$1" >&2
     echo "--- installer syslog (last 150 lines)" >&2
     tail -n 150 "$OUTDIR/installer-syslog.log" >&2 || true
+    # The serial console shows the dialog d-i is waiting on, if any.
+    echo "--- installer screen (serial, last 40 lines)" >&2
+    sed -e 's/\x1b\[[0-9;?]*[A-Za-z]//g' -e 's/\x1b[()][A-Z0-9]//g' "$OUTDIR/install.log" \
+        | tr -s ' ' | grep -av '^ *$' | tail -n 40 >&2 || true
     exit 1
 }
 
