@@ -3,7 +3,7 @@
 # the installed system and wait for the Dahlia login banner on the serial port.
 #
 # Usage: iso/test-install.sh <bios|uefi> <path-to-iso>
-# Needs: qemu-system-x86_64, qemu-img, /dev/kvm; for uefi also OVMF
+# Needs: qemu-system-x86_64, qemu-img, xorriso, /dev/kvm; for uefi also OVMF
 # Logs:  build/test-<mode>/install.log and boot.log
 set -euo pipefail
 
@@ -43,10 +43,22 @@ case "$MODE" in
     *) echo "unknown mode: $MODE" >&2; exit 2 ;;
 esac
 
+# The default menu entries use the screen only. Remap both boot menus so the
+# serial-console entry is the default; everything else is the release ISO.
+TEST_ISO="$OUTDIR/serial.iso"
+sed 's/^set default=0$/set default=1/' "$ROOT/iso/grub.cfg" > "$OUTDIR/grub.cfg"
+sed 's/^default dahlia$/default dahlia-serial/' "$ROOT/iso/isolinux.cfg" > "$OUTDIR/isolinux.cfg"
+grep -q '^set default=1$' "$OUTDIR/grub.cfg"
+grep -q '^default dahlia-serial$' "$OUTDIR/isolinux.cfg"
+xorriso -indev "$ISO" -outdev "$TEST_ISO" \
+    -map "$OUTDIR/grub.cfg" /boot/grub/grub.cfg \
+    -map "$OUTDIR/isolinux.cfg" /isolinux/isolinux.cfg \
+    -boot_image any replay 2>"$OUTDIR/xorriso.log"
+
 echo "== install ($MODE)"
 # d-i reboots at the end; -no-reboot turns that into a clean QEMU exit.
 if ! timeout "$INSTALL_TIMEOUT" qemu-system-x86_64 "${qemu_args[@]}" \
-        -cdrom "$ISO" -boot d -no-reboot \
+        -cdrom "$TEST_ISO" -boot d -no-reboot \
         -serial "file:$OUTDIR/install.log"; then
     echo "install did not finish within ${INSTALL_TIMEOUT}s or QEMU failed" >&2
     tail -n 50 "$OUTDIR/install.log" >&2 || true
