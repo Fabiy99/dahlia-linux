@@ -66,8 +66,10 @@ Details: [docs/de/architektur.md](docs/de/architektur.md)
 5. Dashboard: Backend, Login, Frontend mit DE/EN
 6. App-Store (eigenes Repo `dahlia-apps`)
 7. Domains, Reverse-Proxy, Zertifikate
-8. Überwachung, Benachrichtigungen, USV, Release 1.0
-9. Version 2: VMs und LXC über Incus
+8. Geführter Installer: Zielplatte auswählen, Servername, Passwort, Netzwerk, Zusammenfassung
+   mit Lösch-Warnung. Der unbeaufsichtigte Modus bleibt als eigener Menüeintrag.
+9. Überwachung, Benachrichtigungen, USV, Release 1.0
+10. Version 2: VMs und LXC über Incus
 
 ### Mitmachen
 
@@ -142,8 +144,10 @@ Details: [docs/en/architecture.md](docs/en/architecture.md)
 5. Dashboard: backend, login, frontend with DE/EN
 6. App store (separate repository `dahlia-apps`)
 7. Domains, reverse proxy, certificates
-8. Monitoring, notifications, UPS, release 1.0
-9. Version 2: VMs and LXC via Incus
+8. Guided installer: pick the target disk, server name, password, network, summary with a
+   wipe warning. The unattended mode stays as a separate menu entry.
+9. Monitoring, notifications, UPS, release 1.0
+10. Version 2: VMs and LXC via Incus
 
 ### Contributing
 
