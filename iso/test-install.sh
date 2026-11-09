@@ -73,7 +73,14 @@ with open(sys.argv[1], "ab", buffering=0) as f:
         f.write(s.recv(65535).rstrip(b"\n") + b"\n")
 ' "$OUTDIR/installer-syslog.log" "$SYSLOG_PORT" &
 syslog_pid=$!
-trap 'kill "$syslog_pid" 2>/dev/null || true' EXIT
+# Echo the late-command and apt part of the syslog live, so it ends up in
+# the job log even if the job is cancelled.
+touch "$OUTDIR/installer-syslog.log"
+tail -F "$OUTDIR/installer-syslog.log" 2>/dev/null \
+    | grep --line-buffered -E 'in-target|preseed|late_command|dahlia|apt-get|dpkg|Setting up|Unpacking' \
+    | sed -u 's/^/[d-i] /' &
+tail_pid=$!
+trap 'kill "$syslog_pid" "$tail_pid" 2>/dev/null || true' EXIT
 
 echo "== install ($MODE)"
 # d-i reboots at the end; -no-reboot turns that into a clean QEMU exit.
