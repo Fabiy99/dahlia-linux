@@ -1,0 +1,40 @@
+name: lint
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  shellcheck:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: shellcheck
+        run: |
+          # Shell scripts: *.sh plus anything with a bash/sh shebang.
+          mapfile -t files < <(
+            git ls-files -z | xargs -0 -r grep -lIE '^#!(/usr)?/bin/(env )?(ba)?sh' 2>/dev/null || true
+          )
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "No shell scripts yet."
+            exit 0
+          fi
+          shellcheck "${files[@]}"
+
+  python:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install tools
+        run: pip install ruff pytest
+      - name: ruff
+        run: ruff check .
+      - name: pytest
+        run: pytest -q

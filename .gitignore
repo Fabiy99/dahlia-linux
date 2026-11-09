@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+
+# Build output
+/build/
+/dist/
+*.iso
+*.iso.sha256
+*.deb
+*.changes
+*.buildinfo
+
+# live-build / installer work dirs
+/iso/chroot/
+/iso/binary/
+/iso/cache/
+/iso/.build/
+
+# Editors
+.vscode/
+.idea/
+*.swp
