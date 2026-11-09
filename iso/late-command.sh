@@ -17,12 +17,14 @@ cp /cdrom/dahlia/pool/*.deb "$STAGE/"
 mkdir -p /target/media/cdrom
 mount --bind /cdrom /target/media/cdrom
 
-# apt resolves the remaining dependencies from the network mirror. stdin is
-# /dev/null and apt has a time limit: a prompt or a hanging download fails
-# the install with a log instead of leaving it stuck.
+# apt resolves the remaining dependencies from the network mirror. apt has
+# a time limit and reads stdin from /dev/null, so a prompt or a hanging
+# download fails the install with a log instead of leaving it stuck.
+# The redirect must stay inside the chroot command: stdin of late_command is
+# the debconf channel. Redirecting it for in-target itself leaves debconf
+# replies unread in the pipe, finish-install then reads them and stops.
 if ! in-target timeout "$APT_TIMEOUT" sh -c \
-        'DEBIAN_FRONTEND=noninteractive apt-get install -y /opt/dahlia-install/*.deb' \
-        </dev/null; then
+        'DEBIAN_FRONTEND=noninteractive apt-get install -y /opt/dahlia-install/*.deb </dev/null'; then
     umount /target/media/cdrom || true
     log "FAILED: apt-get install of the Dahlia packages"
     if [ -f /target/var/log/apt/term.log ]; then
