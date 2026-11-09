@@ -39,3 +39,6 @@ jobs:
           ls -la /etc/systemd/system/*.mount || true
           sudo cat /etc/dahlia/storage.json || true
           sudo journalctl -n 200 --no-pager -u 'mnt-*' || true
+          ls -l /dev/disk/by-uuid/ || true
+          systemctl status mnt.mount --no-pager || true
+          sudo journalctl -b --no-pager | grep -iE 'mnt|loop|by-uuid|dependency' | grep -v network-online | tail -80 || true
