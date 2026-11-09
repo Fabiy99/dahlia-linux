@@ -1,0 +1,98 @@
+name: iso
+
+on:
+  pull_request:
+    paths:
+      - "iso/**"
+      - "packages/**"
+      - "tools/**"
+      - "VERSION"
+      - ".github/workflows/iso.yml"
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  # Build and install-test in the same job: the ISO is too large to pass
+  # between jobs as an artifact on a free private repository.
+  build-and-test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        firmware: [bios, uefi]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build and test tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            xorriso cpio apt-utils gnupg dirmngr \
+            qemu-system-x86 qemu-utils ovmf
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          ls -l /dev/kvm
+
+      - name: Build packages
+        run: tools/build-packages.sh
+
+      - name: Build ISO
+        run: iso/build-iso.sh
+
+      - name: Install and boot test
+        run: iso/test-install.sh ${{ matrix.firmware }} build/dahlia-linux-$(cat VERSION)-amd64.iso
+
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: logs-${{ matrix.firmware }}
+          path: |
+            build/test-${{ matrix.firmware }}/*.log
+            build/*.sha256
+          retention-days: 7
+          if-no-files-found: ignore
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build-and-test
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends xorriso cpio apt-utils gnupg dirmngr
+
+      - name: Build packages and ISO
+        run: |
+          tools/build-packages.sh
+          iso/build-iso.sh
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version="$(cat VERSION)"
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "Tag $GITHUB_REF_NAME does not match VERSION $version" >&2
+            exit 1
+          fi
+          gh release create "$GITHUB_REF_NAME" \
+            "build/dahlia-linux-$version-amd64.iso" \
+            "build/dahlia-linux-$version-amd64.iso.sha256" \
+            --title "Dahlia Linux $version" \
+            --notes "Installer ISO for Dahlia Linux $version (BIOS and UEFI)."

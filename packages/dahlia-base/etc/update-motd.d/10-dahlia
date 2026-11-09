@@ -1,0 +1,11 @@
+#!/bin/sh
+# Login banner. Runs via pam_motd on every SSH/console login.
+# shellcheck source=/dev/null
+. /etc/dahlia/release
+
+host="$(hostname)"
+addr="$(hostname -I 2>/dev/null | cut -d' ' -f1)"
+
+printf '\n  Dahlia Linux %s\n\n' "$DAHLIA_VERSION"
+printf '  Host : %s.local\n' "$host"
+printf '  IPv4 : %s\n\n' "${addr:-none}"

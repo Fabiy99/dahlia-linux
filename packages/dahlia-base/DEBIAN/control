@@ -1,0 +1,12 @@
+Package: dahlia-base
+Version: @VERSION@
+Architecture: all
+Maintainer: Dahlia Linux <https://github.com/Fabiy99/dahlia-linux>
+Section: admin
+Priority: optional
+Depends: btrfs-progs, snapper, avahi-daemon, libnss-mdns, nftables, sudo, openssh-server
+Recommends: grub-btrfs
+Description: Dahlia Linux base system
+ Base configuration for Dahlia Linux: group layout, console and login
+ banners, release file and the snapper root configuration that takes
+ snapshots before and after every apt run.

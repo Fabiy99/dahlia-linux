@@ -14,8 +14,21 @@ Kein Abo, keine Lizenzschlüssel. Lizenz: GPLv3.
 
 ### Stand
 
-Frühe Entwicklung. Es gibt noch kein installierbares Image. Der Fortschritt läuft über
-die Meilensteine unten.
+Frühe Entwicklung. Ab Meilenstein 2 gibt es eine installierbare ISO mit dem Basissystem,
+noch ohne Web-UI und Storage-Funktionen.
+
+### In einer VM testen
+
+1. ISO bauen (auf Debian/Ubuntu oder in WSL2): `tools/build-packages.sh && iso/build-iso.sh`.
+   Ergebnis: `build/dahlia-linux-<version>-amd64.iso`. Getaggte Versionen hängen die ISO
+   zusätzlich an ein GitHub-Release.
+2. VM anlegen: 2 GB RAM, eine Platte ab 20 GB, Netzwerk gebridged. Hyper-V: Generation 2,
+   Secure Boot mit der Vorlage "Microsoft UEFI Certificate Authority".
+3. Von der ISO booten. Die Installation läuft ohne Fragen durch und startet neu.
+4. Anmelden als `dahlia-admin` mit Passwort `dahlia`, danach ein neues Passwort setzen.
+   Per SSH: `ssh dahlia-admin@dahlia.local`.
+
+**Achtung:** Hat der Rechner nur eine Platte, wird sie ohne Rückfrage gelöscht.
 
 ### Grundidee
 
@@ -76,8 +89,21 @@ No subscription, no license keys. License: GPLv3.
 
 ### Status
 
-Early development. There is no installable image yet. Progress follows the milestones
-below.
+Early development. From milestone 2 on there is an installable ISO with the base system,
+without web UI or storage features yet.
+
+### Testing in a VM
+
+1. Build the ISO (on Debian/Ubuntu or in WSL2): `tools/build-packages.sh && iso/build-iso.sh`.
+   Output: `build/dahlia-linux-<version>-amd64.iso`. Tagged versions also attach the ISO to
+   a GitHub release.
+2. Create a VM: 2 GB RAM, one disk of 20 GB or more, bridged network. Hyper-V: generation 2,
+   Secure Boot with the "Microsoft UEFI Certificate Authority" template.
+3. Boot from the ISO. The install runs without questions and reboots.
+4. Log in as `dahlia-admin` with password `dahlia`, then set a new password.
+   Via SSH: `ssh dahlia-admin@dahlia.local`.
+
+**Warning:** On a machine with a single disk, that disk is wiped without asking.
 
 ### Design in short
 
