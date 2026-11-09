@@ -25,6 +25,16 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             apt-utils mergerfs fuse3 xfsprogs btrfs-progs e2fsprogs attr jq
 
+      - name: Drop the runner's /mnt fstab entry
+        # The hosted runner lists a resource disk for /mnt in fstab that fails
+        # to mount; every unit below /mnt would inherit that failed
+        # dependency. On Dahlia, /mnt is a plain directory on the root fs.
+        run: |
+          sudo sed -i -E 's|^([^#].*[[:space:]]/mnt[[:space:]].*)$|# \1|' /etc/fstab
+          sudo systemctl daemon-reload
+          sudo systemctl reset-failed mnt.mount || true
+          grep -n /mnt /etc/fstab || true
+
       - name: Build and install dahlia-storage
         run: |
           tools/build-packages.sh
