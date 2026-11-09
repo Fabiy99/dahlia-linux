@@ -116,6 +116,8 @@ def sync_pools(st: state.State) -> None:
         if not is_mounted(pool):
             prepare_mountpoint(pool)
             systemctl("enable", "--now", unit)
+            if not is_mounted(pool):
+                raise DiskError(f"pool {pool} did not mount, see journalctl -u {unit}")
             continue
         live = pool_branches_live(pool)
         for branch in wanted:
@@ -191,6 +193,9 @@ def cmd_add(args) -> int:
         write_units(st)
         try:
             systemctl("enable", "--now", units.unit_name(disk.mountpoint))
+            # systemctl can return 0 when only a dependency job failed.
+            if not is_mounted(disk.mountpoint):
+                raise subprocess.CalledProcessError(1, ["mount", disk.mountpoint])
         except subprocess.CalledProcessError:
             # Mount failed: leave the system exactly as it was.
             st.disks.remove(disk)
@@ -232,9 +237,14 @@ def cmd_apply(args) -> int:
         for d in st.disks:
             prepare_mountpoint(d.mountpoint)
         names = write_units(st)
+        missing = []
         for d in st.disks:
             systemctl("enable", "--now", units.unit_name(d.mountpoint))
+            if not is_mounted(d.mountpoint):
+                missing.append(d.mountpoint)
         sync_pools(st)
+        if missing:
+            raise DiskError(f"not mounted: {', '.join(missing)} (disk missing or failed)")
         systemctl("enable", units.TARGET)
         print(f"{len(names)} unit(s) in place")
     return 0

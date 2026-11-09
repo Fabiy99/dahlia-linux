@@ -44,6 +44,9 @@ make_disk() {
     head -c 1048576 /dev/urandom > "$mnt/shares/media/$name.bin"
     (cd "$mnt" && sha256sum "shares/media/$name.bin") > "$WORK/$name.sha256"
     umount "$mnt"
+    # Let udev re-probe the device so /dev/disk/by-uuid/ exists, as it does
+    # for real disks. systemd mount units bind to that device node.
+    udevadm trigger --action=change "$loop"
     udevadm settle
     blkid -s UUID -o value "$loop" > "$WORK/$name.uuid"
     echo "$loop"
