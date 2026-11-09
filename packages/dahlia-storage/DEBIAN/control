@@ -1,0 +1,12 @@
+Package: dahlia-storage
+Version: @VERSION@
+Architecture: all
+Maintainer: Dahlia Linux <https://github.com/Fabiy99/dahlia-linux>
+Section: admin
+Priority: optional
+Depends: python3 (>= 3.11), util-linux, e2fsprogs, xfsprogs, btrfs-progs, mergerfs, fuse3
+Recommends: snapraid, smartmontools, hdparm
+Description: Dahlia Linux storage management
+ dahlia-disk detects existing disks and mounts them without formatting,
+ generates systemd mount units, keeps the mergerfs pools /mnt/storage and
+ /mnt/user in sync at runtime and writes the SnapRAID configuration.

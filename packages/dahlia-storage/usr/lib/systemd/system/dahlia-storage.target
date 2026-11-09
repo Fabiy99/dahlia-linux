@@ -1,0 +1,7 @@
+[Unit]
+Description=Dahlia storage (disks and mergerfs pools)
+Documentation=https://github.com/Fabiy99/dahlia-linux
+After=local-fs.target
+
+[Install]
+WantedBy=multi-user.target

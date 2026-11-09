@@ -58,6 +58,26 @@ the failure.
 SnapRAID runs through a wrapper on a timer: `diff`, abort above a delete threshold, `sync`,
 weekly `scrub`. Mover and SnapRAID share a lock and never run at the same time.
 
+### dahlia-disk (from milestone 3)
+
+`dahlia-disk` from the `dahlia-storage` package implements the layout. It never formats
+anything. State lives in `/etc/dahlia/storage.json`; everything else is generated from it.
+
+```sh
+dahlia-disk list                          # disks and what Dahlia may do with them
+dahlia-disk add <UUID> --role data        # existing ext4/XFS/Btrfs as /mnt/diskN
+dahlia-disk add <UUID> --role parity      # as /mnt/parityN, never in a pool
+dahlia-disk add <UUID> --role external    # e.g. NTFS under /mnt/external/<name>
+dahlia-disk remove <UUID>                 # unmount; data stays on the disk
+dahlia-disk apply                         # regenerate units and pools from storage.json
+dahlia-disk snapraid-config [--write]     # generate /etc/snapraid.conf
+```
+
+New data disks join the running pools via `user.mergerfs.branches`, without a remount.
+Empty mount points are locked with `chattr +i`, so a missing disk never lets data land on
+the system SSD. The units hang off `dahlia-storage.target` with `Wants=`, so a missing disk
+does not block boot.
+
 ## Privileges and security
 
 - `dahlia-dashboard` runs as `dahlia-ui` with systemd hardening and listens on

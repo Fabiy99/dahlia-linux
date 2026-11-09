@@ -1,0 +1,41 @@
+name: storage
+
+on:
+  pull_request:
+    paths:
+      - "packages/dahlia-storage/**"
+      - "tests/integration/storage-loop.sh"
+      - "tools/build-packages.sh"
+      - ".github/workflows/storage.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  loop-devices:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            apt-utils mergerfs fuse3 xfsprogs btrfs-progs e2fsprogs attr jq
+
+      - name: Build and install dahlia-storage
+        run: |
+          tools/build-packages.sh
+          sudo dpkg -i build/pool/dahlia-storage_*_all.deb
+
+      - name: Integration test (loop devices)
+        run: sudo tests/integration/storage-loop.sh
+
+      - name: Show units on failure
+        if: failure()
+        run: |
+          ls -la /etc/systemd/system/*.mount || true
+          sudo cat /etc/dahlia/storage.json || true
+          sudo journalctl -n 200 --no-pager -u 'mnt-*' || true

@@ -19,6 +19,8 @@ for src in "$ROOT"/packages/*/; do
     name="$(basename "$src")"
     stage="$BUILD/pkgroot/$name"
     cp -a "$src" "$stage"
+    # Bytecode from local test runs must not end up in the package.
+    find "$stage" -name __pycache__ -type d -prune -exec rm -rf {} +
 
     # Substitute the version in every text file that carries the marker.
     grep -rlI '@VERSION@' "$stage" | while read -r f; do

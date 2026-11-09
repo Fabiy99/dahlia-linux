@@ -59,6 +59,26 @@ SnapRAID läuft über einen Wrapper mit Timer: `diff`, Abbruch über einer Lösc
 `sync`, wöchentlich `scrub`. Mover und SnapRAID teilen sich ein Lock und laufen nie
 gleichzeitig.
 
+### dahlia-disk (ab Meilenstein 3)
+
+`dahlia-disk` aus dem Paket `dahlia-storage` setzt das Layout um. Es formatiert nie etwas.
+Zustand liegt in `/etc/dahlia/storage.json`, alles andere wird daraus erzeugt.
+
+```sh
+dahlia-disk list                          # Platten und was Dahlia damit tun darf
+dahlia-disk add <UUID> --role data        # vorhandenes ext4/XFS/Btrfs als /mnt/diskN
+dahlia-disk add <UUID> --role parity      # als /mnt/parityN, nie im Pool
+dahlia-disk add <UUID> --role external    # z. B. NTFS unter /mnt/external/<name>
+dahlia-disk remove <UUID>                 # aushängen, Daten bleiben auf der Platte
+dahlia-disk apply                         # Units und Pools aus storage.json neu erzeugen
+dahlia-disk snapraid-config [--write]     # /etc/snapraid.conf erzeugen
+```
+
+Neue Datenplatten kommen per `user.mergerfs.branches` ohne Remount in die laufenden Pools.
+Leere Mount-Points sind mit `chattr +i` gesperrt, damit bei fehlender Platte nichts auf
+der System-SSD landet. Die Units hängen mit `Wants=` an `dahlia-storage.target`, eine
+fehlende Platte blockiert also nicht den Boot.
+
 ## Rechte und Sicherheit
 
 - `dahlia-dashboard` läuft als `dahlia-ui` mit systemd-Härtung und hört nur auf
