@@ -30,7 +30,8 @@ def test_user_pool_fills_cache_first():
     user = units.pool_unit(st, units.USER_POOL)
     storage = units.pool_unit(st, units.STORAGE_POOL)
     assert "category.create=ff" in user
-    assert "What=/mnt/cache/shares:/mnt/disk1:/mnt/disk2" in user
+    assert "What=dahlia-user" in user
+    assert "branches=/mnt/cache/shares:/mnt/disk1:/mnt/disk2," in user
     assert "mnt-cache.mount" in user.split("[Mount]")[0]
     # The mover target keeps spreading files over the data disks.
     assert "category.create=mfs" in storage

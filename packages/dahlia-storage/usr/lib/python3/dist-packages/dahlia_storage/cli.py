@@ -259,9 +259,11 @@ def cmd_remove(args) -> int:
         if disk.role in ("data", "cache"):
             sync_pools(st)
         unit = units.unit_name(disk.mountpoint)
-        systemctl("disable", "--now", unit)
         state.save(st)
+        # New pool units first, so nothing depends on the disk any more,
+        # then unmount it (the unit stays loaded while it is mounted).
         write_units(st)
+        systemctl("stop", unit)
         release_mountpoint(disk.mountpoint)
         print(f"{disk.mountpoint} unmounted and removed; data on the disk is untouched")
     return 0
