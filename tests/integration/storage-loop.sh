@@ -177,6 +177,9 @@ mountpoint -q /mnt/cache && fail "/mnt/cache still mounted"
 (cd /mnt/user && sha256sum -c --quiet "$WORK/cached.sha256") || fail "cached.bin lost"
 
 step "snapraid: first sync builds the parity"
+# Keep a file on every data disk: SnapRAID itself refuses to sync a disk
+# that became completely empty, which is a different safeguard.
+for i in 1 2 3; do head -c 4096 /dev/urandom > "/mnt/disk$i/keep.bin"; done
 dahlia-snapraid sync
 [ -s /mnt/parity1/snapraid.parity ] || fail "no parity file after sync"
 dahlia-snapraid sync | grep -q "parity is up to date" || fail "second sync not a no-op"
