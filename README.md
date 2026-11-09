@@ -23,8 +23,10 @@ noch ohne Web-UI und Storage-Funktionen.
    Ergebnis: `build/dahlia-linux-<version>-amd64.iso`. Getaggte Versionen hängen die ISO
    zusätzlich an ein GitHub-Release.
 2. VM anlegen: 2 GB RAM, eine Platte ab 20 GB, Netzwerk gebridged. Hyper-V: Generation 2,
-   Secure Boot mit der Vorlage "Microsoft UEFI Certificate Authority".
+   Secure Boot mit der Vorlage "Microsoft UEFI Certificate Authority", fester Arbeitsspeicher
+   (kein dynamischer).
 3. Von der ISO booten. Die Installation läuft ohne Fragen durch und startet neu.
+   Für Rechner ohne Bildschirm gibt es den Menüeintrag "serial console" (ttyS0, 115200 Baud).
 4. Anmelden als `dahlia-admin` mit Passwort `dahlia`, danach ein neues Passwort setzen.
    Per SSH: `ssh dahlia-admin@dahlia.local`.
 
@@ -98,8 +100,10 @@ without web UI or storage features yet.
    Output: `build/dahlia-linux-<version>-amd64.iso`. Tagged versions also attach the ISO to
    a GitHub release.
 2. Create a VM: 2 GB RAM, one disk of 20 GB or more, bridged network. Hyper-V: generation 2,
-   Secure Boot with the "Microsoft UEFI Certificate Authority" template.
+   Secure Boot with the "Microsoft UEFI Certificate Authority" template, static memory
+   (not dynamic).
 3. Boot from the ISO. The install runs without questions and reboots.
+   Headless machines use the "serial console" menu entry (ttyS0, 115200 baud).
 4. Log in as `dahlia-admin` with password `dahlia`, then set a new password.
    Via SSH: `ssh dahlia-admin@dahlia.local`.
 
