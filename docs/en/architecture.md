@@ -11,7 +11,9 @@ The ISO is the current Debian 13 netinst image, remastered by `iso/build-iso.sh`
 `iso/preseed.cfg` is embedded in the installer initrd, so the install runs without
 questions. The one exception is the target disk: `iso/pick-disk.sh` picks it
 automatically when there is exactly one candidate (the install medium does not count).
-With several disks the installer asks. At the end, `iso/late-command.sh` installs the
+With several disks the installer asks. From milestone 8 on, the installer always asks for the
+target disk (model, size, serial) and shows a summary before wiping it; automatic selection
+remains only in the menu entry for unattended installs. At the end, `iso/late-command.sh` installs the
 Dahlia packages shipped on the ISO under `/dahlia/pool`.
 
 Hostname (`dahlia`), language (English, German keyboard) and timezone (Europe/Berlin) are
