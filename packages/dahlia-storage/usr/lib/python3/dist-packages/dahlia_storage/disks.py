@@ -60,7 +60,44 @@ def run_lsblk() -> dict:
         capture_output=True,
         text=True,
     ).stdout
-    return json.loads(out)
+    return enrich(json.loads(out), blkid_probe)
+
+
+def blkid_probe(path: str) -> dict[str, str]:
+    """Read the filesystem signature straight from the device.
+
+    lsblk takes FSTYPE/UUID from the udev database, which lags behind after
+    mkfs or on loop devices. `blkid -p` probes the device itself.
+    """
+    res = subprocess.run(
+        ["blkid", "-p", "-o", "export", path], check=False, capture_output=True, text=True
+    )
+    values = {}
+    for line in res.stdout.splitlines():
+        key, sep, value = line.partition("=")
+        if sep:
+            values[key] = value
+    return values
+
+
+def enrich(lsblk: dict, probe) -> dict:
+    """Fill in missing fstype/uuid/label of leaf devices using `probe`."""
+
+    def walk(node: dict) -> None:
+        children = node.get("children") or []
+        for child in children:
+            walk(child)
+        if children or node.get("fstype"):
+            return
+        found = probe(node.get("path") or f"/dev/{node.get('name')}")
+        if found.get("TYPE"):
+            node["fstype"] = found["TYPE"]
+            node["uuid"] = node.get("uuid") or found.get("UUID")
+            node["label"] = node.get("label") or found.get("LABEL")
+
+    for top in lsblk.get("blockdevices") or []:
+        walk(top)
+    return lsblk
 
 
 def _mountpoints(node: dict) -> list[str]:
@@ -94,6 +131,9 @@ def classify(
         if kind == "loop" and not allow_loop:
             continue
         if kind not in ("disk", "loop"):
+            continue
+        # Compressed RAM swap and RAM disks are not storage.
+        if (top.get("name") or "").startswith(("zram", "ram")):
             continue
 
         tree_mounts = _tree_mountpoints(top)

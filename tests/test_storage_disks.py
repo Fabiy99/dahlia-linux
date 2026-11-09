@@ -59,6 +59,8 @@ LSBLK = {
         # Loop devices and CD drives are ignored by default.
         dev("loop0", type_="loop", fstype="ext4", uuid="loop-uuid"),
         dev("sr0", type_="rom", fstype="iso9660", uuid="2025-01-01"),
+        # zram swap shows up as TYPE=disk.
+        dev("zram0", fstype="swap", uuid="zram-uuid", mounts=["[SWAP]"]),
     ]
 }
 
@@ -105,6 +107,7 @@ def test_loop_and_rom_ignored_unless_allowed():
     paths = by_path(disks.classify(LSBLK))
     assert "/dev/loop0" not in paths
     assert "/dev/sr0" not in paths
+    assert "/dev/zram0" not in paths
     assert by_path(disks.classify(LSBLK, allow_loop=True))["/dev/loop0"].status == "candidate"
 
 
@@ -119,3 +122,20 @@ def test_foreign_partition_taints_whole_disk():
         ]
     }
     assert by_path(disks.classify(lsblk))["/dev/sdh1"].status == "foreign"
+
+
+def test_enrich_fills_missing_signatures_from_probe():
+    # udev has not seen the new filesystem yet; blkid -p has.
+    lsblk = {"blockdevices": [dev("loop3", type_="loop"), dev("sdz", fstype="xfs", uuid="x")]}
+    probed = {"/dev/loop3": {"TYPE": "ext4", "UUID": "fresh-uuid", "LABEL": "d1"}}
+    calls = []
+
+    def probe(path):
+        calls.append(path)
+        return probed.get(path, {})
+
+    disks.enrich(lsblk, probe)
+    found = by_path(disks.classify(lsblk, allow_loop=True))
+    assert found["/dev/loop3"].status == "candidate"
+    assert found["/dev/loop3"].uuid == "fresh-uuid"
+    assert calls == ["/dev/loop3"]  # devices udev already knows are not probed
