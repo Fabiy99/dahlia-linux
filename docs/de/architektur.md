@@ -11,7 +11,9 @@ Die ISO ist das aktuelle Debian-13-netinst-Image, umgebaut von `iso/build-iso.sh
 `iso/preseed.cfg` steckt im Installer-initrd, die Installation läuft ohne Fragen durch.
 Einzige Ausnahme ist die Zielplatte: `iso/pick-disk.sh` nimmt sie automatisch, wenn es
 genau eine Kandidatin gibt (das Installationsmedium zählt nicht). Bei mehreren Platten
-fragt der Installer nach. Am Ende installiert `iso/late-command.sh` die Dahlia-Pakete,
+fragt der Installer nach. Ab Meilenstein 8 fragt der Installer immer nach der Zielplatte
+(Modell, Größe, Seriennummer) und zeigt vor dem Löschen eine Zusammenfassung; die
+automatische Auswahl bleibt nur im Menüeintrag für die unbeaufsichtigte Installation. Am Ende installiert `iso/late-command.sh` die Dahlia-Pakete,
 die auf der ISO unter `/dahlia/pool` liegen.
 
 Hostname (`dahlia`), Sprache (Englisch, Tastatur Deutsch) und Zeitzone (Europe/Berlin)
@@ -124,5 +126,6 @@ Timer: Mover 03:00, SnapRAID-Sync 04:30, Scrub sonntags 06:00 (8 %, Blöcke ält
 
 - Debian-Sicherheitsupdates über `unattended-upgrades`.
 - Dahlia-Pakete und übrige Updates per Klick im UI, immer mit Snapshot vorher.
-- Das apt-Repo wird in CI gebaut und signiert. Der private Schlüssel existiert nur als
-  GitHub-Secret.
+- Das apt-Repo wird in CI gebaut, signiert und auf GitHub Pages veröffentlicht
+  (`https://fabiy99.github.io/dahlia-linux/`). Der private Schlüssel existiert nur als
+  GitHub-Secret. Details: [apt-repo.md](apt-repo.md).

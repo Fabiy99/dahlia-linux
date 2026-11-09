@@ -1,0 +1,80 @@
+name: repo
+
+on:
+  pull_request:
+    paths:
+      - "packages/**"
+      - "tools/**"
+      - "tests/integration/apt-repo.sh"
+      - "VERSION"
+      - ".github/workflows/repo.yml"
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Tag (e.g. v0.2.0) whose packages to publish; empty = test only"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends apt-utils gnupg gpgv
+      - name: Build, sign with a throwaway key and check with apt
+        run: tests/integration/apt-repo.sh
+
+  # Publish the signed flat repository to GitHub Pages:
+  # https://fabiy99.github.io/dahlia-linux/
+  publish:
+    if: startsWith(github.ref, 'refs/tags/v') || inputs.release_tag != ''
+    needs: test
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.release_tag || github.ref }}
+
+      - name: Install tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends apt-utils gnupg gpgv
+
+      - name: Check tag against VERSION
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag || github.ref_name }}
+        run: |
+          version="$(cat VERSION)"
+          if [ "v$version" != "$RELEASE_TAG" ]; then
+            echo "Tag $RELEASE_TAG does not match VERSION $version" >&2
+            exit 1
+          fi
+
+      - name: Build and sign
+        env:
+          DAHLIA_SIGNING_KEY: ${{ secrets.DAHLIA_SIGNING_KEY }}
+        run: |
+          tools/build-packages.sh
+          tools/sign-repo.sh
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: build/repo
+
+      - id: deploy
+        uses: actions/deploy-pages@v4

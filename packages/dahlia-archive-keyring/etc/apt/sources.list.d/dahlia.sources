@@ -1,0 +1,5 @@
+# Dahlia Linux packages. Built and signed by GitHub Actions on every release.
+Types: deb
+URIs: https://fabiy99.github.io/dahlia-linux/
+Suites: ./
+Signed-By: /usr/share/keyrings/dahlia-archive-keyring.asc
