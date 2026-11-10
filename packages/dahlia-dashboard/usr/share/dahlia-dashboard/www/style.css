@@ -362,6 +362,34 @@ ul.history li .fail { flex-basis: 100%; color: var(--danger); overflow-wrap: any
 .input-prefix { display: flex; align-items: center; gap: .3rem; }
 .input-prefix input { flex: 1; min-width: 0; }
 
+/* --- install dialog and folder picker ----------------------------------------- */
+ul.checks { list-style: none; margin: .8rem 0; padding: 0; display: grid; gap: .35rem; font-size: .9rem; }
+ul.checks li { display: grid; grid-template-columns: 1.1rem 1fr; gap: .2rem .5rem; align-items: start; }
+ul.checks li > button { grid-column: 2; justify-self: start; margin: 0; }
+ul.checks .mark { width: 1.1rem; text-align: center; font-weight: 700; }
+ul.checks li.ok .mark { color: var(--ok); }
+ul.checks li.bad { color: var(--danger); }
+.share-pick { display: grid; grid-template-columns: 1fr auto auto; gap: .4rem .8rem; align-items: center;
+              border: 1px solid var(--line); border-radius: 8px; padding: .55rem .75rem; }
+.share-pick .share-label { display: grid; }
+.share-pick .hint { margin: 0; }
+.share-pick code { overflow-wrap: anywhere; }
+@media (max-width: 40rem) { .share-pick { grid-template-columns: 1fr auto; } .share-pick code { grid-column: 1 / -1; grid-row: 2; } }
+.crumbs { display: flex; flex-wrap: wrap; align-items: center; gap: .25rem; margin: .4rem 0 .8rem; }
+.crumbs .link-btn { margin: 0; font-size: .92rem; }
+.crumbs .sep { color: var(--muted); }
+ul.folder-list { list-style: none; margin: 0 0 .8rem; padding: 0; max-height: 18rem; overflow-y: auto;
+                 border: 1px solid var(--line); border-radius: 8px; }
+ul.folder-list li { border-top: 1px solid var(--line); }
+ul.folder-list li:first-child { border-top: 0; }
+ul.folder-list li.hint { padding: .6rem .8rem; margin: 0; }
+button.folder { display: flex; align-items: center; gap: .55rem; width: 100%; border: 0; border-radius: 0;
+                background: none; text-align: left; padding: .55rem .8rem; }
+button.folder:hover { background: var(--track); }
+button.folder svg { width: 1.1rem; height: 1.1rem; flex: none; }
+.folder-new { display: flex; gap: .5rem; }
+.folder-new input { flex: 1; min-width: 0; }
+
 /* --- shares ------------------------------------------------------------------- */
 .notice:not(div) { display: block; }
 table.shares code { font-size: .8rem; color: var(--muted); }

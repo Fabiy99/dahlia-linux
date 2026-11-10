@@ -605,6 +605,12 @@ def updates_apply(ctx: Context):
 # --- apps ---------------------------------------------------------------------
 
 APP_ID_RE = re.compile(r"^[a-z][a-z0-9-]{1,30}$")
+APP_SHARE_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{0,63}$")
+# A folder below /mnt/user, as dahlia-apps checks it (no "..", no leading "/").
+FOLDER_SEGMENT = r"[A-Za-z0-9][A-Za-z0-9 ._()+,-]{0,99}"
+FOLDER_RE = re.compile(rf"^{FOLDER_SEGMENT}(/{FOLDER_SEGMENT}){{0,9}}$")
+BROWSE_RE = re.compile(rf"^$|{FOLDER_RE.pattern}")
+BROWSE_MAX = 500
 
 
 def dahlia_apps(ctx: Context, *args: str, timeout: int = 300):
@@ -633,12 +639,23 @@ def apps_list(ctx: Context):
     return {"apps": dahlia_apps(ctx, "list")}
 
 
-def start_app_job(ctx: Context, app_id: str, command: str):
+def folder_args(folders: dict) -> list[str]:
+    args = []
+    for share, rel in sorted(folders.items()):
+        if not APP_SHARE_RE.match(str(share)) or not isinstance(rel, str) \
+                or not FOLDER_RE.match(rel) or ".." in rel.split("/"):
+            raise AgentError(INVALID_PARAMS, f"'folders.{share}' is not a folder below /mnt/user")
+        args += ["--folder", f"{share}={rel}"]
+    return args
+
+
+def start_app_job(ctx: Context, app_id: str, command: str, extra: list[str] | None = None):
+    extra = extra or []
     unit = app_unit(app_id)
     if is_running(ctx, unit):
         raise AgentError(BUSY, f"{app_id} is busy")
     # No data disk, port taken, ...: report it now, not as a failed job.
-    dahlia_apps(ctx, "precheck", command, app_id)
+    dahlia_apps(ctx, "precheck", command, app_id, *extra)
     # A failed job stays loaded, so apps.job can report it; clear it first.
     # (CollectMode=inactive-or-failed would unload it, and systemctl show
     # then reports an unknown unit as inactive with Result=success.)
@@ -652,14 +669,78 @@ def start_app_job(ctx: Context, app_id: str, command: str):
         "/usr/sbin/dahlia-apps",
         command,
         app_id,
+        *extra,
     ])
     return {"id": app_id, "started": True}
 
 
-@action("apps.install", mutating=True, params={"id": Param(str, pattern=APP_ID_RE)})
-def apps_install(ctx: Context, id: str):
-    """Install an app from the catalog in the background (image pull)."""
-    return start_app_job(ctx, id, "install")
+@action(
+    "apps.install",
+    mutating=True,
+    params={"id": Param(str, pattern=APP_ID_RE),
+            "folders": Param(dict, required=False, default={})},
+)
+def apps_install(ctx: Context, id: str, folders: dict):
+    """Install an app from the catalog in the background (image pull).
+
+    folders maps a share of the app to another folder below /mnt/user.
+    """
+    return start_app_job(ctx, id, "install", folder_args(folders))
+
+
+# --- folder picker ------------------------------------------------------------
+
+
+def pool_dir(ctx: Context, rel: str) -> Path:
+    """rel below /mnt/user, refusing symlinks that lead out of it."""
+    if ".." in rel.split("/"):
+        raise AgentError(INVALID_PARAMS, "'path' must stay below /mnt/user")
+    pool = ctx.pool.resolve()
+    real = (ctx.pool / rel).resolve() if rel else pool
+    if real != pool and pool not in real.parents:
+        raise AgentError(INVALID_PARAMS, "'path' leads outside /mnt/user")
+    return real
+
+
+@action("files.browse", mutating=False, params={
+    "path": Param(str, required=False, default="", pattern=BROWSE_RE)})
+def files_browse(ctx: Context, path: str):
+    """Folders directly below /mnt/user/<path>, for the folder picker. No files."""
+    mounted = os.path.ismount(ctx.pool)
+    if not mounted:
+        return {"path": path, "mounted": False, "exists": False, "dirs": []}
+    d = pool_dir(ctx, path)
+    if not d.is_dir():
+        return {"path": path, "mounted": True, "exists": False, "dirs": []}
+    dirs = []
+    with os.scandir(d) as it:
+        for e in it:
+            if e.name.startswith(".") or not FOLDER_RE.match(e.name):
+                continue
+            if e.is_dir(follow_symlinks=False):
+                dirs.append(e.name)
+    dirs.sort(key=str.lower)
+    return {"path": path, "mounted": True, "exists": True, "dirs": dirs[:BROWSE_MAX],
+            "truncated": len(dirs) > BROWSE_MAX}
+
+
+@action("files.mkdir", mutating=True, params={"path": Param(str, pattern=FOLDER_RE)})
+def files_mkdir(ctx: Context, path: str):
+    """New folder below /mnt/user, group dahlia, like a share."""
+    if not os.path.ismount(ctx.pool):
+        raise AgentError(FAILED, f"{ctx.pool} is not mounted")
+    if path.split("/")[0] == "appdata":
+        raise AgentError(INVALID_PARAMS, "folders below appdata belong to apps")
+    parent = pool_dir(ctx, path.rsplit("/", 1)[0] if "/" in path else "")
+    if not parent.is_dir():
+        raise AgentError(FAILED, "parent folder does not exist")
+    target = parent / path.rsplit("/", 1)[-1]
+    if target.exists():
+        raise AgentError(FAILED, f"{path} already exists")
+    target.mkdir(mode=0o2775)
+    ctx.runner.run(["chgrp", "dahlia", str(target)], check=False)
+    target.chmod(0o2775)
+    return {"path": path}
 
 
 @action("apps.update", mutating=True, params={"id": Param(str, pattern=APP_ID_RE)})

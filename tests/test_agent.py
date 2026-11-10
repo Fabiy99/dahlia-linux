@@ -475,6 +475,8 @@ def test_action_list_is_fixed():
         "docker.stats",
         "domains.get",
         "domains.set",
+        "files.browse",
+        "files.mkdir",
         "job.start",
         "job.status",
         "notify.get",
@@ -620,6 +622,45 @@ def test_apps_install_runs_in_background(ctx):
     cmd = ctx.runner.calls[-1]
     assert cmd[:2] == ["systemd-run", "--unit=dahlia-app-jellyfin.service"]
     assert cmd[-3:] == ["/usr/sbin/dahlia-apps", "install", "jellyfin"]
+
+
+def test_apps_install_with_folders(ctx):
+    params = {"id": "jellyfin", "folders": {"media": "Filme und Serien", "photos": "Fotos/2024"}}
+    assert run(ctx, "apps.install", params)["ok"]
+    extra = ["--folder", "media=Filme und Serien", "--folder", "photos=Fotos/2024"]
+    assert ["dahlia-apps", "precheck", "install", "jellyfin", *extra] in ctx.runner.calls
+    assert ctx.runner.calls[-1][-5:] == ["jellyfin", *extra]
+    for bad in ({"media": "../etc"}, {"media": "/etc"}, {"media": "a/../../b"},
+                {"Media!": "x"}, {"media": 5}, {"media": "x\ny"}):
+        ctx.runner.calls.clear()
+        reply = run(ctx, "apps.install", {"id": "jellyfin", "folders": bad})
+        assert err_code(reply) == protocol.INVALID_PARAMS, bad
+        assert ctx.runner.calls == []
+
+
+def test_files_browse_and_mkdir(ctx, tmp_path, monkeypatch):
+    ctx.pool = tmp_path / "user"
+    (ctx.pool / "Filme/Kino").mkdir(parents=True)
+    (ctx.pool / "appdata").mkdir()
+    (ctx.pool / ".hidden").mkdir()
+    (ctx.pool / "file.txt").write_text("x")
+    (ctx.pool / "out").symlink_to(tmp_path)
+    assert run(ctx, "files.browse")["result"]["mounted"] is False
+    monkeypatch.setattr(actions.os.path, "ismount", lambda p: True)
+    got = run(ctx, "files.browse")["result"]
+    assert got["dirs"] == ["appdata", "Filme"] and got["exists"]
+    assert run(ctx, "files.browse", {"path": "Filme"})["result"]["dirs"] == ["Kino"]
+    assert run(ctx, "files.browse", {"path": "nope"})["result"]["exists"] is False
+    for bad in ("../etc", "/etc", "Filme/../.."):
+        assert err_code(run(ctx, "files.browse", {"path": bad})) == protocol.INVALID_PARAMS
+    assert err_code(run(ctx, "files.browse", {"path": "out"})) == protocol.INVALID_PARAMS
+    assert run(ctx, "files.mkdir", {"path": "Filme/Serien"})["ok"]
+    assert (ctx.pool / "Filme/Serien").is_dir()
+    assert ["chgrp", "dahlia", str(ctx.pool / "Filme/Serien")] in ctx.runner.calls
+    assert err_code(run(ctx, "files.mkdir", {"path": "Filme/Serien"})) == protocol.FAILED
+    assert err_code(run(ctx, "files.mkdir", {"path": "a/b"})) == protocol.FAILED
+    assert err_code(run(ctx, "files.mkdir", {"path": "appdata/x"})) == protocol.INVALID_PARAMS
+    assert err_code(run(ctx, "files.mkdir", {"path": "out/x"})) == protocol.INVALID_PARAMS
 
 
 def test_apps_install_checks_before_starting_job(ctx):

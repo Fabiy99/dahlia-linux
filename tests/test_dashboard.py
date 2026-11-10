@@ -341,12 +341,18 @@ def test_apps_endpoints(env):
     client.post("/api/apps/whoami/remove", json={"delete_data": True}, headers=CSRF)
     client.post("/api/apps/whoami/stop", headers=CSRF)
     client.get("/api/apps/whoami/job")
+    client.post("/api/apps/whoami/install", json={"folders": {"media": "Filme"}}, headers=CSRF)
+    client.get("/api/files?path=Filme")
+    client.post("/api/files/mkdir", json={"path": "Filme/Neu"}, headers=CSRF)
     assert agent.calls[2:] == [
         ("apps.catalog", {"refresh": True}),
         ("apps.install", {"id": "whoami"}),
         ("apps.remove", {"id": "whoami", "delete_data": True}),
         ("apps.stop", {"id": "whoami"}),
         ("apps.job", {"id": "whoami"}),
+        ("apps.install", {"id": "whoami", "folders": {"media": "Filme"}}),
+        ("files.browse", {"path": "Filme"}),
+        ("files.mkdir", {"path": "Filme/Neu"}),
     ]
     assert client.post("/api/apps/whoami/exec", headers=CSRF).status_code == 404
 

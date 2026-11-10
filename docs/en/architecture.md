@@ -192,10 +192,12 @@ Protocol: one request per connection, one JSON line each way.
 | `updates.apply` | - | `apt-get full-upgrade` through the unit `dahlia-update.service` |
 | `apps.catalog` | `refresh` (optional) | App catalog and its age, `refresh` downloads it first |
 | `apps.list` | - | installed apps with container state, version, available update |
-| `apps.install`, `apps.update` | `id` | in the background as unit `dahlia-app-<id>` |
+| `apps.install`, `apps.update` | `id`, for `install` `folders` (optional, share -> folder below `/mnt/user`) | in the background as unit `dahlia-app-<id>`; folders are kept on updates |
 | `apps.job` | `id` | state of the last install or update |
 | `apps.start`, `apps.stop` | `id` | start or stop, also for the next boot |
 | `apps.remove` | `id`, `delete_data` (optional) | remove the container, data only on request |
+| `files.browse` | `path` (relative to `/mnt/user`) | subfolders for the folder picker, no hidden folders or symlinks, at most 500 |
+| `files.mkdir` | `path` | create a folder (group `dahlia`, 2775), not below `appdata` |
 | `domains.get` | - | domain, mDNS aliases, DNS records needed, certificates |
 | `domains.set` | `domain`, `mdns_aliases` | `dahlia-domains set`, new certificate and proxy |
 | `agent.actions` | - | this list |
@@ -321,6 +323,7 @@ characters), made at install time and kept in `/var/lib/dahlia/apps/<id>/secrets
 | Web port | Docker publishes it on `127.0.0.1:41000-41999`; nginx listens in the LAN on the template's public port (port link `http://<server>:<port>/`) and on 443 for `<id>.<domain>` and `<id>.local` |
 | LAN ports | only if the template lists them; the dashboard shows them before installing |
 | Data | `/mnt/user/appdata/<id>/...` (owner `dahlia-apps`), shares `/mnt/user/<name>`; no install without a mounted array |
+| Setup | Before installing, the dashboard shows the requirements and the app's shares. "Change" opens a folder tree below `/mnt/user` (with "New folder"); the path inside the container stays the same |
 | Start | Docker starts nothing by itself (`restart: no`); `dahlia-apps.service` starts the enabled apps after the disks |
 | Containers | `no-new-privileges`, log driver `local` with 3 x 10 MB; main service `dahlia-<id>`, helpers `dahlia-<id>-<service>` |
 | Stack | own Docker network per app, services reach each other by service name; helpers publish no ports |
@@ -329,7 +332,7 @@ characters), made at install time and kept in `/var/lib/dahlia/apps/<id>/secrets
 
 ```sh
 dahlia-apps catalog --refresh
-dahlia-apps install jellyfin
+dahlia-apps install jellyfin [--folder media=Movies/Shows]
 dahlia-apps list
 dahlia-apps updates                # apps with a newer template in the catalog
 dahlia-apps update jellyfin

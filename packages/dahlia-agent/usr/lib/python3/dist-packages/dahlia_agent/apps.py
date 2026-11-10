@@ -218,7 +218,20 @@ class Template:
             ],
             "public_port": self.public_port,
             "lan_ports": [vars(p) for p in self.lan_ports],
+            "shares": self.share_list(),
         }
+
+    def share_list(self) -> list[dict]:
+        """Shares the app mounts, each with its container paths, for the install dialog."""
+        out: dict[str, dict] = {}
+        for v in self.volumes:
+            if v.share is None:
+                continue
+            e = out.setdefault(v.share, {"name": v.share, "containers": [], "readonly": True})
+            if v.container not in e["containers"]:
+                e["containers"].append(v.container)
+            e["readonly"] = e["readonly"] and v.readonly
+        return list(out.values())
 
 
 def image_tag(image: str) -> str:
@@ -530,14 +543,38 @@ def container_name(app_id: str, service: str) -> str:
     return f"dahlia-{app_id}" if service == MAIN else f"dahlia-{app_id}-{service}"
 
 
-def volume_source(t: Template, v: Volume, paths: Paths) -> Path:
+# A folder below /mnt/user chosen for a share: path segments without "..".
+FOLDER_SEGMENT = r"[A-Za-z0-9][A-Za-z0-9 ._()+,-]{0,99}"
+FOLDER_RE = re.compile(rf"^{FOLDER_SEGMENT}(/{FOLDER_SEGMENT}){{0,9}}$")
+
+
+def check_folders(t: Template, folders: dict[str, str] | None, pool: Path) -> dict[str, str]:
+    """Folders chosen in the install dialog: share name -> path relative to the pool."""
+    folders = dict(folders or {})
+    shares = {v.share for v in t.volumes if v.share is not None}
+    for share, rel in folders.items():
+        if share not in shares:
+            raise AppError(f"{t.id} has no share {share}")
+        if not isinstance(rel, str) or not FOLDER_RE.match(rel) or ".." in rel.split("/"):
+            raise AppError(f"folder for {share}: not a path below {pool}")
+        if rel.split("/")[0] == "appdata":
+            raise AppError("app data folders cannot be given to another app")
+        real = (pool / rel).resolve()
+        if real != pool.resolve() and pool.resolve() not in real.parents:
+            raise AppError(f"folder for {share} leads outside {pool}")
+    return {k: v for k, v in folders.items() if v != k}
+
+
+def volume_source(t: Template, v: Volume, paths: Paths,
+                  folders: dict[str, str] | None = None) -> Path:
     if v.appdata is not None:
         return paths.pool / "appdata" / t.id / v.appdata
-    return paths.pool / v.share
+    return paths.pool / (folders or {}).get(v.share, v.share)
 
 
 def compose(t: Template, host_port: int | None, paths: Paths, host: Host,
-            secret_values: dict[str, str] | None = None) -> dict:
+            secret_values: dict[str, str] | None = None,
+            folders: dict[str, str] | None = None) -> dict:
     services = {}
     for s in t.services.values():
         ports = []
@@ -555,7 +592,7 @@ def compose(t: Template, host_port: int | None, paths: Paths, host: Host,
             "volumes": [
                 {
                     "type": "bind",
-                    "source": str(volume_source(t, v, paths)),
+                    "source": str(volume_source(t, v, paths, folders)),
                     "target": v.container,
                     "read_only": v.readonly,
                     "bind": {"create_host_path": False},
@@ -871,29 +908,31 @@ class Apps:
         except domains.DomainError as e:
             raise AppError(str(e)) from None
 
-    def _prepare_dirs(self, t: Template) -> None:
+    def _prepare_dirs(self, t: Template, folders: dict[str, str] | None = None) -> None:
         host = self._host()
         for v in t.volumes:
-            src = volume_source(t, v, self.paths)
+            src = volume_source(t, v, self.paths, folders)
             if v.appdata is not None:
                 for d in (self.paths.pool / "appdata", self.paths.pool / "appdata" / t.id, src):
                     if not d.exists():
                         d.mkdir(mode=0o775)
                         chown(d, host.uid, host.gid)
             elif not src.exists():
-                src.mkdir(mode=0o2775)
+                src.mkdir(mode=0o2775, parents=True)
                 chown(src, 0, host.gid)
 
     def _secrets(self, app_id: str) -> dict[str, str]:
         return read_json(self.paths.app_dir(app_id) / "secrets.json", {}) or {}
 
-    def _write_app(self, t: Template, text: str, host_port: int | None, sec: dict) -> None:
+    def _write_app(self, t: Template, text: str, host_port: int | None, sec: dict,
+                   folders: dict[str, str] | None = None) -> None:
         d = self.paths.app_dir(t.id)
         d.mkdir(parents=True, exist_ok=True)
         write_file(d / "secrets.json", json.dumps(sec), mode=0o600)
         write_file(d / "app.yaml", text)
         write_file(d / "compose.json",
-                   json.dumps(compose(t, host_port, self.paths, self._host(), sec), indent=2),
+                   json.dumps(compose(t, host_port, self.paths, self._host(), sec, folders),
+                              indent=2),
                    mode=0o600)
 
     def _check_public_ports(self, t: Template) -> None:
@@ -920,7 +959,8 @@ class Apps:
             "skipped": meta.get("skipped", []),
         }
 
-    def _install_template(self, app_id: str) -> tuple[Template, str]:
+    def _install_template(self, app_id: str,
+                          folders: dict[str, str] | None = None) -> tuple[Template, str]:
         self._require_pool()
         if (self.paths.app_dir(app_id) / "state.json").exists():
             raise AppError(f"{app_id} is already installed")
@@ -930,13 +970,14 @@ class Apps:
         text = src.read_text()
         t = parse_template(text, app_id)
         self._check_public_ports(t)
+        check_folders(t, folders, self.paths.pool)
         return t, text
 
-    def precheck(self, op: str, app_id: str) -> dict:
+    def precheck(self, op: str, app_id: str, folders: dict[str, str] | None = None) -> dict:
         """Checks an install or update job would fail on, so the caller gets
         the reason right away instead of a failed background job."""
         if op == "install":
-            self._install_template(app_id)
+            self._install_template(app_id, folders)
         elif op == "update":
             load_installed(self.paths, app_id)
             self._require_pool()
@@ -944,15 +985,18 @@ class Apps:
             raise AppError(f"no precheck for {op}")
         return {"id": app_id, "ok": True}
 
-    def install(self, app_id: str) -> dict:
+    def install(self, app_id: str, folders: dict[str, str] | None = None) -> dict:
         """Install from the cached catalog and start the app with all its services."""
-        t, text = self._install_template(app_id)
+        t, text = self._install_template(app_id, folders)
+        folders = check_folders(t, folders, self.paths.pool)
         d = self.paths.app_dir(app_id)
         taken_host, _ = used_ports(self.paths)
         host_port = pick_host_port(taken_host, self.port_check) if t.web_port else None
-        self._prepare_dirs(t)
-        self._write_app(t, text, host_port, new_secrets(t, {}))
+        self._prepare_dirs(t, folders)
+        self._write_app(t, text, host_port, new_secrets(t, {}), folders)
         state = {"host_port": host_port, "enabled": True}
+        if folders:
+            state["folders"] = folders
         write_file(d / "state.json", json.dumps(state))
         try:
             self.docker.compose(d, "up", "-d", "--pull", "missing", "--remove-orphans")
@@ -983,9 +1027,12 @@ class Apps:
         if t.web_port and not host_port:
             host_port = pick_host_port(used_ports(self.paths, skip=app_id)[0], self.port_check)
         self._require_pool()
-        self._prepare_dirs(t)
+        # Folders of shares the new template no longer has are dropped.
+        shares = {v.share for v in t.volumes if v.share is not None}
+        folders = {k: v for k, v in (state.get("folders") or {}).items() if k in shares}
+        self._prepare_dirs(t, folders)
         d = self.paths.app_dir(app_id)
-        self._write_app(t, text, host_port, new_secrets(t, self._secrets(app_id)))
+        self._write_app(t, text, host_port, new_secrets(t, self._secrets(app_id)), folders)
         state = {**state, "host_port": host_port}
         write_file(d / "state.json", json.dumps(state))
         self.docker.compose(d, "pull")
@@ -1094,6 +1141,16 @@ class Apps:
 # --- CLI ----------------------------------------------------------------------
 
 
+def parse_folders(items: list[str]) -> dict[str, str]:
+    out = {}
+    for item in items:
+        share, sep, rel = item.partition("=")
+        if not sep:
+            raise AppError(f"--folder needs SHARE=PATH, got {item!r}")
+        out[share] = rel
+    return out
+
+
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="dahlia-apps", description="Manage Dahlia apps.")
     sub = p.add_subparsers(dest="command", required=True)
@@ -1103,11 +1160,16 @@ def main(argv: list[str] | None = None) -> int:
                    help="print one summary line instead of the catalog (timer)")
     sub.add_parser("list", help="installed apps")
     sub.add_parser("updates", help="installed apps with a newer template in the catalog")
-    for name in ("install", "update", "start", "stop"):
+    for name in ("update", "start", "stop"):
         sub.add_parser(name).add_argument("id")
+    folder_help = "use /mnt/user/PATH for SHARE instead of /mnt/user/SHARE"
+    s = sub.add_parser("install")
+    s.add_argument("id")
+    s.add_argument("--folder", action="append", default=[], metavar="SHARE=PATH", help=folder_help)
     s = sub.add_parser("precheck", help="fail early if install/update cannot work")
     s.add_argument("op", choices=("install", "update"))
     s.add_argument("id")
+    s.add_argument("--folder", action="append", default=[], metavar="SHARE=PATH", help=folder_help)
     s = sub.add_parser("remove")
     s.add_argument("id")
     s.add_argument("--delete-data", action="store_true",
@@ -1133,7 +1195,9 @@ def main(argv: list[str] | None = None) -> int:
         elif args.command == "updates":
             result = apps.updates()
         elif args.command == "precheck":
-            result = apps.precheck(args.op, args.id)
+            result = apps.precheck(args.op, args.id, parse_folders(args.folder))
+        elif args.command == "install":
+            result = apps.install(args.id, parse_folders(args.folder))
         elif args.command == "remove":
             result = apps.remove(args.id, delete_data=args.delete_data)
         elif args.command == "start-enabled":

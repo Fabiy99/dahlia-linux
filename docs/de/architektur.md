@@ -195,10 +195,12 @@ Protokoll: eine Anfrage pro Verbindung, je eine JSON-Zeile hin und zurück.
 | `updates.apply` | - | `apt-get full-upgrade` über die Unit `dahlia-update.service` |
 | `apps.catalog` | `refresh` (optional) | App-Katalog und sein Stand, mit `refresh` vorher herunterladen |
 | `apps.list` | - | installierte Apps mit Container-Zustand, Version, verfügbarem Update |
-| `apps.install`, `apps.update` | `id` | im Hintergrund als Unit `dahlia-app-<id>` |
+| `apps.install`, `apps.update` | `id`, bei `install` `folders` (optional, Freigabe -> Ordner unter `/mnt/user`) | im Hintergrund als Unit `dahlia-app-<id>`; die Ordner bleiben bei Updates erhalten |
 | `apps.job` | `id` | Zustand der letzten Installation bzw. Aktualisierung |
 | `apps.start`, `apps.stop` | `id` | starten bzw. stoppen, gilt auch für den nächsten Boot |
 | `apps.remove` | `id`, `delete_data` (optional) | Container entfernen, Daten nur auf Wunsch |
+| `files.browse` | `path` (relativ zu `/mnt/user`) | Unterordner für die Ordnerauswahl, ohne versteckte Ordner und Symlinks, höchstens 500 |
+| `files.mkdir` | `path` | neuen Ordner anlegen (Gruppe `dahlia`, 2775), nicht unter `appdata` |
 | `domains.get` | - | Domain, mDNS-Aliase, nötige DNS-Einträge, Zertifikate |
 | `domains.set` | `domain`, `mdns_aliases` | `dahlia-domains set`, Zertifikat und Proxy neu |
 | `agent.actions` | - | diese Liste |
@@ -328,6 +330,7 @@ Vorlage unter `login` nennt.
 | Web-Port | Docker veröffentlicht ihn auf `127.0.0.1:41000-41999`; nginx lauscht im LAN auf dem öffentlichen Port der Vorlage (Port-Link `http://<server>:<port>/`) und auf 443 für `<id>.<domain>` und `<id>.local` |
 | LAN-Ports | nur wenn die Vorlage sie nennt; das Dashboard zeigt sie vor der Installation |
 | Daten | `/mnt/user/appdata/<id>/...` (Besitzer `dahlia-apps`), Freigaben `/mnt/user/<name>`; ohne eingehängtes Array keine Installation |
+| Einrichtung | Das Dashboard zeigt vor der Installation die Voraussetzungen und die Freigaben der App. "Ändern" öffnet einen Ordnerbaum unter `/mnt/user` (mit "Neuer Ordner"); der Pfad im Container bleibt gleich |
 | Start | Docker startet nichts selbst (`restart: no`); `dahlia-apps.service` startet die aktivierten Apps nach den Platten |
 | Container | `no-new-privileges`, Log-Treiber `local` mit 3 x 10 MB; Hauptdienst `dahlia-<id>`, Hilfsdienste `dahlia-<id>-<dienst>` |
 | Stack | eigenes Docker-Netz je App, Dienste erreichen sich über den Dienstnamen; Hilfsdienste veröffentlichen keine Ports |
@@ -336,7 +339,7 @@ Vorlage unter `login` nennt.
 
 ```sh
 dahlia-apps catalog --refresh
-dahlia-apps install jellyfin
+dahlia-apps install jellyfin [--folder media=Filme/Serien]
 dahlia-apps list
 dahlia-apps updates                # Apps mit neuerer Vorlage im Katalog
 dahlia-apps update jellyfin

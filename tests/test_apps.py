@@ -227,6 +227,47 @@ def test_precheck(env):
         env.precheck("update", "whoami")
 
 
+def test_install_with_chosen_folder_survives_update(env):
+    (env.paths.pool / "Filme").mkdir()
+    env.install("whoami", {"media": "Filme/Kino"})
+    app = json.loads((env.paths.apps / "whoami/compose.json").read_text())["services"]["app"]
+    sources = {v["target"]: v["source"] for v in app["volumes"]}
+    assert sources["/media"] == str(env.paths.pool / "Filme/Kino")
+    assert (env.paths.pool / "Filme/Kino").is_dir() and not (env.paths.pool / "media").exists()
+    assert json.loads((env.paths.apps / "whoami/state.json").read_text())["folders"] == {
+        "media": "Filme/Kino"}
+    env.update("whoami")
+    app = json.loads((env.paths.apps / "whoami/compose.json").read_text())["services"]["app"]
+    assert {v["target"]: v["source"] for v in app["volumes"]}["/media"] == sources["/media"]
+
+
+@pytest.mark.parametrize("folders,why", [
+    ({"media": "../etc"}, "not a path"),
+    ({"media": "/etc"}, "not a path"),
+    ({"media": "Filme/../../etc"}, "not a path"),
+    ({"media": "appdata/other"}, "app data"),
+    ({"config": "x"}, "no share config"),
+    ({"media": "a\nb"}, "not a path"),
+])
+def test_install_rejects_bad_folders(env, folders, why):
+    with pytest.raises(AppError, match=why):
+        env.precheck("install", "whoami", folders)
+    with pytest.raises(AppError, match=why):
+        env.install("whoami", folders)
+    assert not (env.paths.apps / "whoami").exists()
+
+
+def test_install_rejects_symlink_out_of_pool(env, tmp_path):
+    (env.paths.pool / "escape").symlink_to(tmp_path)
+    with pytest.raises(AppError, match="outside"):
+        env.install("whoami", {"media": "escape/x"})
+
+
+def test_catalog_lists_shares(env):
+    app = next(a for a in env.catalog()["apps"] if a["id"] == "whoami")
+    assert app["shares"] == [{"name": "media", "containers": ["/media"], "readonly": True}]
+
+
 def test_install_unknown_app(env):
     with pytest.raises(AppError, match="not in the catalog"):
         env.install("nextcloud")
