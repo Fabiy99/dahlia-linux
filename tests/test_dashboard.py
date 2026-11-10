@@ -341,12 +341,24 @@ def test_apps_endpoints(env):
     client.post("/api/apps/whoami/remove", json={"delete_data": True}, headers=CSRF)
     client.post("/api/apps/whoami/stop", headers=CSRF)
     client.get("/api/apps/whoami/job")
+    client.post("/api/apps/whoami/install",
+                json={"folders": {"media": "/mnt/user/Filme"}, "location": "/srv"}, headers=CSRF)
+    client.get("/api/files?path=Filme")
+    client.get("/api/files?root=/srv")
+    client.post("/api/files/mkdir", json={"path": "Filme/Neu"}, headers=CSRF)
+    client.post("/api/files/mkdir", json={"root": "/srv", "path": "Neu"}, headers=CSRF)
     assert agent.calls[2:] == [
         ("apps.catalog", {"refresh": True}),
         ("apps.install", {"id": "whoami"}),
         ("apps.remove", {"id": "whoami", "delete_data": True}),
         ("apps.stop", {"id": "whoami"}),
         ("apps.job", {"id": "whoami"}),
+        ("apps.install", {"id": "whoami", "folders": {"media": "/mnt/user/Filme"},
+                          "location": "/srv"}),
+        ("files.browse", {"root": "/mnt/user", "path": "Filme"}),
+        ("files.browse", {"root": "/srv", "path": ""}),
+        ("files.mkdir", {"root": "/mnt/user", "path": "Filme/Neu"}),
+        ("files.mkdir", {"root": "/srv", "path": "Neu"}),
     ]
     assert client.post("/api/apps/whoami/exec", headers=CSRF).status_code == 404
 

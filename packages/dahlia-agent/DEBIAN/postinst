@@ -23,6 +23,8 @@ case "$1" in
             groupadd --system dahlia-smb
         fi
         mkdir -p /var/lib/dahlia/apps
+        # App data on the system SSD: /srv, on Btrfs its own subvolume @srv.
+        /usr/lib/dahlia/system-data.sh || echo "dahlia-agent: /srv setup failed" >&2
         chmod 0755 /var/lib/dahlia
         chmod 0700 /var/lib/dahlia/apps
         systemctl enable dahlia-agent.socket dahlia-apps.service dahlia-mdns.service \

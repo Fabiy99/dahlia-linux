@@ -72,7 +72,8 @@ code printed on tty1 and in `/etc/motd` (from milestone 5).
 | `/mnt/user` | mergerfs across `/mnt/cache/shares` and all data disks, cache first |
 | `/mnt/external` | USB and NTFS disks, outside pool and SnapRAID |
 
-Apps and shares only use `/mnt/user`. New files land on the cache
+SMB shares only use `/mnt/user`. Apps live on `/mnt/user` or, when chosen at install or
+without an array, on the system SSD under `/srv` (see Apps). New files land on the cache
 (`category.create=ff`); the mover moves them to `/mnt/storage` at night. The path under
 `/mnt/user` does not change.
 
@@ -192,10 +193,12 @@ Protocol: one request per connection, one JSON line each way.
 | `updates.apply` | - | `apt-get full-upgrade` through the unit `dahlia-update.service` |
 | `apps.catalog` | `refresh` (optional) | App catalog and its age, `refresh` downloads it first |
 | `apps.list` | - | installed apps with container state, version, available update |
-| `apps.install`, `apps.update` | `id` | in the background as unit `dahlia-app-<id>` |
+| `apps.install`, `apps.update` | `id`, for `install` `location` (optional, `/mnt/user` or `/srv`) and `folders` (optional, share -> folder below `/mnt/user` or `/srv`) | in the background as unit `dahlia-app-<id>`; folders are kept on updates |
 | `apps.job` | `id` | state of the last install or update |
 | `apps.start`, `apps.stop` | `id` | start or stop, also for the next boot |
 | `apps.remove` | `id`, `delete_data` (optional) | remove the container, data only on request |
+| `files.browse` | `root` (`array` or `system`), `path` (relative to it) | subfolders for the folder picker, no hidden folders or symlinks, at most 500; plus which locations can be used |
+| `files.mkdir` | `root`, `path` | create a folder (group `dahlia`, 2775), not below `appdata` |
 | `domains.get` | - | domain, mDNS aliases, DNS records needed, certificates |
 | `domains.set` | `domain`, `mdns_aliases` | `dahlia-domains set`, new certificate and proxy |
 | `agent.actions` | - | this list |
@@ -320,7 +323,10 @@ characters), made at install time and kept in `/var/lib/dahlia/apps/<id>/secrets
 | --- | --- |
 | Web port | Docker publishes it on `127.0.0.1:41000-41999`; nginx listens in the LAN on the template's public port (port link `http://<server>:<port>/`) and on 443 for `<id>.<domain>` and `<id>.local` |
 | LAN ports | only if the template lists them; the dashboard shows them before installing |
-| Data | `/mnt/user/appdata/<id>/...` (owner `dahlia-apps`), shares `/mnt/user/<name>`; no install without a mounted array |
+| Location | array `/mnt/user` or system SSD `/srv` (FHS: data served by this system). Chosen at install, `/srv` when there is no array. Apps from before 0.7 are on the array |
+| System SSD | On Btrfs, `/srv` is its own top-level subvolume `@srv` as on openSUSE, mounted by `srv.mount` (created by `/usr/lib/dahlia/system-data.sh` in the postinst). It is not part of the snapper snapshots of `/`: a rollback neither resets nor loses app data. On other filesystems a plain directory |
+| Data | `<location>/appdata/<id>/...` (owner `dahlia-apps`), shares `<location>/<name>`; apps on the array only start with the array mounted |
+| Setup | Before installing, the dashboard shows the requirements and the app's shares. You pick the location; "Change" opens a folder tree on the system SSD or the array (with "New folder"), mixing both is fine; the path inside the container stays the same |
 | Start | Docker starts nothing by itself (`restart: no`); `dahlia-apps.service` starts the enabled apps after the disks |
 | Containers | `no-new-privileges`, log driver `local` with 3 x 10 MB; main service `dahlia-<id>`, helpers `dahlia-<id>-<service>` |
 | Stack | own Docker network per app, services reach each other by service name; helpers publish no ports |
@@ -329,7 +335,7 @@ characters), made at install time and kept in `/var/lib/dahlia/apps/<id>/secrets
 
 ```sh
 dahlia-apps catalog --refresh
-dahlia-apps install jellyfin
+dahlia-apps install jellyfin [--location /srv] [--folder media=/mnt/user/Movies/Shows]
 dahlia-apps list
 dahlia-apps updates                # apps with a newer template in the catalog
 dahlia-apps update jellyfin

@@ -97,6 +97,7 @@ image: traefik/whoami:v1.10.3
 web: {port: 80, public_port: 8099}
 volumes:
   - {container: /config, appdata: config}
+  - {container: /media, share: media, readonly: true}
 environment: {TZ: "{TZ}", PUID: "{PUID}"}
 YAML
 cp /etc/dahlia/apps.json "$WORK/apps.json.orig"
@@ -215,6 +216,23 @@ if docker inspect dahlia-whoami >/dev/null 2>&1; then fail "container still ther
 [ ! -e /etc/nginx/conf.d/dahlia-app-whoami.conf ] || fail "nginx config left over"
 jq -e '.aliases == []' /var/lib/dahlia/mdns-aliases.json >/dev/null || fail "alias left over"
 if curl -sf --max-time 3 "http://$lan_ip:8099/" >/dev/null; then fail "port link still open"; fi
+
+step "install to the system SSD, one folder on the array"
+[ -d /srv ] || fail "/srv missing"
+mkdir -p /mnt/user/Kino
+call apps.install '{"id": "whoami", "location": "/srv", "folders": {"media": "/mnt/user/Kino"}}' \
+    >/dev/null
+wait_job
+[ -d /srv/appdata/whoami/config ] || fail "appdata not on the system SSD"
+mounts="$(docker inspect -f '{{range .Mounts}}{{.Source}}={{.Destination}} {{end}}' dahlia-whoami)"
+echo "$mounts"
+grep -q '/srv/appdata/whoami/config=/config' <<<"$mounts" || fail "config mount wrong"
+grep -q '/mnt/user/Kino=/media' <<<"$mounts" || fail "media mount wrong"
+call apps.list | jq -e '.apps[] | select(.id == "whoami") | .location == "/srv"' >/dev/null \
+    || fail "location not listed"
+call apps.remove '{"id": "whoami", "delete_data": true}' >/dev/null
+[ ! -e /srv/appdata/whoami ] || fail "system appdata not deleted"
+[ -d /mnt/user/Kino ] || fail "chosen share folder deleted"
 
 step "stack: app with PostgreSQL and MariaDB"
 stack_template() {

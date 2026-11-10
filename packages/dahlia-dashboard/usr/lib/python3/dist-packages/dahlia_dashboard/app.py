@@ -100,8 +100,15 @@ class DiskAddBody(BaseModel):
     role: str
 
 
-class AppRemoveBody(BaseModel):
+class AppOpBody(BaseModel):
     delete_data: bool = False
+    folders: dict[str, str] = {}
+    location: str = ""
+
+
+class MkdirBody(BaseModel):
+    root: str = "/mnt/user"
+    path: str
 
 
 class DomainsBody(BaseModel):
@@ -395,13 +402,26 @@ def create_app(cfg: Config | None = None) -> FastAPI:
         return agent("apps.job", {"id": app_id})
 
     @app.post("/api/apps/{app_id}/{op}", dependencies=changing)
-    def app_op(app_id: str, op: str, body: AppRemoveBody | None = None):
+    def app_op(app_id: str, op: str, body: AppOpBody | None = None):
         if op not in APP_OPS:
             raise ApiError(404, "error.not_found")
         params = {"id": app_id}
         if op == "remove" and body is not None:
             params["delete_data"] = body.delete_data
+        if op == "install" and body is not None:
+            if body.folders:
+                params["folders"] = body.folders
+            if body.location:
+                params["location"] = body.location
         return agent(f"apps.{op}", params)
+
+    @app.get("/api/files", dependencies=authed)
+    def files_browse(root: str = "/mnt/user", path: str = ""):
+        return agent("files.browse", {"root": root, "path": path})
+
+    @app.post("/api/files/mkdir", dependencies=changing)
+    def files_mkdir(body: MkdirBody):
+        return agent("files.mkdir", {"root": body.root, "path": body.path})
 
     # --- docker and hardware -------------------------------------------------
 

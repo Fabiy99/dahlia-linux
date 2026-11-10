@@ -63,6 +63,7 @@ class Context:
     etc: Path = Path("/etc")
     run_dir: Path = Path("/run/dahlia")
     pool: Path = Path("/mnt/user")
+    system: Path = Path("/srv")
     var: Path = Path("/var/lib/dahlia")
     hostname: Callable[[], str] = socket.gethostname
     clock: Callable[[], float] = time.time
@@ -605,6 +606,17 @@ def updates_apply(ctx: Context):
 # --- apps ---------------------------------------------------------------------
 
 APP_ID_RE = re.compile(r"^[a-z][a-z0-9-]{1,30}$")
+APP_SHARE_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{0,63}$")
+# Where app data and folders live: the array or the system SSD.
+ARRAY_ROOT = "/mnt/user"
+SYSTEM_ROOT = "/srv"
+ROOTS = (ARRAY_ROOT, SYSTEM_ROOT)
+# A folder below a root, as dahlia-apps checks it (no "..", no leading "/").
+FOLDER_SEGMENT = r"[A-Za-z0-9][A-Za-z0-9 ._()+,-]{0,99}"
+FOLDER_RE = re.compile(rf"^{FOLDER_SEGMENT}(/{FOLDER_SEGMENT}){{0,9}}$")
+FOLDER_REF_RE = re.compile(rf"^(/mnt/user|/srv)/({FOLDER_RE.pattern[1:-1]})$")
+BROWSE_RE = re.compile(rf"^$|{FOLDER_RE.pattern}")
+BROWSE_MAX = 500
 
 
 def dahlia_apps(ctx: Context, *args: str, timeout: int = 300):
@@ -633,12 +645,25 @@ def apps_list(ctx: Context):
     return {"apps": dahlia_apps(ctx, "list")}
 
 
-def start_app_job(ctx: Context, app_id: str, command: str):
+def folder_args(folders: dict) -> list[str]:
+    """{"media": "/mnt/user/Filme"} -> --folder media=/mnt/user/Filme."""
+    args = []
+    for share, ref in sorted(folders.items()):
+        m = FOLDER_REF_RE.match(ref) if isinstance(ref, str) else None
+        if not APP_SHARE_RE.match(str(share)) or not m or ".." in m.group(2).split("/"):
+            raise AgentError(INVALID_PARAMS,
+                             f"'folders.{share}' must be a folder below /mnt/user or /srv")
+        args += ["--folder", f"{share}={ref}"]
+    return args
+
+
+def start_app_job(ctx: Context, app_id: str, command: str, extra: list[str] | None = None):
+    extra = extra or []
     unit = app_unit(app_id)
     if is_running(ctx, unit):
         raise AgentError(BUSY, f"{app_id} is busy")
     # No data disk, port taken, ...: report it now, not as a failed job.
-    dahlia_apps(ctx, "precheck", command, app_id)
+    dahlia_apps(ctx, "precheck", command, app_id, *extra)
     # A failed job stays loaded, so apps.job can report it; clear it first.
     # (CollectMode=inactive-or-failed would unload it, and systemctl show
     # then reports an unknown unit as inactive with Result=success.)
@@ -652,14 +677,105 @@ def start_app_job(ctx: Context, app_id: str, command: str):
         "/usr/sbin/dahlia-apps",
         command,
         app_id,
+        *extra,
     ])
     return {"id": app_id, "started": True}
 
 
-@action("apps.install", mutating=True, params={"id": Param(str, pattern=APP_ID_RE)})
-def apps_install(ctx: Context, id: str):
-    """Install an app from the catalog in the background (image pull)."""
-    return start_app_job(ctx, id, "install")
+@action(
+    "apps.install",
+    mutating=True,
+    params={"id": Param(str, pattern=APP_ID_RE),
+            "folders": Param(dict, required=False, default={}),
+            "location": Param(str, required=False, default="", choices=("", *ROOTS))},
+)
+def apps_install(ctx: Context, id: str, folders: dict, location: str):
+    """Install an app from the catalog in the background (image pull).
+
+    location: where app data goes, /mnt/user or /srv; empty = /mnt/user if
+    mounted. folders maps a share of the app to a folder below either.
+    """
+    extra = folder_args(folders) + (["--location", location] if location else [])
+    return start_app_job(ctx, id, "install", extra)
+
+
+# --- folder picker ------------------------------------------------------------
+
+
+def location_root(ctx: Context, location: str) -> tuple[Path, bool]:
+    """Root of a location and whether it can be used now."""
+    if location == ARRAY_ROOT:
+        return ctx.pool, os.path.ismount(ctx.pool)
+    return ctx.system, ctx.system.is_dir()
+
+
+def root_dir(root: Path, rel: str) -> Path:
+    """rel below root, refusing symlinks that lead out of it."""
+    if ".." in rel.split("/"):
+        raise AgentError(INVALID_PARAMS, f"'path' must stay below {root}")
+    base = root.resolve()
+    real = (root / rel).resolve() if rel else base
+    if real != base and base not in real.parents:
+        raise AgentError(INVALID_PARAMS, f"'path' leads outside {root}")
+    return real
+
+
+def locations(ctx: Context) -> list[dict]:
+    out = []
+    for name, path in (("array", ARRAY_ROOT), ("system", SYSTEM_ROOT)):
+        _, ok = location_root(ctx, path)
+        out.append({"name": name, "path": path, "available": ok})
+    return out
+
+
+@action("files.browse", mutating=False, params={
+    "root": Param(str, required=False, default=ARRAY_ROOT, choices=ROOTS),
+    "path": Param(str, required=False, default="", pattern=BROWSE_RE)})
+def files_browse(ctx: Context, root: str, path: str):
+    """Folders directly below <root>/<path>, for the folder picker. No files.
+
+    root is /mnt/user (array) or /srv (system SSD); locations lists both
+    with whether they can be used.
+    """
+    base, ok = location_root(ctx, root)
+    out = {"root": root, "path": path, "locations": locations(ctx),
+           "mounted": ok, "exists": False, "dirs": []}
+    if not ok:
+        return out
+    d = root_dir(base, path)
+    if not d.is_dir():
+        return out
+    dirs = []
+    with os.scandir(d) as it:
+        for e in it:
+            if e.name.startswith(".") or not FOLDER_RE.match(e.name):
+                continue
+            if e.is_dir(follow_symlinks=False):
+                dirs.append(e.name)
+    dirs.sort(key=str.lower)
+    return {**out, "exists": True, "dirs": dirs[:BROWSE_MAX], "truncated": len(dirs) > BROWSE_MAX}
+
+
+@action("files.mkdir", mutating=True, params={
+    "root": Param(str, required=False, default=ARRAY_ROOT, choices=ROOTS),
+    "path": Param(str, pattern=FOLDER_RE)})
+def files_mkdir(ctx: Context, root: str, path: str):
+    """New folder below /mnt/user or /srv, group dahlia, like a share."""
+    base, ok = location_root(ctx, root)
+    if not ok:
+        raise AgentError(FAILED, f"{base} is not available")
+    if path.split("/")[0] == "appdata":
+        raise AgentError(INVALID_PARAMS, "folders below appdata belong to apps")
+    parent = root_dir(base, path.rsplit("/", 1)[0] if "/" in path else "")
+    if not parent.is_dir():
+        raise AgentError(FAILED, "parent folder does not exist")
+    target = parent / path.rsplit("/", 1)[-1]
+    if target.exists():
+        raise AgentError(FAILED, f"{path} already exists")
+    target.mkdir(mode=0o2775)
+    ctx.runner.run(["chgrp", "dahlia", str(target)], check=False)
+    target.chmod(0o2775)
+    return {"root": root, "path": path}
 
 
 @action("apps.update", mutating=True, params={"id": Param(str, pattern=APP_ID_RE)})
