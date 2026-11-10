@@ -60,6 +60,47 @@ the failure.
 SnapRAID runs through a wrapper on a timer: `diff`, abort above a delete threshold, `sync`,
 weekly `scrub`. Mover and SnapRAID share a lock and never run at the same time.
 
+### dahlia-disk (from milestone 3)
+
+`dahlia-disk` from the `dahlia-storage` package implements the layout. It never formats
+anything. State lives in `/etc/dahlia/storage.json`; everything else is generated from it.
+
+```sh
+dahlia-disk list                          # disks and what Dahlia may do with them
+dahlia-disk add <UUID> --role data        # existing ext4/XFS/Btrfs as /mnt/diskN
+dahlia-disk add <UUID> --role parity      # as /mnt/parityN, never in a pool
+dahlia-disk add <UUID> --role cache       # SSD filesystem as /mnt/cache (from M3b)
+dahlia-disk add <UUID> --role external    # e.g. NTFS under /mnt/external/<name>
+dahlia-disk remove <UUID>                 # unmount; data stays on the disk
+dahlia-disk apply                         # regenerate units and pools from storage.json
+dahlia-disk snapraid-config [--write]     # generate /etc/snapraid.conf
+```
+
+New data disks join the running pools via `user.mergerfs.branches`, without a remount.
+Empty mount points are locked with `chattr +i`, so a missing disk never lets data land on
+the system SSD. The units hang off `dahlia-storage.target` with `Wants=`, so a missing disk
+does not block boot.
+
+### Cache, mover, SnapRAID (from milestone 3b)
+
+The cache is one filesystem (Btrfs; with two SSDs created as RAID1 beforehand:
+`mkfs.btrfs -d raid1 -m raid1 <ssd1> <ssd2>`). `dahlia-disk add --role cache` mounts it at
+`/mnt/cache` and puts `/mnt/cache/shares` in front of the data disks in `/mnt/user`, again
+without a remount. `/mnt/user` then uses `category.create=ff`; `/mnt/storage` stays at
+`mfs`.
+
+```sh
+dahlia-mover [--dry-run] [--min-age MIN]       # cache -> /mnt/storage, path unchanged
+dahlia-snapraid sync [--force]                 # diff, check delete threshold, sync
+dahlia-snapraid scrub                          # verify part of the array against parity
+dahlia-disk set-option snapraid_delete_threshold 50
+```
+
+The mover leaves open files, recently modified files, files that already exist on the data
+disks and hard links on the cache. It copies, verifies, renames and only then deletes.
+Timers: mover 03:00, SnapRAID sync 04:30, scrub Sundays 06:00 (8 %, blocks older than
+10 days). Mover and SnapRAID share `/run/dahlia/array.lock`.
+
 ## Privileges and security
 
 - `dahlia-dashboard` runs as `dahlia-ui` with systemd hardening and listens on

@@ -13,7 +13,7 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 VERSION="$(tr -d '[:space:]' < "$ROOT/VERSION")"
 OUTDIR="$ROOT/build/test-$MODE"
 
-INSTALL_TIMEOUT=3600
+INSTALL_TIMEOUT=1800
 BOOT_TIMEOUT=600
 SSH_PORT=2222
 
@@ -75,15 +75,35 @@ with open(sys.argv[1], "ab", buffering=0) as f:
 syslog_pid=$!
 trap 'kill "$syslog_pid" 2>/dev/null || true' EXIT
 
-echo "== install ($MODE)"
-# d-i reboots at the end; -no-reboot turns that into a clean QEMU exit.
-if ! timeout "$INSTALL_TIMEOUT" qemu-system-x86_64 "${qemu_args[@]}" \
-        -cdrom "$TEST_ISO" -boot d -no-reboot \
-        -serial "file:$OUTDIR/install.log"; then
-    echo "install did not finish within ${INSTALL_TIMEOUT}s or QEMU failed" >&2
+install_failed() {
+    echo "$1" >&2
     echo "--- installer syslog (last 150 lines)" >&2
     tail -n 150 "$OUTDIR/installer-syslog.log" >&2 || true
+    # The serial console shows the dialog d-i is waiting on, if any.
+    echo "--- installer screen (serial, last 40 lines)" >&2
+    sed -e 's/\x1b\[[0-9;?]*[A-Za-z]//g' -e 's/\x1b[()][A-Z0-9]//g' "$OUTDIR/install.log" \
+        | tr -s ' ' | grep -av '^ *$' | tail -n 40 >&2 || true
     exit 1
+}
+
+echo "== install ($MODE)"
+# d-i reboots at the end; -no-reboot turns that into a clean QEMU exit.
+timeout "$INSTALL_TIMEOUT" qemu-system-x86_64 "${qemu_args[@]}" \
+    -cdrom "$TEST_ISO" -boot d -no-reboot \
+    -serial "file:$OUTDIR/install.log" &
+install_pid=$!
+trap 'kill "$syslog_pid" "$install_pid" 2>/dev/null || true' EXIT
+# A failed late_command leaves d-i waiting at an error dialog: stop early.
+while kill -0 "$install_pid" 2>/dev/null; do
+    if grep -q "dahlia-install: FAILED" "$OUTDIR/installer-syslog.log" 2>/dev/null; then
+        sleep 5 # let the rest of the diagnostics arrive
+        kill "$install_pid" 2>/dev/null || true
+        install_failed "late_command failed"
+    fi
+    sleep 5
+done
+if ! wait "$install_pid"; then
+    install_failed "install did not finish within ${INSTALL_TIMEOUT}s or QEMU failed"
 fi
 kill "$syslog_pid" 2>/dev/null || true
 
