@@ -29,7 +29,10 @@ noch ohne Web-UI und Storage-Funktionen.
    Für Rechner ohne Bildschirm gibt es den Menüeintrag "serial console" (ttyS0, 115200 Baud).
 4. Anmelden als `dahlia-admin` mit Passwort `dahlia`, danach ein neues Passwort setzen.
    Per SSH: `ssh dahlia-admin@dahlia.local`.
-5. Updates: `sudo apt update && sudo apt upgrade` (siehe [docs/de/apt-repo.md](docs/de/apt-repo.md)).
+5. Dashboard: `https://dahlia.local/` im Browser öffnen, die Zertifikatswarnung bestätigen
+   und den Einrichtungscode eingeben, der auf dem Bildschirm des Servers und beim SSH-Login steht.
+6. Updates: im Dashboard unter "Updates" oder `sudo apt update && sudo apt upgrade`
+   (siehe [docs/de/apt-repo.md](docs/de/apt-repo.md)).
 
 **Achtung:** Hat der Rechner nur eine Platte, wird sie ohne Rückfrage gelöscht.
 
@@ -109,7 +112,10 @@ without web UI or storage features yet.
    Headless machines use the "serial console" menu entry (ttyS0, 115200 baud).
 4. Log in as `dahlia-admin` with password `dahlia`, then set a new password.
    Via SSH: `ssh dahlia-admin@dahlia.local`.
-5. Updates: `sudo apt update && sudo apt upgrade` (see [docs/en/apt-repo.md](docs/en/apt-repo.md)).
+5. Dashboard: open `https://dahlia.local/` in a browser, accept the certificate warning and
+   enter the setup code shown on the server's screen and on SSH login.
+6. Updates: in the dashboard under "Updates" or `sudo apt update && sudo apt upgrade`
+   (see [docs/en/apt-repo.md](docs/en/apt-repo.md)).
 
 **Warning:** On a machine with a single disk, that disk is wiped without asking.
 

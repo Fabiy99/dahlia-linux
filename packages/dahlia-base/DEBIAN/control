@@ -4,7 +4,7 @@ Architecture: all
 Maintainer: Dahlia Linux <https://github.com/Fabiy99/dahlia-linux>
 Section: admin
 Priority: optional
-Depends: dahlia-archive-keyring (= @VERSION@), dahlia-agent (= @VERSION@), btrfs-progs, snapper, avahi-daemon, libnss-mdns, nftables, sudo, openssh-server
+Depends: dahlia-archive-keyring (= @VERSION@), dahlia-agent (= @VERSION@), dahlia-dashboard (= @VERSION@), btrfs-progs, snapper, avahi-daemon, libnss-mdns, nftables, sudo, openssh-server
 Recommends: grub-btrfs
 Description: Dahlia Linux base system
  Base configuration for Dahlia Linux: group layout, console and login

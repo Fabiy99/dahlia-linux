@@ -2,7 +2,7 @@
 
 [English version](../en/architecture.md)
 
-Stand: Meilenstein 4. Dieses Dokument beschreibt das Zielbild. Was davon schon gebaut ist,
+Stand: Meilenstein 5. Dieses Dokument beschreibt das Zielbild. Was davon schon gebaut ist,
 steht in der README unter "Meilensteine".
 
 ## Installation
@@ -32,9 +32,9 @@ Einmal-Code geschützt, der auf tty1 und in `/etc/motd` steht (ab Meilenstein 5)
 
 | Paket | Inhalt |
 | --- | --- |
-| `dahlia-base` | Konfiguration, nftables-Regeln, Benutzer `dahlia-ui`, Gruppe `dahlia` (GID 1000) |
+| `dahlia-base` | Konfiguration, nftables-Regeln, Gruppe `dahlia` (GID 1000), zieht alle Dahlia-Pakete nach |
 | `dahlia-agent` | root-Dienst auf `/run/dahlia/agent.sock`, feste Aktionsliste |
-| `dahlia-dashboard` | FastAPI-Backend hinter nginx, Frontend in Vanilla HTML/CSS/JS |
+| `dahlia-dashboard` | FastAPI-Backend als `dahlia-ui` hinter nginx, Frontend in Vanilla HTML/CSS/JS |
 | `dahlia-storage` | disk-manager, Mover, SnapRAID-Wrapper, Health-Checks |
 | `dahlia-archive-keyring` | öffentlicher Schlüssel des apt-Repos |
 
@@ -155,6 +155,32 @@ Zum Testen auf der Konsole:
 sudo dahlia-agent-call system.info
 sudo dahlia-agent-call storage.add '{"uuid": "<UUID>", "role": "data"}'
 ```
+
+### Dashboard (ab Meilenstein 5)
+
+Aufruf: `https://<server>.local/` (Port 80 leitet auf 443 um). Bis Meilenstein 7 ist das
+Zertifikat selbst signiert (`/etc/dahlia/tls/dashboard.crt`), der Browser warnt einmal.
+
+Beim ersten Aufruf gibt es nur den Einrichtungsassistenten. Er verlangt den Einmal-Code,
+den der Server auf der Konsole (tty1 und serielle Konsole) und beim SSH-Login zeigt. Der
+Assistent legt das Dashboard-Konto an und setzt optional den Servernamen. Das Konto gilt
+nur für das Web-UI, nicht für SSH oder die Konsole.
+
+| Teil | Umsetzung |
+| --- | --- |
+| Backend | FastAPI/uvicorn als `dahlia-ui` auf `127.0.0.1:8080`, systemd-Härtung (`ProtectSystem=strict`, keine Capabilities) |
+| Frontend | statische Dateien unter `/usr/share/dahlia-dashboard/www`, von nginx ausgeliefert, Texte aus `locales/de.json` und `locales/en.json` |
+| Konten | `/var/lib/dahlia-dashboard/users.json` (0600), Passwörter mit scrypt |
+| Sitzungen | zufälliges Token im Speicher, Cookie `HttpOnly`, `Secure`, `SameSite=Strict`; 2 h Leerlauf, höchstens 12 h |
+| Schutz | ändernde Anfragen brauchen den Header `X-Dahlia-Request`; 5 Fehlversuche pro IP in 5 Minuten, dann Sperre |
+| root-Aktionen | nur über `dahlia-agent`; `dahlia-ui` ist Mitglied der Gruppe `dahlia-agent` |
+
+Seiten: Übersicht (Systemdaten, Servername, Neustart, Ausschalten), Platten (hinzufügen
+in einer Rolle, entfernen), Aufgaben (Mover, SnapRAID-Sync und -Scrub starten, Zustand),
+Updates (suchen, installieren), Konto (Passwort ändern).
+
+Passwort vergessen: `sudo rm /var/lib/dahlia-dashboard/users.json` und
+`sudo systemctl restart dahlia-dashboard` öffnen den Einrichtungsassistenten mit neuem Code.
 
 ## Netzwerk und Namen
 
