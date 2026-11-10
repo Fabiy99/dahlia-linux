@@ -194,12 +194,15 @@ def test_actions_go_to_agent(env):
     agent.calls.clear()
     client.post("/api/storage/add", json={"uuid": "1234-ABCD", "role": "data"}, headers=CSRF)
     client.post("/api/storage/remove", json={"uuid": "1234-ABCD", "force": True}, headers=CSRF)
+    client.post("/api/storage/format", json={"device": "/dev/sdb", "filesystem": "xfs",
+                                             "confirm": "sdb"}, headers=CSRF)
     client.post("/api/jobs/mover/start", headers=CSRF)
     client.post("/api/updates/apply", headers=CSRF)
     client.post("/api/system/hostname", json={"hostname": "nas"}, headers=CSRF)
     assert agent.calls == [
         ("storage.add", {"uuid": "1234-ABCD", "role": "data"}),
         ("storage.remove", {"uuid": "1234-ABCD", "force": True}),
+        ("storage.format", {"device": "/dev/sdb", "filesystem": "xfs", "confirm": "sdb"}),
         ("job.start", {"job": "mover"}),
         ("updates.apply", {}),
         ("system.set_hostname", {"hostname": "nas"}),

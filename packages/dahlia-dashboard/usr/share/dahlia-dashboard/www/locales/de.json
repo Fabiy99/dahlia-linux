@@ -34,7 +34,7 @@
   "overview.reboot_started": "Der Server startet neu.",
   "overview.poweroff_started": "Der Server schaltet sich aus.",
   "storage.title": "Platten",
-  "storage.hint": "Dahlia formatiert keine Platten. Hinzugefügt werden nur Platten, die schon ein Dateisystem haben.",
+  "storage.hint": "Platten mit Dateisystem werden so eingebunden, wie sie sind; die Daten bleiben erhalten. Nur eine leere Platte ohne Partitionen lässt sich formatieren.",
   "storage.add": "Hinzufügen",
   "storage.remove": "Entfernen",
   "storage.confirm_add": "{path} als {role} einbinden?",
@@ -397,5 +397,15 @@
   "security.private_hint": "Nur die ausgewählten Benutzer haben Zugriff.",
   "access.none": "Kein Zugriff",
   "access.ro": "Nur lesen",
-  "access.rw": "Lesen und Schreiben"
+  "access.rw": "Lesen und Schreiben",
+  "storage.format": "Formatieren",
+  "storage.format_title": "{path} formatieren",
+  "storage.format_warning": "{path} ({model}, {size}) bekommt eine GPT-Partitionstabelle und ein neues Dateisystem. Danach kannst du die Platte in einer Rolle hinzufügen.",
+  "storage.format_fs": "Dateisystem",
+  "storage.fs_xfs": "XFS (empfohlen für Daten- und Parity-Platten)",
+  "storage.fs_ext4": "ext4",
+  "storage.fs_btrfs": "Btrfs (für Cache-SSDs)",
+  "storage.format_confirm": "Zur Bestätigung „{name}“ eintippen",
+  "storage.format_now": "Jetzt formatieren",
+  "storage.formatted": "{path} ist formatiert. Wähle jetzt eine Rolle und füge die Platte hinzu."
 }

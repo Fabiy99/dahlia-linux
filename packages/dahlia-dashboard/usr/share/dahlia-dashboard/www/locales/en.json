@@ -34,7 +34,7 @@
   "overview.reboot_started": "The server is rebooting.",
   "overview.poweroff_started": "The server is powering off.",
   "storage.title": "Disks",
-  "storage.hint": "Dahlia never formats disks. Only disks that already have a filesystem can be added.",
+  "storage.hint": "Disks with a filesystem are added as they are; their data stays. Only a blank disk without partitions can be formatted.",
   "storage.add": "Add",
   "storage.remove": "Remove",
   "storage.confirm_add": "Mount {path} as {role}?",
@@ -397,5 +397,15 @@
   "security.private_hint": "Only the selected users have access.",
   "access.none": "No access",
   "access.ro": "Read only",
-  "access.rw": "Read and write"
+  "access.rw": "Read and write",
+  "storage.format": "Format",
+  "storage.format_title": "Format {path}",
+  "storage.format_warning": "{path} ({model}, {size}) gets a GPT partition table and a new filesystem. Afterwards you can add the disk in a role.",
+  "storage.format_fs": "Filesystem",
+  "storage.fs_xfs": "XFS (recommended for data and parity disks)",
+  "storage.fs_ext4": "ext4",
+  "storage.fs_btrfs": "Btrfs (for cache SSDs)",
+  "storage.format_confirm": "Type “{name}” to confirm",
+  "storage.format_now": "Format now",
+  "storage.formatted": "{path} is formatted. Now pick a role and add the disk."
 }

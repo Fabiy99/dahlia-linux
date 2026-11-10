@@ -121,6 +121,31 @@ def test_storage_add_accepts_ntfs_serial(ctx):
     assert run(ctx, "storage.add", {"uuid": "1A2B3C4D5E6F7A8B", "role": "external"})["ok"]
 
 
+@pytest.mark.parametrize("params", [
+    {"device": "/dev/sdb", "filesystem": "xfs"},
+    {"device": "/dev/sdb", "filesystem": "xfs", "confirm": "sdc"},
+    {"device": "/dev/sdb1", "filesystem": "xfs", "confirm": "sdb1"},
+    {"device": "/dev/../sdb", "filesystem": "xfs", "confirm": "../sdb"},
+    {"device": "/dev/sdb", "filesystem": "ntfs", "confirm": "sdb"},
+    {"device": "/dev/nvme0n1p1", "filesystem": "ext4", "confirm": "nvme0n1p1"},
+    {"device": "sdb", "filesystem": "ext4", "confirm": "sdb"},
+])
+def test_storage_format_rejects(ctx, params):
+    assert err_code(run(ctx, "storage.format", params)) == protocol.INVALID_PARAMS
+    assert ctx.runner.calls == []
+
+
+def test_storage_format_runs_dahlia_disk(ctx):
+    out = '{"device": "/dev/sdb", "partition": "/dev/sdb1", "fstype": "xfs", "uuid": "1234-ABCD"}'
+    ctx.runner.answers[("dahlia-disk", "format")] = (0, out, "")
+    params = {"device": "/dev/sdb", "filesystem": "xfs", "confirm": "sdb"}
+    reply = run(ctx, "storage.format", params)
+    assert reply["result"]["uuid"] == "1234-ABCD"
+    assert ctx.runner.calls == [["dahlia-disk", "format", "/dev/sdb", "--fs", "xfs", "--json"]]
+    assert run(ctx, "storage.format", {"device": "/dev/nvme0n1", "filesystem": "btrfs",
+                                       "confirm": "nvme0n1"})["ok"]
+
+
 def test_storage_remove_force_must_be_bool(ctx):
     params = {"uuid": "1234-ABCD", "force": "yes"}
     assert err_code(run(ctx, "storage.remove", params)) == protocol.INVALID_PARAMS
@@ -433,6 +458,7 @@ def test_action_list_is_fixed():
         "shares.user_password",
         "shares.user_remove",
         "storage.add",
+        "storage.format",
         "storage.list",
         "storage.remove",
         "storage.set_option",

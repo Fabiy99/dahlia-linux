@@ -643,6 +643,10 @@ function diskRow(d, mounts) {
   }
   role.hidden = add.hidden = !canAdd;
   remove.hidden = d.status !== "registered";
+  const format = row.querySelector(".format");
+  // Only a whole disk without partitions and filesystem.
+  format.hidden = !(d.status === "empty" && d.path === d.disk);
+  format.addEventListener("click", () => openFormatDialog(d));
 
   add.addEventListener("click", () => guarded(add, async () => {
     if (!await ask(t("storage.confirm_add", { path: d.path, role: t(`role.${role.value}`) }),
@@ -665,6 +669,37 @@ function diskRow(d, mounts) {
     await loadStorage();
   }));
   return row;
+}
+
+function openFormatDialog(d) {
+  const form = document.getElementById("format-form");
+  const name = d.path.replace("/dev/", "");
+  form.reset();
+  form.dataset.device = d.path;
+  document.getElementById("format-title").textContent = t("storage.format_title", { path: d.path });
+  document.getElementById("format-warning").textContent = t("storage.format_warning", {
+    path: d.path, model: d.model || "-", size: formatBytes(d.size),
+  });
+  document.getElementById("format-confirm-label").textContent = t("storage.format_confirm", { name });
+  form.elements.confirm.pattern = name;
+  document.getElementById("format-dialog").showModal();
+}
+
+function bindFormat() {
+  const form = document.getElementById("format-form");
+  form.addEventListener("submit", (e) => {
+    if (e.submitter?.value === "cancel") return;
+    e.preventDefault();
+    const device = form.dataset.device;
+    const body = { device, filesystem: form.elements.filesystem.value,
+                   confirm: form.elements.confirm.value.trim() };
+    guarded(e.submitter, async () => {
+      await api("POST", "storage/format", body);
+      document.getElementById("format-dialog").close();
+      say(t("storage.formatted", { path: device }), "ok");
+      await loadStorage();
+    });
+  });
 }
 
 async function loadStorage() {
@@ -1622,6 +1657,7 @@ async function start() {
   bindForms();
   bindButtons();
   bindShares();
+  bindFormat();
   try {
     const state = await api("GET", "state");
     if (state.setup_required) show("setup");
