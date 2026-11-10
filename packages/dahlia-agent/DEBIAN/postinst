@@ -7,12 +7,25 @@ case "$1" in
         if ! getent group dahlia-agent >/dev/null; then
             groupadd --system dahlia-agent
         fi
-        systemctl enable dahlia-agent.socket >/dev/null 2>&1 || true
+        # Containers get this user's UID/GID through {PUID}/{PGID}.
+        if ! getent passwd dahlia-apps >/dev/null; then
+            adduser --system --group --no-create-home --home /nonexistent \
+                --shell /usr/sbin/nologin dahlia-apps
+        fi
+        mkdir -p /var/lib/dahlia/apps
+        chmod 0700 /var/lib/dahlia/apps
+        systemctl enable dahlia-agent.socket dahlia-apps.service >/dev/null 2>&1 || true
         if [ -d /run/systemd/system ]; then
             systemctl daemon-reload
+            sysctl -q -p /usr/lib/sysctl.d/50-dahlia-apps.conf || true
             # A running agent keeps the old code until restarted.
             systemctl try-restart dahlia-agent.service || true
             systemctl start dahlia-agent.socket || true
+            # daemon.json (ports on 127.0.0.1 only) applies after a restart.
+            # Only while no app is installed: a restart stops containers.
+            if [ -z "$(ls -A /var/lib/dahlia/apps)" ]; then
+                systemctl try-restart docker.service || true
+            fi
         fi
         ;;
     abort-upgrade|abort-remove|abort-deconfigure)

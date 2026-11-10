@@ -13,6 +13,7 @@
   <nav id="nav" hidden>
     <button data-view="overview" data-i18n="nav.overview"></button>
     <button data-view="storage" data-i18n="nav.storage"></button>
+    <button data-view="apps" data-i18n="nav.apps"></button>
     <button data-view="jobs" data-i18n="nav.jobs"></button>
     <button data-view="updates" data-i18n="nav.updates"></button>
     <button data-view="account" data-i18n="nav.account"></button>
@@ -76,6 +77,28 @@
       <tbody id="disks"></tbody>
     </table>
     <button id="storage-refresh" data-i18n="common.refresh"></button>
+  </section>
+
+  <section id="view-apps" hidden>
+    <h1 data-i18n="apps.title"></h1>
+    <h2 data-i18n="apps.installed"></h2>
+    <table>
+      <thead><tr>
+        <th data-i18n="apps.name"></th><th data-i18n="apps.status"></th>
+        <th data-i18n="apps.address"></th><th></th>
+      </tr></thead>
+      <tbody id="apps-installed"></tbody>
+    </table>
+    <h2 data-i18n="apps.catalog"></h2>
+    <p class="hint" data-i18n="apps.hint"></p>
+    <button id="apps-refresh" data-i18n="apps.refresh"></button>
+    <table>
+      <thead><tr>
+        <th data-i18n="apps.name"></th><th data-i18n="apps.description"></th>
+        <th data-i18n="apps.image"></th><th></th>
+      </tr></thead>
+      <tbody id="apps-catalog"></tbody>
+    </table>
   </section>
 
   <section id="view-jobs" hidden>

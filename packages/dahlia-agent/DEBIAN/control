@@ -4,9 +4,9 @@ Architecture: all
 Maintainer: Dahlia Linux <https://github.com/Fabiy99/dahlia-linux>
 Section: admin
 Priority: optional
-Depends: python3 (>= 3.11), systemd, dahlia-storage (= @VERSION@)
+Depends: python3 (>= 3.11), python3-yaml, adduser, systemd, dahlia-storage (= @VERSION@), docker.io | docker-ce, docker-compose (>= 2) | docker-compose-plugin
 Description: Dahlia Linux privileged agent
  Root service on /run/dahlia/agent.sock. It accepts a fixed list of
- actions (system info, hostname, storage, jobs, updates), checks every
+ actions (system info, hostname, storage, jobs, updates, apps), checks every
  parameter and runs the matching system command. The web UI uses it
  instead of root rights. Members of the group dahlia-agent may connect.

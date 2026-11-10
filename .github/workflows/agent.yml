@@ -6,6 +6,7 @@ on:
       - "packages/dahlia-agent/**"
       - "packages/dahlia-storage/**"
       - "tests/integration/agent.sh"
+      - "tests/integration/apps.sh"
       - "tools/build-packages.sh"
       - ".github/workflows/agent.yml"
   workflow_dispatch:
@@ -24,7 +25,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            apt-utils mergerfs fuse3 xfsprogs btrfs-progs e2fsprogs jq
+            apt-utils mergerfs fuse3 xfsprogs btrfs-progs e2fsprogs jq python3-yaml nginx
 
       - name: Drop the runner's /mnt fstab entry
         # Same as in storage.yml: the runner's /mnt resource disk entry
@@ -37,13 +38,21 @@ jobs:
       - name: Build and install dahlia-storage and dahlia-agent
         run: |
           tools/build-packages.sh
-          sudo dpkg -i build/pool/dahlia-storage_*_all.deb build/pool/dahlia-agent_*_all.deb
+          # The runner has Docker from its own packages, not docker.io.
+          sudo dpkg --force-depends --force-confnew -i \
+            build/pool/dahlia-storage_*_all.deb build/pool/dahlia-agent_*_all.deb
+          docker info --format '{{.Name}} {{.ServerVersion}}'
+          docker compose version
 
-      - name: Integration test
+      - name: Integration test (agent)
         run: sudo tests/integration/agent.sh
+
+      - name: Integration test (apps)
+        run: sudo tests/integration/apps.sh
 
       - name: Agent journal on failure
         if: failure()
         run: |
           sudo journalctl -u dahlia-agent.service -u dahlia-agent.socket --no-pager | tail -100
           sudo journalctl -n 100 --no-pager -u 'mnt-*' || true
+          sudo journalctl -n 60 --no-pager -u docker.service || true

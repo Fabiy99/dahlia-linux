@@ -2,7 +2,7 @@
 
 [Deutsche Fassung](../de/architektur.md)
 
-Status: milestone 5. This document describes the target design. What is already built is
+Status: milestone 6. This document describes the target design. What is already built is
 listed in the README under "Milestones".
 
 ## Installation
@@ -140,6 +140,12 @@ Protocol: one request per connection, one JSON line each way.
 | `job.status` | `job` (plus `update`) | State and last result |
 | `updates.check` | - | `apt-get update`, list of upgrades |
 | `updates.apply` | - | `apt-get full-upgrade` as unit `dahlia-update` |
+| `apps.catalog` | `refresh` (optional) | App catalog, `refresh` downloads it first |
+| `apps.list` | - | installed apps with container state |
+| `apps.install`, `apps.update` | `id` | in the background as unit `dahlia-app-<id>` |
+| `apps.job` | `id` | state of the last install or update |
+| `apps.start`, `apps.stop` | `id` | start or stop, also for the next boot |
+| `apps.remove` | `id`, `delete_data` (optional) | remove the container, data only on request |
 | `agent.actions` | - | this list |
 
 Unknown actions, unknown or missing parameters and wrong types are rejected before any
@@ -179,6 +185,34 @@ account (change password).
 
 Forgotten password: `sudo rm /var/lib/dahlia-dashboard/users.json` and
 `sudo systemctl restart dahlia-dashboard` open the setup wizard with a new code.
+
+### Apps (from milestone 6)
+
+Apps are Docker containers built from app templates. The catalog lives in the repository
+[dahlia-apps](https://github.com/Fabiy99/dahlia-apps) and is loaded from
+`https://raw.githubusercontent.com/Fabiy99/dahlia-apps/main/`
+(`/etc/dahlia/apps.json`, `file:///` also works for local catalogs).
+
+A template (YAML, `schema: 1`) only knows: an image with a fixed version, a web port with a
+public port, LAN ports, volumes under `appdata` or a share, and environment variables with
+the placeholders `{TZ}`, `{PUID}`, `{PGID}`. Everything else is rejected, including
+`privileged`, host networking, devices and capabilities.
+
+| Topic | Implementation |
+| --- | --- |
+| Web port | Docker publishes it on `127.0.0.1:41000-41999`, nginx listens in the LAN on the template's public port (port link `http://<server>:<port>/`) |
+| LAN ports | only if the template lists them; the dashboard shows them before installing |
+| Data | `/mnt/user/appdata/<id>/...` (owner `dahlia-apps`), shares `/mnt/user/<name>`; no install without a mounted array |
+| Start | Docker starts nothing by itself (`restart: no`); `dahlia-apps.service` starts the enabled apps after the disks |
+| Containers | `no-new-privileges`, log driver `local` with 3 x 10 MB |
+
+```sh
+dahlia-apps catalog --refresh
+dahlia-apps install jellyfin
+dahlia-apps list
+dahlia-apps remove jellyfin [--delete-data]
+dahlia-apps check app.yaml        # validate a template
+```
 
 ## Network and names
 

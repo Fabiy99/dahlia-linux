@@ -2,7 +2,7 @@
 
 [English version](../en/architecture.md)
 
-Stand: Meilenstein 5. Dieses Dokument beschreibt das Zielbild. Was davon schon gebaut ist,
+Stand: Meilenstein 6. Dieses Dokument beschreibt das Zielbild. Was davon schon gebaut ist,
 steht in der README unter "Meilensteine".
 
 ## Installation
@@ -142,6 +142,12 @@ Protokoll: eine Anfrage pro Verbindung, je eine JSON-Zeile hin und zurück.
 | `job.status` | `job` (dazu `update`) | Zustand und letztes Ergebnis |
 | `updates.check` | - | `apt-get update`, Liste der Upgrades |
 | `updates.apply` | - | `apt-get full-upgrade` als Unit `dahlia-update` |
+| `apps.catalog` | `refresh` (optional) | App-Katalog, mit `refresh` vorher herunterladen |
+| `apps.list` | - | installierte Apps mit Container-Zustand |
+| `apps.install`, `apps.update` | `id` | im Hintergrund als Unit `dahlia-app-<id>` |
+| `apps.job` | `id` | Zustand der letzten Installation bzw. Aktualisierung |
+| `apps.start`, `apps.stop` | `id` | starten bzw. stoppen, gilt auch für den nächsten Boot |
+| `apps.remove` | `id`, `delete_data` (optional) | Container entfernen, Daten nur auf Wunsch |
 | `agent.actions` | - | diese Liste |
 
 Unbekannte Aktionen, unbekannte oder fehlende Parameter und falsche Typen werden abgelehnt,
@@ -181,6 +187,34 @@ Updates (suchen, installieren), Konto (Passwort ändern).
 
 Passwort vergessen: `sudo rm /var/lib/dahlia-dashboard/users.json` und
 `sudo systemctl restart dahlia-dashboard` öffnen den Einrichtungsassistenten mit neuem Code.
+
+### Apps (ab Meilenstein 6)
+
+Apps sind Docker-Container aus App-Vorlagen. Der Katalog liegt im Repo
+[dahlia-apps](https://github.com/Fabiy99/dahlia-apps) und wird von
+`https://raw.githubusercontent.com/Fabiy99/dahlia-apps/main/` geladen
+(`/etc/dahlia/apps.json`, auch `file:///` für eigene Kataloge).
+
+Eine Vorlage (YAML, `schema: 1`) kennt nur: Image mit fester Version, Web-Port mit
+öffentlichem Port, LAN-Ports, Volumes unter `appdata` oder einer Freigabe und
+Umgebungsvariablen mit den Platzhaltern `{TZ}`, `{PUID}`, `{PGID}`. Alles andere wird
+abgelehnt, also auch `privileged`, Host-Netzwerk, Geräte und Capabilities.
+
+| Punkt | Umsetzung |
+| --- | --- |
+| Web-Port | Docker veröffentlicht ihn auf `127.0.0.1:41000-41999`, nginx lauscht im LAN auf dem öffentlichen Port der Vorlage (Port-Link `http://<server>:<port>/`) |
+| LAN-Ports | nur wenn die Vorlage sie nennt; das Dashboard zeigt sie vor der Installation |
+| Daten | `/mnt/user/appdata/<id>/...` (Besitzer `dahlia-apps`), Freigaben `/mnt/user/<name>`; ohne eingehängtes Array keine Installation |
+| Start | Docker startet nichts selbst (`restart: no`); `dahlia-apps.service` startet die aktivierten Apps nach den Platten |
+| Container | `no-new-privileges`, Log-Treiber `local` mit 3 x 10 MB |
+
+```sh
+dahlia-apps catalog --refresh
+dahlia-apps install jellyfin
+dahlia-apps list
+dahlia-apps remove jellyfin [--delete-data]
+dahlia-apps check app.yaml        # Vorlage prüfen
+```
 
 ## Netzwerk und Namen
 

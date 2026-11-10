@@ -28,6 +28,7 @@ CSRF_HEADER = "x-dahlia-request"
 
 JOBS = ("mover", "snapraid-sync", "snapraid-scrub", "update")
 STARTABLE_JOBS = ("mover", "snapraid-sync", "snapraid-scrub")
+APP_OPS = ("install", "update", "start", "stop", "remove")
 
 # Agent error code -> HTTP status.
 AGENT_STATUS = {
@@ -96,6 +97,10 @@ class HostnameBody(BaseModel):
 class DiskAddBody(BaseModel):
     uuid: str
     role: str
+
+
+class AppRemoveBody(BaseModel):
+    delete_data: bool = False
 
 
 class DiskRemoveBody(BaseModel):
@@ -277,6 +282,31 @@ def create_app(cfg: Config | None = None) -> FastAPI:
     @app.post("/api/updates/apply", dependencies=changing)
     def updates_apply():
         return agent("updates.apply")
+
+    # --- apps -----------------------------------------------------------------
+
+    @app.get("/api/apps", dependencies=authed)
+    def apps():
+        installed = agent("apps.list")["apps"]
+        catalog = agent("apps.catalog", {"refresh": False})["apps"]
+        return {"installed": installed, "catalog": catalog}
+
+    @app.post("/api/apps/catalog/refresh", dependencies=changing)
+    def apps_refresh():
+        return agent("apps.catalog", {"refresh": True})
+
+    @app.get("/api/apps/{app_id}/job", dependencies=authed)
+    def app_job(app_id: str):
+        return agent("apps.job", {"id": app_id})
+
+    @app.post("/api/apps/{app_id}/{op}", dependencies=changing)
+    def app_op(app_id: str, op: str, body: AppRemoveBody | None = None):
+        if op not in APP_OPS:
+            raise ApiError(404, "error.not_found")
+        params = {"id": app_id}
+        if op == "remove" and body is not None:
+            params["delete_data"] = body.delete_data
+        return agent(f"apps.{op}", params)
 
     @app.exception_handler(HTTPException)
     def http_error(_request: Request, exc: HTTPException):

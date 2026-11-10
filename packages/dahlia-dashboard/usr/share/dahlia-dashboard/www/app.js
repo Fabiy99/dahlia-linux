@@ -117,6 +117,7 @@ function showLogin() {
 const loaders = {
   overview: loadOverview,
   storage: loadStorage,
+  apps: loadApps,
   jobs: loadJobs,
   updates: () => {},
   account: () => {},
@@ -218,6 +219,119 @@ async function loadStorage() {
       await loadStorage();
     }));
     tbody.append(row);
+  }
+}
+
+// --- apps -----------------------------------------------------------------------
+
+function cell(tr, content) {
+  const td = document.createElement("td");
+  if (content instanceof Node) td.append(content);
+  else td.textContent = content;
+  tr.append(td);
+  return td;
+}
+
+function button(key, onClick, danger) {
+  const b = document.createElement("button");
+  b.textContent = t(key);
+  if (danger) b.className = "danger";
+  b.addEventListener("click", () => guarded(b, () => onClick(b)));
+  return b;
+}
+
+// Install and update run in the background on the server; poll until done.
+async function waitForAppJob(id) {
+  for (let i = 0; i < 360; i++) {
+    await new Promise((r) => setTimeout(r, 5000));
+    const job = await api("GET", `apps/${id}/job`);
+    if (!["active", "activating"].includes(job.active)) return job;
+  }
+  return null;
+}
+
+async function appJob(id, op, name) {
+  await api("POST", `apps/${id}/${op}`);
+  say(t(`apps.${op}_running`, { name }), "");
+  await loadApps();
+  const job = await waitForAppJob(id);
+  if (job && job.result === "success") say(t(`apps.${op}_done`, { name }), "ok");
+  else say(t("apps.job_failed", { name, unit: `dahlia-app-${id}` }), "error");
+  if (current === "apps") await loadApps();
+}
+
+function appLink(app) {
+  if (!app.public_port) return "-";
+  const a = document.createElement("a");
+  a.href = `http://${location.hostname}:${app.public_port}/`;
+  a.target = "_blank";
+  a.rel = "noopener";
+  a.textContent = `${location.hostname}:${app.public_port}`;
+  return a;
+}
+
+async function loadApps() {
+  const data = await api("GET", "apps");
+  const inst = document.getElementById("apps-installed");
+  inst.replaceChildren();
+  for (const app of data.installed) {
+    const tr = document.createElement("tr");
+    cell(tr, app.name);
+    cell(tr, tv("app_status", app.status));
+    cell(tr, appLink(app));
+    const ops = cell(tr, "");
+    ops.className = "ops";
+    if (app.status === "running") {
+      ops.append(button("apps.stop", async () => {
+        await api("POST", `apps/${app.id}/stop`);
+        await loadApps();
+      }));
+    } else {
+      ops.append(button("apps.start", async () => {
+        await api("POST", `apps/${app.id}/start`);
+        await loadApps();
+      }));
+    }
+    ops.append(button("apps.update", () => appJob(app.id, "update", app.name)));
+    ops.append(button("apps.remove", async () => {
+      if (!confirm(t("apps.confirm_remove", { name: app.name }))) return;
+      const deleteData = confirm(t("apps.confirm_delete_data", { id: app.id }));
+      await api("POST", `apps/${app.id}/remove`, { delete_data: deleteData });
+      say(t("apps.removed", { name: app.name }), "ok");
+      await loadApps();
+    }, true));
+    inst.append(tr);
+  }
+  if (!data.installed.length) {
+    const tr = document.createElement("tr");
+    cell(tr, t("apps.none_installed")).colSpan = 4;
+    inst.append(tr);
+  }
+
+  const cat = document.getElementById("apps-catalog");
+  cat.replaceChildren();
+  for (const app of data.catalog) {
+    const tr = document.createElement("tr");
+    cell(tr, app.name);
+    cell(tr, app.description[lang] || app.description.en || "");
+    cell(tr, app.image);
+    const ops = cell(tr, "");
+    if (app.installed) {
+      ops.textContent = t("apps.is_installed");
+    } else {
+      ops.append(button("apps.install", async () => {
+        const lan = app.lan_ports.map((p) => `${p.host}/${p.protocol}`).join(", ");
+        const key = lan ? "apps.confirm_install_lan" : "apps.confirm_install";
+        if (!confirm(t(key, { name: app.name, ports: lan }))) return;
+        await appJob(app.id, "install", app.name);
+      }));
+    }
+    cat.append(tr);
+  }
+  if (!data.catalog.length) {
+    const tr = document.createElement("tr");
+    cell(tr, t("apps.catalog_empty")).colSpan = 4;
+    cat.append(tr);
   }
 }
 
@@ -364,6 +478,11 @@ function bindButtons() {
     }));
   }
   document.getElementById("storage-refresh").addEventListener("click", (e) => guarded(e.target, loadStorage));
+  const refresh = document.getElementById("apps-refresh");
+  refresh.addEventListener("click", () => guarded(refresh, async () => {
+    await api("POST", "apps/catalog/refresh");
+    await loadApps();
+  }));
   document.getElementById("jobs-refresh").addEventListener("click", (e) => guarded(e.target, loadJobs));
   const check = document.getElementById("updates-check");
   check.addEventListener("click", () => guarded(check, () => checkUpdates(check)));

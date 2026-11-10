@@ -34,7 +34,7 @@ jobs:
           python-version: "3.13"
       - name: Install tools
         # FastAPI as in Debian 13 (python3-fastapi 0.115); httpx for its TestClient.
-        run: pip install ruff pytest "fastapi==0.115.*" "httpx<0.28"
+        run: pip install ruff pytest pyyaml "fastapi==0.115.*" "httpx<0.28"
       - name: ruff
         run: ruff check .
       - name: pytest
