@@ -113,5 +113,21 @@ jq -e '.settings.scrub_percent == 12' /etc/dahlia/storage.json >/dev/null \
 call storage.remove "{\"uuid\": \"$uuid\"}" >/dev/null
 if findmnt -n /mnt/disk1 >/dev/null; then fail "/mnt/disk1 still mounted"; fi
 
+step "settings.set_schedule moves the mover timer"
+call settings.set_schedule '{"job": "mover", "frequency": "weekly", "time": "02:15", "weekday": "sat"}' \
+    >/dev/null || fail "settings.set_schedule failed"
+systemctl show dahlia-mover.timer -p TimersCalendar | grep -q 'Sat \*-\*-\* 02:15:00' \
+    || fail "mover timer did not get the new schedule"
+call settings.schedules | jq -e '.schedules.mover.frequency == "weekly" and .schedules.mover.enabled' \
+    >/dev/null || fail "settings.schedules does not show the new schedule"
+call settings.set_schedule '{"job": "mover", "frequency": "off"}' >/dev/null
+[ "$(systemctl is-enabled dahlia-mover.timer || true)" = disabled ] || fail "mover timer still enabled"
+call settings.set_schedule '{"job": "mover", "frequency": "daily", "time": "03:00"}' >/dev/null
+expect_error invalid_params settings.set_schedule '{"job": "mover", "frequency": "daily", "time": "25:00"}'
+
+step "settings.time"
+call settings.time | jq -e '.timezones | index("Europe/Berlin")' >/dev/null || fail "no time zones"
+expect_error invalid_params settings.set_time '{"timezone": "Mars/Base", "ntp": true}'
+
 echo
 echo "agent integration test passed"

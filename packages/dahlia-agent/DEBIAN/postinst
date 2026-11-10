@@ -22,7 +22,7 @@ case "$1" in
         chmod 0755 /var/lib/dahlia
         chmod 0700 /var/lib/dahlia/apps
         systemctl enable dahlia-agent.socket dahlia-apps.service dahlia-mdns.service \
-            dahlia-domains.timer dahlia-apps-catalog.timer >/dev/null 2>&1 || true
+            dahlia-domains.timer dahlia-apps-catalog.timer dahlia-spindown.service >/dev/null 2>&1 || true
         # Local CA, server certificate, app proxies. nginx may not be
         # configured yet; dahlia-dashboard runs this again.
         dahlia-domains apply >/dev/null || echo "dahlia-agent: dahlia-domains apply failed" >&2

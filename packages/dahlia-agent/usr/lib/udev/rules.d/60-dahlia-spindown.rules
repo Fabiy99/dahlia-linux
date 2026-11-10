@@ -1,0 +1,2 @@
+# Apply the Dahlia spindown time to spinning disks that are plugged in later.
+ACTION=="add", SUBSYSTEM=="block", ENV{DEVTYPE}=="disk", ATTR{queue/rotational}=="1", TAG+="systemd", ENV{SYSTEMD_WANTS}+="dahlia-spindown.service"

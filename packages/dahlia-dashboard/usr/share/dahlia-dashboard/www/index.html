@@ -296,6 +296,47 @@
       <section id="view-account" hidden>
         <div class="tiles two">
           <article class="card">
+            <h2 data-i18n="settings.time_title"></h2>
+            <form id="time-form">
+              <label><span data-i18n="settings.timezone"></span><select name="timezone"></select></label>
+              <label class="check"><input name="ntp" type="checkbox"><span data-i18n="settings.ntp"></span></label>
+              <p class="hint" id="time-state"></p>
+              <button type="submit" data-i18n="common.save"></button>
+            </form>
+          </article>
+          <article class="card">
+            <h2 data-i18n="settings.network_title"></h2>
+            <div id="net-pending" class="notice" hidden>
+              <p id="net-pending-text"></p>
+              <button id="net-confirm" class="primary" data-i18n="settings.net_keep"></button>
+            </div>
+            <form id="network-form">
+              <p class="hint" id="net-current"></p>
+              <label><span data-i18n="settings.net_mode"></span>
+                <select name="mode">
+                  <option value="dhcp" data-i18n="settings.net_dhcp"></option>
+                  <option value="static" data-i18n="settings.net_static"></option>
+                </select>
+              </label>
+              <div id="net-static" class="field-group">
+                <label><span data-i18n="settings.net_address"></span><input name="address" data-i18n-placeholder="settings.net_address_hint" inputmode="decimal" autocomplete="off"></label>
+                <label><span data-i18n="settings.net_gateway"></span><input name="gateway" data-i18n-placeholder="settings.net_gateway_hint" inputmode="decimal" autocomplete="off"></label>
+                <label><span data-i18n="settings.net_dns"></span><input name="dns" data-i18n-placeholder="settings.net_dns_hint" autocomplete="off"></label>
+              </div>
+              <p class="hint" data-i18n="settings.net_hint"></p>
+              <button type="submit" data-i18n="common.save"></button>
+            </form>
+          </article>
+          <article class="card">
+            <h2 data-i18n="settings.spindown_title"></h2>
+            <form id="spindown-form">
+              <label><span data-i18n="settings.spindown_default"></span><select name="default"></select></label>
+              <div id="spindown-disks" class="field-group"></div>
+              <p class="hint" data-i18n="settings.spindown_hint"></p>
+              <button type="submit" data-i18n="common.save"></button>
+            </form>
+          </article>
+          <article class="card">
             <h2 data-i18n="account.password_title"></h2>
             <form id="password-form">
               <label><span data-i18n="account.old"></span><input name="old" type="password" autocomplete="current-password" required></label>
@@ -311,6 +352,11 @@
               <p class="hint" data-i18n="account.hostname_hint"></p>
               <button type="submit" data-i18n="overview.set_hostname"></button>
             </form>
+          </article>
+          <article class="card tile wide">
+            <h2 data-i18n="settings.schedules_title"></h2>
+            <p class="hint" data-i18n="settings.schedules_hint"></p>
+            <div id="schedules" class="schedules"></div>
           </article>
         </div>
       </section>

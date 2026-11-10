@@ -412,3 +412,36 @@ def test_web_app_manifest():
     for ref in ("/manifest.webmanifest", "/apple-touch-icon.png", "/favicon.svg"):
         assert f'href="{ref}"' in html
         assert (WWW / ref.lstrip("/")).is_file()
+
+
+def test_settings_endpoints(env):
+    client, agent, _ = logged_in(env)
+    agent.calls.clear()
+    client.get("/api/settings/time")
+    client.post("/api/settings/time", json={"timezone": "Europe/Berlin", "ntp": True},
+                headers=CSRF)
+    client.get("/api/settings/network")
+    client.post("/api/settings/network", json={"mode": "static", "address": "10.0.0.5/24",
+                                                "gateway": "10.0.0.1", "dns": "10.0.0.1"},
+                headers=CSRF)
+    client.post("/api/settings/network/confirm", headers=CSRF)
+    client.get("/api/settings/spindown")
+    client.post("/api/settings/spindown", json={"default": 30, "disks": {"WD-1": 60}},
+                headers=CSRF)
+    client.get("/api/settings/schedules")
+    client.post("/api/settings/schedules/mover", json={"frequency": "weekly", "time": "02:00",
+                                                       "weekday": "sat"}, headers=CSRF)
+    assert agent.calls == [
+        ("settings.time", {}),
+        ("settings.set_time", {"timezone": "Europe/Berlin", "ntp": True}),
+        ("settings.network", {}),
+        ("settings.set_network", {"mode": "static", "address": "10.0.0.5/24",
+                                  "gateway": "10.0.0.1", "dns": "10.0.0.1"}),
+        ("settings.confirm_network", {}),
+        ("settings.spindown", {}),
+        ("settings.set_spindown", {"default": 30, "disks": {"WD-1": 60}}),
+        ("settings.schedules", {}),
+        ("settings.set_schedule", {"job": "mover", "frequency": "weekly", "time": "02:00",
+                                   "weekday": "sat", "monthday": 1}),
+    ]
+    assert client.post("/api/settings/network", json={"mode": "dhcp"}).status_code == 403

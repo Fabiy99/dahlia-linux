@@ -56,6 +56,8 @@ class Context:
     release_file: Path = Path("/etc/dahlia/release")
     hosts_file: Path = Path("/etc/hosts")
     sys: Path = Path("/sys")
+    etc: Path = Path("/etc")
+    run_dir: Path = Path("/run/dahlia")
 
 
 # --- parameter checks ---------------------------------------------------------
@@ -291,8 +293,8 @@ def system_stats(ctx: Context):
     uptime = float((ctx.proc / "uptime").read_text().split()[0])
     load = [float(x) for x in (ctx.proc / "loadavg").read_text().split()[:3]]
     addresses = interface_addresses(ctx)
-    network = read_network(ctx.proc)
-    for iface in network:
+    ifaces = read_network(ctx.proc)
+    for iface in ifaces:
         iface["addresses"] = addresses.get(iface["name"], [])
     return {
         "uptime_seconds": int(uptime),
@@ -300,7 +302,7 @@ def system_stats(ctx: Context):
         "cpu": read_cpu(ctx.proc),
         "memory": read_meminfo(ctx.proc / "meminfo"),
         "swap": read_swap(ctx.proc),
-        "network": network,
+        "network": ifaces,
         "filesystems": read_filesystems(ctx.proc),
     }
 
@@ -688,4 +690,4 @@ def agent_actions(ctx: Context):
 
 
 # Actions in their own modules; importing them registers them.
-from . import containers, hardware  # noqa: E402, F401
+from . import containers, hardware, network, settings  # noqa: E402, F401

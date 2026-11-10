@@ -328,3 +328,14 @@ dialog.wide-dialog { width: min(70rem, calc(100vw - 2rem)); }
   table.containers td[data-label]::before { content: attr(data-label); display: block; color: var(--muted);
                                             font-size: .7rem; text-transform: uppercase; letter-spacing: .06em; }
 }
+
+/* --- settings ----------------------------------------------------------------- */
+.field-group { display: grid; gap: .8rem; }
+.notice { border: 1px solid var(--warn); border-radius: 8px; padding: .8rem 1rem; margin-bottom: 1rem;
+          display: grid; gap: .6rem; justify-items: start; }
+.notice p { margin: 0; }
+.schedules { display: grid; gap: 1rem; }
+form.schedule { max-width: none; gap: .4rem; border-top: 1px solid var(--line); padding-top: .8rem; }
+form.schedule:first-child { border-top: 0; padding-top: 0; }
+.schedule-fields { display: flex; flex-wrap: wrap; gap: .5rem; }
+.schedule .hint { margin: 0; }
