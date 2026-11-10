@@ -231,7 +231,7 @@ status="$(dahlia-disk list --json | jq -r --arg u "$new_uuid" '.[] | select(.uui
 [ "$status" = "candidate" ] || fail "formatted disk has status '$status', expected candidate"
 if dahlia-disk format "$blank" --fs ext4 2>/dev/null; then fail "formatted the same disk twice"; fi
 if dahlia-disk format "${blank}p1" --fs ext4 2>/dev/null; then fail "formatted a partition"; fi
-check_data d1 /mnt/disk1
+check_data d2 /mnt/storage
 
 step "existing data never touched"
 check_data d2 /mnt/storage
