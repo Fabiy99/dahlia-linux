@@ -28,7 +28,9 @@ class FakeRunner:
         return subprocess.CompletedProcess(cmd, 0, "", "")
 
 
-INACTIVE = "ActiveState=inactive\nSubState=dead\nResult=success\nExecMainStatus=0\n"
+INACTIVE = ("ActiveState=inactive\nSubState=dead\nResult=success\nExecMainStatus=0\n"
+            "ExecMainStartTimestamp=Tue 2026-11-10 19:33:40 CET\n")
+NEVER_RAN = "ActiveState=inactive\nSubState=dead\nResult=success\nExecMainStartTimestamp=\n"
 RUNNING = "ActiveState=active\nSubState=running\nResult=success\nExecMainStatus=0\n"
 
 
@@ -300,6 +302,14 @@ def test_job_status(ctx):
     assert status["result"] == "success"
     assert status["exit_status"] == 0
     assert ctx.runner.calls[0][:3] == ["systemctl", "show", "dahlia-update.service"]
+    assert status["started"] == "Tue 2026-11-10 19:33:40 CET"
+
+
+def test_job_status_never_ran(ctx):
+    ctx.runner.answers[("systemctl", "show")] = (0, NEVER_RAN, "")
+    status = run(ctx, "job.status", {"job": "mover"})["result"]
+    assert status["result"] == ""
+    assert status["started"] == ""
 
 
 # --- updates ------------------------------------------------------------------
@@ -333,14 +343,13 @@ def test_updates_check(ctx):
 def test_updates_apply(ctx):
     assert run(ctx, "updates.apply")["ok"]
     cmd = ctx.runner.calls[-1]
-    assert cmd[:2] == ["systemd-run", "--unit=dahlia-update"]
-    assert cmd[-1] == "full-upgrade"
+    assert cmd == ["systemctl", "start", "--no-block", "dahlia-update.service"]
 
 
 def test_updates_apply_busy(ctx):
     ctx.runner.answers[("systemctl", "show")] = (0, RUNNING, "")
     assert err_code(run(ctx, "updates.apply")) == protocol.BUSY
-    assert not any(c[0] == "systemd-run" for c in ctx.runner.calls)
+    assert not any(c[:2] == ["systemctl", "start"] for c in ctx.runner.calls)
 
 
 # --- domains ------------------------------------------------------------------

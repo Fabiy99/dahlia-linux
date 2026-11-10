@@ -867,7 +867,8 @@ async function loadJobs() {
     const tr = el("tr");
     cell(tr, el("b", "", t(`job.${name}`)));
     cell(tr, badge(tv("job_state", s.active), s.active === "active" ? "info" : ""));
-    cell(tr, s.result ? badge(tv("job_result", s.result), RESULT_KIND[s.result] || "") : "-");
+    cell(tr, s.result ? badge(tv("job_result", s.result), RESULT_KIND[s.result] || "")
+      : badge(t("jobs.never"), ""));
     cell(tr, s.started || "-");
     const td = cell(tr, "");
     if (STARTABLE.includes(name)) {

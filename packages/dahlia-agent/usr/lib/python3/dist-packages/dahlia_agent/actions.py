@@ -435,10 +435,12 @@ def unit_state(ctx: Context, unit: str) -> dict:
         key, sep, value = line.partition("=")
         if sep:
             props[key] = value
+    started = props.get("ExecMainStartTimestamp", "")
     return {
         "active": props.get("ActiveState", ""),
         "sub": props.get("SubState", ""),
-        "result": props.get("Result", ""),
+        # systemd reports "success" for a unit that never ran.
+        "result": props.get("Result", "") if started else "",
         "started": props.get("ExecMainStartTimestamp", ""),
         "finished": props.get("ExecMainExitTimestamp", ""),
         "exit_status": int(props["ExecMainStatus"]) if props.get("ExecMainStatus") else None,
@@ -510,23 +512,9 @@ def updates_check(ctx: Context):
     return {"packages": parse_simulation(out.stdout)}
 
 
-UPDATE_CMD = [
-    "systemd-run",
-    "--unit=dahlia-update",
-    "--description=Dahlia system update",
-    "--property=CollectMode=inactive-or-failed",
-    "--setenv=DEBIAN_FRONTEND=noninteractive",
-    "--setenv=LC_ALL=C.UTF-8",
-    "--",
-    "/usr/bin/apt-get",
-    "-y",
-    "-q",
-    "-o",
-    "Dpkg::Options::=--force-confdef",
-    "-o",
-    "Dpkg::Options::=--force-confold",
-    "full-upgrade",
-]
+# dahlia-update.service is a static unit, so its last run stays visible in
+# systemctl show (a transient unit would be gone after it finished).
+UPDATE_CMD = ["systemctl", "start", "--no-block", "dahlia-update.service"]
 
 
 @action("updates.apply", mutating=True)
