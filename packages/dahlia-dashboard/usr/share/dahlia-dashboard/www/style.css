@@ -340,6 +340,21 @@ form.schedule:first-child { border-top: 0; padding-top: 0; }
 .schedule-fields { display: flex; flex-wrap: wrap; gap: .5rem; }
 .schedule .hint { margin: 0; }
 
+.card h3 { font-size: .9rem; margin: 1.2rem 0 .5rem; color: var(--muted); font-weight: 600; }
+.channels { display: grid; gap: .6rem; grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+            align-items: start; }
+details.channel { border: 1px solid var(--line); border-radius: 8px; padding: .6rem .8rem; }
+details.channel summary { display: flex; align-items: center; justify-content: space-between; gap: .5rem;
+                          color: var(--fg); font-size: .92rem; font-weight: 600; }
+details.channel[open] summary { margin-bottom: .8rem; }
+details.channel form { max-width: none; }
+.check-row { display: flex; flex-wrap: wrap; gap: .5rem 1.4rem; }
+ul.history { list-style: none; margin: 0; padding: 0; display: grid; gap: .4rem; }
+ul.history li { display: flex; flex-wrap: wrap; align-items: center; gap: .3rem .6rem; font-size: .9rem; }
+ul.history li .hint { margin: 0; }
+ul.history li .fail { flex-basis: 100%; color: var(--danger); overflow-wrap: anywhere; }
+#ups-status { margin-bottom: 1rem; }
+
 /* --- shares ------------------------------------------------------------------- */
 .notice:not(div) { display: block; }
 table.shares code { font-size: .8rem; color: var(--muted); }

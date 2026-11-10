@@ -300,6 +300,13 @@ web "$BASE/api/smb-users" -H 'Content-Type: application/json' \
 web "$BASE/api/shares" | grep -q '"users":\["smbtest"\]' || dashboard_fail "SMB user not listed"
 web -X POST "$BASE/api/smb-users/smbtest/remove" | grep -q '"name":"smbtest"' \
     || dashboard_fail "removing the SMB user failed"
+# Notifications and UPS: config files through the agent, no channel and no UPS here.
+web "$BASE/api/notify" | grep -q '"events":{' || dashboard_fail "notify.get failed"
+web "$BASE/api/notify/events" -H 'Content-Type: application/json' \
+    -d '{"events": {"usage": true}}' | grep -q '"usage":true' || dashboard_fail "notify.set_events failed"
+web "$BASE/api/ups" -H 'Content-Type: application/json' -d '{"mode": "off"}' \
+    | grep -q '"mode":"off"' || dashboard_fail "ups.set failed"
+web "$BASE/api/ups" | grep -q '"status":null' || dashboard_fail "ups.get failed"
 web -o /dev/null -w '%{content_type}' "$BASE/manifest.webmanifest" | grep -q 'application/manifest+json' \
     || dashboard_fail "web app manifest not served as application/manifest+json"
 echo "OK: dashboard setup, login and agent calls work"

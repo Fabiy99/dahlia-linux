@@ -147,6 +147,24 @@ class SmbPasswordBody(BaseModel):
     password: str
 
 
+class NotifyChannelBody(BaseModel):
+    settings: dict
+
+
+class NotifyEventsBody(BaseModel):
+    events: dict[str, bool]
+
+
+class UpsBody(BaseModel):
+    mode: str
+    host: str = ""
+    port: int = 3493
+    name: str = "ups"
+    user: str = ""
+    password: str = ""
+    shutdown_minutes: int = 0
+
+
 class ScheduleBody(BaseModel):
     frequency: str
     time: str = "03:00"
@@ -435,6 +453,32 @@ def create_app(cfg: Config | None = None) -> FastAPI:
     @app.post("/api/settings/schedules/{job}", dependencies=changing)
     def settings_set_schedule(job: str, body: ScheduleBody):
         return agent("settings.set_schedule", {"job": job, **body.model_dump()})
+
+    # --- notifications and UPS ------------------------------------------------
+
+    @app.get("/api/notify", dependencies=authed)
+    def notify_get():
+        return agent("notify.get")
+
+    @app.post("/api/notify/events", dependencies=changing)
+    def notify_events(body: NotifyEventsBody):
+        return agent("notify.set_events", {"events": body.events})
+
+    @app.post("/api/notify/test", dependencies=changing)
+    def notify_test():
+        return agent("notify.test")
+
+    @app.post("/api/notify/{channel}", dependencies=changing)
+    def notify_set(channel: str, body: NotifyChannelBody):
+        return agent("notify.set", {"channel": channel, "settings": body.settings})
+
+    @app.get("/api/ups", dependencies=authed)
+    def ups_get():
+        return agent("ups.get")
+
+    @app.post("/api/ups", dependencies=changing)
+    def ups_set(body: UpsBody):
+        return agent("ups.set", body.model_dump())
 
     # --- shares ---------------------------------------------------------------
 

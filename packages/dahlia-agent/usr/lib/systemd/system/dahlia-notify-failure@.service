@@ -1,0 +1,7 @@
+[Unit]
+Description=Report the failed unit %i
+Documentation=https://github.com/Fabiy99/dahlia-linux
+
+[Service]
+Type=oneshot
+ExecStart=/usr/sbin/dahlia-notify job-failed %i

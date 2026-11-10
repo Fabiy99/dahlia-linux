@@ -169,6 +169,10 @@ Protokoll: eine Anfrage pro Verbindung, je eine JSON-Zeile hin und zurück.
 | `shares.list` | – | Freigaben, SMB-Benutzer, ob `/mnt/user` eingehängt ist |
 | `shares.set` / `shares.remove` | `name`, `comment`, `security` (`public`/`secure`/`private`), `users` (Name → `rw`/`ro`), `time_machine` | erzeugt `/etc/samba/smb.conf`, prüft mit `testparm`, startet `smbd` |
 | `shares.user_add` / `shares.user_password` / `shares.user_remove` | `name`, `password` | `useradd`/`userdel` (Gruppen `dahlia`, `dahlia-smb`), `smbpasswd` über stdin |
+| `notify.get` | – | Kanäle ohne Geheimnisse, Schalter, letzte Meldungen |
+| `notify.set` | `channel` (`email`/`ntfy`/`gotify`), `settings` | `/etc/dahlia/notify.json` (0600); leeres Passwort/Token behält das alte |
+| `notify.set_events` / `notify.test` | `events` (Name → bool) | Meldungsarten an/aus, Testnachricht an alle aktiven Kanäle |
+| `ups.get` / `ups.set` | `mode` (`off`/`usb`/`remote`), `host`, `port`, `name`, `user`, `password`, `shutdown_minutes` (0 bis 120) | erzeugt `/etc/nut/*`, `upsc` für den Status |
 | `docker.list`, `docker.stats`, `docker.disk` | - | alle Container, CPU/RAM je Container, Platzbedarf von Images, Volumes, Build-Cache |
 | `docker.container` | `name`, `op` (`start`, `stop`, `restart`) | `docker <op> -- <name>` |
 | `docker.logs` | `name`, `lines` (10 bis 5000) | `docker logs --tail` |
@@ -241,7 +245,22 @@ wird die Seitenleiste zum Menü, Tabellen werden zu Karten. Ein Web-App-Manifest
 | System-Log | Journal mit Filter nach Stufe und Dienst |
 | Updates | suchen, installieren |
 | Freigaben | SMB-Freigaben auf `/mnt/user`, SMB-Benutzer |
-| Einstellungen | Zeit und Zeitzone, Netzwerk (DHCP/fest), Platten-Spindown, Zeitpläne für Mover und SnapRAID, Dashboard-Passwort, Servername |
+| Einstellungen | Zeit und Zeitzone, Netzwerk (DHCP/fest), Platten-Spindown, Zeitpläne für Mover und SnapRAID, Benachrichtigungen, USV, Dashboard-Passwort, Servername |
+
+Benachrichtigungen und USV (M9d):
+
+- Kanäle: E-Mail (SMTP mit STARTTLS oder TLS), ntfy, Gotify. Zugangsdaten stehen in
+  `/etc/dahlia/notify.json` (root, 0600); das Dashboard sieht nur, ob eines gesetzt ist.
+- `dahlia-notify.timer` prüft alle 10 Minuten SMART, Plattentemperatur (ab 55 °C HDD,
+  70 °C SSD) und Belegung (ab 90 %, kritisch ab 97 %). Gemeldet wird nur eine Änderung,
+  ein behobenes Problem als "Resolved". Zustand in `/var/lib/dahlia/notify-state.json`.
+- Mover, SnapRAID-Sync/-Scrub und Update haben `OnFailure=dahlia-notify-failure@%n`;
+  die Meldung enthält die letzten 15 Journalzeilen.
+- USV über NUT: USB (`usbhid-ups`, `upsd` nur auf localhost) oder ein NUT-Server im Netz
+  (`netclient`). `upsmon` ruft bei jedem Ereignis `dahlia-notify ups-event` auf. Bei
+  Akkubetrieb startet ein Timer `dahlia-ups-shutdown`, der nach der eingestellten Zeit
+  ausschaltet; zurück am Netz wird er gestoppt. Ohne Zeit fährt `upsmon` bei schwachem
+  Akku herunter.
 
 SMB-Freigaben (M9c):
 
