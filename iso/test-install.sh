@@ -75,10 +75,11 @@ case "$INSTALL" in
     guided)
         grub_default=1
         syslinux_default=dahlia-serial
-        extra="$extra preseed/file=/cdrom/dahlia/test-answers.cfg"
+        # The keyboard question comes before the CD (and the preseed file on
+        # it) is read, so its answer goes on the kernel line.
+        extra="$extra keymap=us preseed/file=/cdrom/dahlia/test-answers.cfg"
         ssh-keygen -q -t ed25519 -N '' -C dahlia-test -f "$OUTDIR/id_test"
         {
-            echo "d-i keyboard-configuration/xkb-keymap select us"
             echo "d-i passwd/user-password password $GUIDED_PASS"
             echo "d-i passwd/user-password-again password $GUIDED_PASS"
             echo "d-i dahlia/disk select /dev/vda"
