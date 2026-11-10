@@ -4,10 +4,12 @@
 # A loop disk becomes the array, a local catalog (file://) holds a small
 # test app. Through the agent: refresh the catalog, install, check the
 # container (port on 127.0.0.1 only, data under /mnt/user/appdata, nginx
-# port link from the LAN side), stop, start, update, remove.
+# port link from the LAN side), https on <app>.<domain> and <app>.local with
+# the local CA, the mDNS alias via Avahi, a domain change, stop, start,
+# update, remove.
 #
 # Must run as root on a disposable machine with dahlia-storage, dahlia-agent,
-# docker and nginx installed.
+# docker, nginx, avahi-daemon and avahi-utils installed.
 set -euo pipefail
 
 WORK="$(mktemp -d /var/tmp/dahlia-apps-test.XXXXXX)"
@@ -22,6 +24,8 @@ call() { dahlia-agent-call --timeout 120 "$@"; }
 diag() {
     echo "--- dahlia-app-whoami journal"
     journalctl -u dahlia-app-whoami.service --no-pager | tail -40 || true
+    echo "--- dahlia-mdns journal"
+    journalctl -u dahlia-mdns.service --no-pager | tail -20 || true
     docker ps -a || true
 }
 
@@ -105,6 +109,40 @@ if curl -sf --max-time 3 "http://$lan_ip:41000/" >/dev/null; then
     fail "internal port reachable from the LAN side"
 fi
 
+step "app domain and mDNS alias over https (local CA)"
+for name in whoami.dahlia.home.arpa whoami.local; do
+    curl -sf --max-time 10 --cacert /etc/dahlia/tls/ca.crt --resolve "$name:443:$lan_ip" \
+        "https://$name/" -o "$WORK/https.txt" || fail "https://$name/ does not verify or answer"
+    grep -q '^Hostname:' "$WORK/https.txt" || fail "https://$name/ is not the app"
+done
+call domains.get | jq -e '.aliases == ["whoami"]' >/dev/null || fail "alias not listed"
+jq -e '.aliases == ["whoami"]' /var/lib/dahlia/mdns-aliases.json >/dev/null \
+    || fail "alias file not written"
+resolved=""
+for _ in $(seq 1 15); do
+    resolved="$(avahi-resolve -4 -n whoami.local 2>/dev/null | awk '{print $2}')" || true
+    [ -n "$resolved" ] && break
+    sleep 1
+done
+echo "whoami.local -> ${resolved:-nothing}"
+[ "$resolved" = "$(jq -r .address <<<"$(call domains.get)")" ] || fail "mDNS alias not published"
+
+step "change the domain"
+call domains.set '{"domain": "lab.home.arpa", "mdns_aliases": false}' \
+    | jq -e '.ca_renewed == false and .domain == "lab.home.arpa"' >/dev/null \
+    || fail "domains.set failed"
+curl -sf --max-time 10 --cacert /etc/dahlia/tls/ca.crt \
+    --resolve "whoami.lab.home.arpa:443:$lan_ip" "https://whoami.lab.home.arpa/" >/dev/null \
+    || fail "new domain not served"
+if openssl x509 -noout -ext subjectAltName -in /etc/dahlia/tls/server.crt | grep -q whoami.local
+then
+    fail "alias still in the certificate"
+fi
+if call domains.set '{"domain": "nas.dahlia.local", "mdns_aliases": true}' >/dev/null 2>&1; then
+    fail "multi-level .local accepted"
+fi
+call domains.set '{"domain": "dahlia.home.arpa", "mdns_aliases": true}' >/dev/null
+
 step "list, stop, start, update"
 call apps.list | jq -e '.apps[0].status == "running"' >/dev/null || fail "apps.list wrong"
 call apps.stop '{"id": "whoami"}' >/dev/null
@@ -123,6 +161,7 @@ call apps.remove '{"id": "whoami"}' >/dev/null
 if docker inspect dahlia-whoami >/dev/null 2>&1; then fail "container still there"; fi
 [ -f /mnt/user/appdata/whoami/config/keep ] || fail "data deleted without asking"
 [ ! -e /etc/nginx/conf.d/dahlia-app-whoami.conf ] || fail "nginx config left over"
+jq -e '.aliases == []' /var/lib/dahlia/mdns-aliases.json >/dev/null || fail "alias left over"
 if curl -sf --max-time 3 "http://$lan_ip:8099/" >/dev/null; then fail "port link still open"; fi
 
 echo

@@ -31,6 +31,8 @@ noch ohne Web-UI und Storage-Funktionen.
    Per SSH: `ssh dahlia-admin@dahlia.local`.
 5. Dashboard: `https://dahlia.local/` im Browser öffnen, die Zertifikatswarnung bestätigen
    und den Einrichtungscode eingeben, der auf dem Bildschirm des Servers und beim SSH-Login steht.
+   Damit die Warnung verschwindet: unter "Domains" die lokale CA herunterladen und importieren
+   (siehe [Netzwerk und Namen](docs/de/architektur.md#netzwerk-und-namen-ab-meilenstein-7)).
 6. Updates: im Dashboard unter "Updates" oder `sudo apt update && sudo apt upgrade`
    (siehe [docs/de/apt-repo.md](docs/de/apt-repo.md)).
 
@@ -114,6 +116,8 @@ without web UI or storage features yet.
    Via SSH: `ssh dahlia-admin@dahlia.local`.
 5. Dashboard: open `https://dahlia.local/` in a browser, accept the certificate warning and
    enter the setup code shown on the server's screen and on SSH login.
+   To get rid of the warning: download and import the local CA under "Domains"
+   (see [Network and names](docs/en/architecture.md#network-and-names-from-milestone-7)).
 6. Updates: in the dashboard under "Updates" or `sudo apt update && sudo apt upgrade`
    (see [docs/en/apt-repo.md](docs/en/apt-repo.md)).
 

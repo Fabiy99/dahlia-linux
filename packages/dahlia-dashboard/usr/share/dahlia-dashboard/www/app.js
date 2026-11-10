@@ -118,6 +118,7 @@ const loaders = {
   overview: loadOverview,
   storage: loadStorage,
   apps: loadApps,
+  domains: loadDomains,
   jobs: loadJobs,
   updates: () => {},
   account: () => {},
@@ -260,14 +261,26 @@ async function appJob(id, op, name) {
   if (current === "apps") await loadApps();
 }
 
-function appLink(app) {
-  if (!app.public_port) return "-";
+function link(href) {
   const a = document.createElement("a");
-  a.href = `http://${location.hostname}:${app.public_port}/`;
+  a.href = href;
   a.target = "_blank";
   a.rel = "noopener";
-  a.textContent = `${location.hostname}:${app.public_port}`;
+  a.textContent = href.replace(/^https?:\/\//, "");
   return a;
+}
+
+// Domain name, mDNS alias and port link; the port link uses the address
+// the dashboard was opened with, since that one is known to work.
+function appLinks(app) {
+  if (!app.public_port) return "-";
+  const urls = app.urls || {};
+  const list = document.createElement("span");
+  list.className = "links";
+  for (const href of [urls.domain, urls.mdns, `http://${location.hostname}:${app.public_port}`]) {
+    if (href) list.append(link(href));
+  }
+  return list;
 }
 
 async function loadApps() {
@@ -278,7 +291,7 @@ async function loadApps() {
     const tr = document.createElement("tr");
     cell(tr, app.name);
     cell(tr, tv("app_status", app.status));
-    cell(tr, appLink(app));
+    cell(tr, appLinks(app));
     const ops = cell(tr, "");
     ops.className = "ops";
     if (app.status === "running") {
@@ -333,6 +346,44 @@ async function loadApps() {
     cell(tr, t("apps.catalog_empty")).colSpan = 4;
     cat.append(tr);
   }
+}
+
+// --- domains --------------------------------------------------------------------
+
+function fact(dl, key, value) {
+  const dt = document.createElement("dt");
+  dt.textContent = t(key);
+  const dd = document.createElement("dd");
+  if (value instanceof Node) dd.append(value);
+  else dd.textContent = value ?? "-";
+  dl.append(dt, dd);
+}
+
+async function loadDomains() {
+  const d = await api("GET", "domains");
+  const form = document.getElementById("domains-form");
+  form.elements.domain.value = d.domain;
+  form.elements.mdns_aliases.checked = d.mdns_aliases;
+
+  const rows = document.getElementById("dns-records");
+  rows.replaceChildren();
+  for (const name of d.dns_records) {
+    const tr = document.createElement("tr");
+    const code = document.createElement("code");
+    code.textContent = name;
+    cell(tr, code);
+    cell(tr, d.address || t("domains.no_address"));
+    rows.append(tr);
+  }
+
+  const dl = document.getElementById("tls-info");
+  dl.replaceChildren();
+  const fpr = document.createElement("code");
+  fpr.textContent = d.ca ? d.ca.sha256 : "-";
+  fact(dl, "domains.ca_fingerprint", fpr);
+  fact(dl, "domains.ca_valid", d.ca && d.ca.not_after);
+  fact(dl, "domains.cert_valid", d.cert && d.cert.not_after);
+  fact(dl, "domains.cert_names", d.names.join(", "));
 }
 
 // --- jobs -----------------------------------------------------------------------
@@ -445,6 +496,17 @@ function bindForms() {
       await api("POST", "account/password", { old: f.old, new: f.new });
       e.target.reset();
       say(t("account.changed"), "ok");
+    });
+  });
+
+  document.getElementById("domains-form").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const domain = e.target.elements.domain.value.trim().toLowerCase();
+    const mdns = e.target.elements.mdns_aliases.checked;
+    guarded(e.submitter, async () => {
+      const res = await api("POST", "domains", { domain, mdns_aliases: mdns });
+      await loadDomains();
+      say(t(res.ca_renewed ? "domains.saved_new_ca" : "domains.saved"), "ok");
     });
   });
 

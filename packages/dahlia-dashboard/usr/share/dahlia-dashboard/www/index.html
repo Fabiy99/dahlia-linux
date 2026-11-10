@@ -14,6 +14,7 @@
     <button data-view="overview" data-i18n="nav.overview"></button>
     <button data-view="storage" data-i18n="nav.storage"></button>
     <button data-view="apps" data-i18n="nav.apps"></button>
+    <button data-view="domains" data-i18n="nav.domains"></button>
     <button data-view="jobs" data-i18n="nav.jobs"></button>
     <button data-view="updates" data-i18n="nav.updates"></button>
     <button data-view="account" data-i18n="nav.account"></button>
@@ -99,6 +100,27 @@
       </tr></thead>
       <tbody id="apps-catalog"></tbody>
     </table>
+  </section>
+
+  <section id="view-domains" hidden>
+    <h1 data-i18n="domains.title"></h1>
+    <p class="hint" data-i18n="domains.hint"></p>
+    <form id="domains-form">
+      <label><span data-i18n="domains.domain"></span><input name="domain" required></label>
+      <label class="check"><input name="mdns_aliases" type="checkbox"><span data-i18n="domains.mdns"></span></label>
+      <p class="hint" data-i18n="domains.domain_hint"></p>
+      <button type="submit" data-i18n="common.save"></button>
+    </form>
+    <h2 data-i18n="domains.dns_title"></h2>
+    <p class="hint" data-i18n="domains.dns_hint"></p>
+    <table>
+      <thead><tr><th data-i18n="domains.record"></th><th data-i18n="domains.target"></th></tr></thead>
+      <tbody id="dns-records"></tbody>
+    </table>
+    <h2 data-i18n="domains.ca_title"></h2>
+    <p class="hint" data-i18n="domains.ca_hint"></p>
+    <dl id="tls-info" class="facts"></dl>
+    <p><a href="/dahlia-ca.crt" download data-i18n="domains.ca_download"></a></p>
   </section>
 
   <section id="view-jobs" hidden>

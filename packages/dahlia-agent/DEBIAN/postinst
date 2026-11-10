@@ -13,14 +13,20 @@ case "$1" in
                 --shell /usr/sbin/nologin dahlia-apps
         fi
         mkdir -p /var/lib/dahlia/apps
+        chmod 0755 /var/lib/dahlia
         chmod 0700 /var/lib/dahlia/apps
-        systemctl enable dahlia-agent.socket dahlia-apps.service >/dev/null 2>&1 || true
+        systemctl enable dahlia-agent.socket dahlia-apps.service dahlia-mdns.service \
+            dahlia-domains.timer >/dev/null 2>&1 || true
+        # Local CA, server certificate, app proxies. nginx may not be
+        # configured yet; dahlia-dashboard runs this again.
+        dahlia-domains apply >/dev/null || echo "dahlia-agent: dahlia-domains apply failed" >&2
         if [ -d /run/systemd/system ]; then
             systemctl daemon-reload
             sysctl -q -p /usr/lib/sysctl.d/50-dahlia-apps.conf || true
             # A running agent keeps the old code until restarted.
             systemctl try-restart dahlia-agent.service || true
-            systemctl start dahlia-agent.socket || true
+            systemctl start dahlia-agent.socket dahlia-domains.timer || true
+            systemctl restart dahlia-mdns.service || true
             # daemon.json (ports on 127.0.0.1 only) applies after a restart.
             # Only while no app is installed: a restart stops containers.
             if [ -z "$(ls -A /var/lib/dahlia/apps)" ]; then

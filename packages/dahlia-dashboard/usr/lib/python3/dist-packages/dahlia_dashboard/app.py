@@ -103,6 +103,11 @@ class AppRemoveBody(BaseModel):
     delete_data: bool = False
 
 
+class DomainsBody(BaseModel):
+    domain: str
+    mdns_aliases: bool
+
+
 class DiskRemoveBody(BaseModel):
     uuid: str
     force: bool = False
@@ -307,6 +312,16 @@ def create_app(cfg: Config | None = None) -> FastAPI:
         if op == "remove" and body is not None:
             params["delete_data"] = body.delete_data
         return agent(f"apps.{op}", params)
+
+    # --- domains --------------------------------------------------------------
+
+    @app.get("/api/domains", dependencies=authed)
+    def domains():
+        return agent("domains.get")
+
+    @app.post("/api/domains", dependencies=changing)
+    def domains_set(body: DomainsBody):
+        return agent("domains.set", {"domain": body.domain, "mdns_aliases": body.mdns_aliases})
 
     @app.exception_handler(HTTPException)
     def http_error(_request: Request, exc: HTTPException):

@@ -201,3 +201,17 @@ echo "$info"
 grep -q "\"version\":\"$VERSION\"" <<<"$info" || dashboard_fail "system info via dahlia-agent failed"
 web "$BASE/api/jobs" | grep -q '"mover"' || dashboard_fail "job status via dahlia-agent failed"
 echo "OK: dashboard setup, login and agent calls work"
+
+# Local CA: the server certificate must verify against the CA the
+# dashboard hands out, under the mDNS name of the host.
+echo "== certificates ($MODE)"
+web "$BASE/dahlia-ca.crt" -o "$OUTDIR/dahlia-ca.crt"
+grep -q 'BEGIN CERTIFICATE' "$OUTDIR/dahlia-ca.crt" || dashboard_fail "CA not served"
+curl -sf --max-time 30 --cacert "$OUTDIR/dahlia-ca.crt" \
+    --resolve "dahlia.local:$HTTPS_PORT:127.0.0.1" \
+    "https://dahlia.local:$HTTPS_PORT/api/state" >/dev/null \
+    || dashboard_fail "server certificate does not verify against the local CA"
+domains="$(web "$BASE/api/domains")"
+echo "$domains"
+grep -q '"domain":"dahlia.home.arpa"' <<<"$domains" || dashboard_fail "domains via dahlia-agent failed"
+echo "OK: local CA and server certificate"

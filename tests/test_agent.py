@@ -179,6 +179,8 @@ def test_set_hostname(ctx):
     assert ctx.runner.calls[0] == ["hostnamectl", "set-hostname", "nas-01"]
     assert ["systemctl", "try-restart", "avahi-daemon.service"] in ctx.runner.calls
     assert ctx.hosts_file.read_text() == "127.0.0.1\tlocalhost\n127.0.1.1\tnas-01\n::1\tlocalhost\n"
+    # New certificate for nas-01.local.
+    assert ctx.runner.calls[-1] == ["dahlia-domains", "apply"]
 
 
 def test_rewrite_hosts():
@@ -261,6 +263,38 @@ def test_updates_apply_busy(ctx):
     assert not any(c[0] == "systemd-run" for c in ctx.runner.calls)
 
 
+# --- domains ------------------------------------------------------------------
+
+
+def test_domains_get(ctx):
+    ctx.runner.answers[("dahlia-domains", "show")] = (0, '{"domain": "dahlia.home.arpa"}', "")
+    assert run(ctx, "domains.get")["result"] == {"domain": "dahlia.home.arpa"}
+
+
+def test_domains_set(ctx):
+    ctx.runner.answers[("dahlia-domains", "set")] = (0, '{"ca_renewed": false}', "")
+    params = {"domain": "lab.home.arpa", "mdns_aliases": False}
+    assert run(ctx, "domains.set", params)["ok"]
+    assert ctx.runner.calls[-1] == [
+        "dahlia-domains", "set", "--domain", "lab.home.arpa", "--mdns", "off",
+    ]
+
+
+@pytest.mark.parametrize("domain", ["", "home", "Dahlia.home.arpa", "a..b", "-a.b", "a b.c",
+                                    "x.home.arpa.", "a.b.c.d.e.f.g"])
+def test_domains_set_rejects(ctx, domain):
+    reply = run(ctx, "domains.set", {"domain": domain, "mdns_aliases": True})
+    assert err_code(reply) == protocol.INVALID_PARAMS
+    assert not ctx.runner.calls
+
+
+def test_domains_set_error_passes_through(ctx):
+    ctx.runner.answers[("dahlia-domains", "set")] = (1, "", "dahlia-domains: use home.arpa\n")
+    reply = run(ctx, "domains.set", {"domain": "x.local", "mdns_aliases": True})
+    assert err_code(reply) == protocol.FAILED
+    assert "use home.arpa" in reply["error"]["message"]
+
+
 # --- action list --------------------------------------------------------------
 
 
@@ -275,6 +309,8 @@ def test_action_list_is_fixed():
         "apps.start",
         "apps.stop",
         "apps.update",
+        "domains.get",
+        "domains.set",
         "job.start",
         "job.status",
         "storage.add",

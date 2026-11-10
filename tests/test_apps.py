@@ -6,7 +6,7 @@ import pytest
 
 pytest.importorskip("yaml")
 
-from dahlia_agent import apps  # noqa: E402
+from dahlia_agent import apps, domains  # noqa: E402
 from dahlia_agent.apps import AppError, Apps, Host, Paths, parse_template  # noqa: E402
 
 WHOAMI = """\
@@ -61,11 +61,16 @@ def env(tmp_path):
         apps=tmp_path / "apps",
         catalog=tmp_path / "catalog",
         pool=tmp_path / "user",
-        nginx=tmp_path / "nginx",
         config=tmp_path / "apps.json",
     )
+    dpaths = domains.Paths(
+        config=tmp_path / "domains.json",
+        tls=domains.TlsPaths(tmp_path / "tls"),
+        nginx=tmp_path / "nginx",
+        aliases=tmp_path / "aliases.json",
+    )
     paths.pool.mkdir()
-    paths.nginx.mkdir()
+    dpaths.nginx.mkdir()
     paths.catalog.mkdir()
     (paths.catalog / "whoami.yaml").write_text(WHOAMI)
     reloads = []
@@ -73,7 +78,12 @@ def env(tmp_path):
         paths=paths,
         docker=FakeDocker(),
         host=Host(tz="Europe/Berlin", uid=os.getuid(), gid=os.getgid()),
-        nginx_reload=lambda: reloads.append(1),
+        naming=domains.Domains(
+            paths=dpaths,
+            host=domains.Host("dahlia", ["192.168.1.5"]),
+            nginx_reload=lambda: reloads.append(1),
+            mdns_reload=lambda: None,
+        ),
         port_check=lambda port, protocol="tcp": True,
         mounted=lambda p: True,
     )
@@ -177,10 +187,10 @@ def test_install(env):
     assert env.docker.calls == [("whoami", ("up", "-d", "--pull", "missing", "--remove-orphans"))]
     assert (env.paths.pool / "appdata/whoami/config").is_dir()
     assert (env.paths.pool / "media").is_dir()
-    conf = (env.paths.nginx / "dahlia-app-whoami.conf").read_text()
+    conf = (env.naming.paths.nginx / "dahlia-app-whoami.conf").read_text()
     assert "listen 8099;" in conf
     assert "proxy_pass http://127.0.0.1:41000;" in conf
-    assert (env.paths.nginx / "dahlia-apps-map.conf").exists()
+    assert (env.naming.paths.nginx / "dahlia-apps-map.conf").exists()
     assert env.reloads
     with pytest.raises(AppError, match="already installed"):
         env.install("whoami")
@@ -205,7 +215,7 @@ def test_install_failure_cleans_up(env):
     with pytest.raises(AppError, match="boom"):
         env.install("whoami")
     assert not (env.paths.apps / "whoami").exists()
-    assert not (env.paths.nginx / "dahlia-app-whoami.conf").exists()
+    assert not (env.naming.paths.nginx / "dahlia-app-whoami.conf").exists()
 
 
 def test_port_conflict_between_apps(env):
@@ -252,7 +262,7 @@ def test_remove_keeps_data_unless_asked(env):
     env.remove("whoami")
     assert marker.exists()
     assert not (env.paths.apps / "whoami").exists()
-    assert not (env.paths.nginx / "dahlia-app-whoami.conf").exists()
+    assert not (env.naming.paths.nginx / "dahlia-app-whoami.conf").exists()
     env.install("whoami")
     env.remove("whoami", delete_data=True)
     assert not (env.paths.pool / "appdata/whoami").exists()
@@ -276,6 +286,19 @@ def test_list(env):
     assert listed[0]["id"] == "whoami"
     assert listed[0]["status"] == "running"
     assert listed[0]["enabled"] is True
+    assert listed[0]["urls"] == {
+        "domain": "https://whoami.dahlia.home.arpa",
+        "mdns": "https://whoami.local",
+        "port": "http://dahlia.local:8099",
+    }
+
+
+def test_install_adds_alias_and_proxy(env):
+    env.install("whoami")
+    assert apps.proxies(env.paths) == [domains.AppProxy("whoami", 41000, 8099)]
+    assert json.loads(env.naming.paths.aliases.read_text()) == {"aliases": ["whoami"]}
+    env.remove("whoami")
+    assert json.loads(env.naming.paths.aliases.read_text()) == {"aliases": []}
 
 
 # --- catalog ------------------------------------------------------------------
