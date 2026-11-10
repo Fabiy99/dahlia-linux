@@ -9,3 +9,10 @@ addr="$(hostname -I 2>/dev/null | cut -d' ' -f1)"
 printf '\n  Dahlia Linux %s\n\n' "$DAHLIA_VERSION"
 printf '  Host : %s.local\n' "$host"
 printf '  IPv4 : %s\n\n' "${addr:-none}"
+
+# Written by dahlia-dashboard while no dashboard account exists.
+code_file=/run/dahlia-dashboard/setup-code
+if [ -r "$code_file" ]; then
+    printf '  Setup: open https://%s/ and enter the code %s\n\n' \
+        "${addr:-$host.local}" "$(cat "$code_file")"
+fi

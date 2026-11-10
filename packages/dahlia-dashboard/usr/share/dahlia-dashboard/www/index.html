@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dahlia</title>
+<link rel="stylesheet" href="/style.css">
+<script src="/app.js" defer></script>
+</head>
+<body>
+<header>
+  <span class="brand">Dahlia</span>
+  <nav id="nav" hidden>
+    <button data-view="overview" data-i18n="nav.overview"></button>
+    <button data-view="storage" data-i18n="nav.storage"></button>
+    <button data-view="jobs" data-i18n="nav.jobs"></button>
+    <button data-view="updates" data-i18n="nav.updates"></button>
+    <button data-view="account" data-i18n="nav.account"></button>
+  </nav>
+  <span class="spacer"></span>
+  <select id="lang" aria-label="Language">
+    <option value="de">Deutsch</option>
+    <option value="en">English</option>
+  </select>
+  <button id="logout" data-i18n="nav.logout" hidden></button>
+</header>
+
+<main>
+  <p id="message" role="status" hidden></p>
+
+  <section id="view-setup" hidden>
+    <h1 data-i18n="setup.title"></h1>
+    <p data-i18n="setup.intro"></p>
+    <form id="setup-form">
+      <label><span data-i18n="setup.code"></span><input name="code" autocomplete="off" required></label>
+      <label><span data-i18n="field.username"></span><input name="username" autocomplete="username" required></label>
+      <label><span data-i18n="field.password"></span><input name="password" type="password" autocomplete="new-password" required></label>
+      <label><span data-i18n="field.password_repeat"></span><input name="password2" type="password" autocomplete="new-password" required></label>
+      <label><span data-i18n="field.hostname"></span><input name="hostname" placeholder="dahlia"></label>
+      <p class="hint" data-i18n="setup.hint"></p>
+      <button type="submit" data-i18n="setup.submit"></button>
+    </form>
+  </section>
+
+  <section id="view-login" hidden>
+    <h1 data-i18n="login.title"></h1>
+    <form id="login-form">
+      <label><span data-i18n="field.username"></span><input name="username" autocomplete="username" required></label>
+      <label><span data-i18n="field.password"></span><input name="password" type="password" autocomplete="current-password" required></label>
+      <button type="submit" data-i18n="login.submit"></button>
+    </form>
+  </section>
+
+  <section id="view-overview" hidden>
+    <h1 data-i18n="overview.title"></h1>
+    <dl id="system-info" class="facts"></dl>
+    <form id="hostname-form" class="inline">
+      <label><span data-i18n="field.hostname"></span><input name="hostname" required></label>
+      <button type="submit" data-i18n="overview.set_hostname"></button>
+    </form>
+    <div class="actions">
+      <button id="reboot" class="danger" data-i18n="overview.reboot"></button>
+      <button id="poweroff" class="danger" data-i18n="overview.poweroff"></button>
+    </div>
+  </section>
+
+  <section id="view-storage" hidden>
+    <h1 data-i18n="storage.title"></h1>
+    <p class="hint" data-i18n="storage.hint"></p>
+    <table>
+      <thead><tr>
+        <th data-i18n="storage.device"></th><th data-i18n="storage.fs"></th>
+        <th data-i18n="storage.size"></th><th data-i18n="storage.status"></th>
+        <th data-i18n="storage.model"></th><th></th>
+      </tr></thead>
+      <tbody id="disks"></tbody>
+    </table>
+    <button id="storage-refresh" data-i18n="common.refresh"></button>
+  </section>
+
+  <section id="view-jobs" hidden>
+    <h1 data-i18n="jobs.title"></h1>
+    <table>
+      <thead><tr>
+        <th data-i18n="jobs.job"></th><th data-i18n="jobs.state"></th>
+        <th data-i18n="jobs.result"></th><th data-i18n="jobs.last_run"></th><th></th>
+      </tr></thead>
+      <tbody id="jobs"></tbody>
+    </table>
+    <button id="jobs-refresh" data-i18n="common.refresh"></button>
+  </section>
+
+  <section id="view-updates" hidden>
+    <h1 data-i18n="updates.title"></h1>
+    <p class="hint" data-i18n="updates.hint"></p>
+    <div class="actions">
+      <button id="updates-check" data-i18n="updates.check"></button>
+      <button id="updates-apply" data-i18n="updates.apply" disabled></button>
+    </div>
+    <p id="updates-status"></p>
+    <table>
+      <thead><tr>
+        <th data-i18n="updates.package"></th><th data-i18n="updates.current"></th>
+        <th data-i18n="updates.new"></th><th data-i18n="updates.origin"></th>
+      </tr></thead>
+      <tbody id="updates"></tbody>
+    </table>
+  </section>
+
+  <section id="view-account" hidden>
+    <h1 data-i18n="account.title"></h1>
+    <form id="password-form">
+      <label><span data-i18n="account.old"></span><input name="old" type="password" autocomplete="current-password" required></label>
+      <label><span data-i18n="field.password"></span><input name="new" type="password" autocomplete="new-password" required></label>
+      <label><span data-i18n="field.password_repeat"></span><input name="new2" type="password" autocomplete="new-password" required></label>
+      <button type="submit" data-i18n="account.submit"></button>
+    </form>
+  </section>
+</main>
+
+<template id="disk-row">
+  <tr>
+    <td class="path"></td><td class="fs"></td><td class="size"></td><td class="status"></td>
+    <td class="model"></td>
+    <td class="ops">
+      <select class="role">
+        <option value="data" data-i18n="role.data"></option>
+        <option value="parity" data-i18n="role.parity"></option>
+        <option value="cache" data-i18n="role.cache"></option>
+        <option value="external" data-i18n="role.external"></option>
+      </select>
+      <button class="add" data-i18n="storage.add"></button>
+      <button class="remove danger" data-i18n="storage.remove"></button>
+    </td>
+  </tr>
+</template>
+</body>
+</html>

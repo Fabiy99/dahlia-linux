@@ -1,0 +1,65 @@
+#!/bin/bash
+# dahlia-dashboard postinst
+set -euo pipefail
+
+TLS_DIR=/etc/dahlia/tls
+SITE=/etc/nginx/sites-available/dahlia
+
+setup_user() {
+    if ! getent passwd dahlia-ui >/dev/null; then
+        adduser --system --group --home /var/lib/dahlia-dashboard --no-create-home \
+            --shell /usr/sbin/nologin dahlia-ui
+    fi
+    # The agent socket is root:dahlia-agent 0660.
+    adduser dahlia-ui dahlia-agent >/dev/null
+}
+
+setup_tls() {
+    # Self-signed until the local Dahlia CA exists (milestone 7).
+    [ -s "$TLS_DIR/dashboard.crt" ] && [ -s "$TLS_DIR/dashboard.key" ] && return 0
+    local host
+    host="$(hostname -s 2>/dev/null || echo dahlia)"
+    mkdir -p "$TLS_DIR"
+    chmod 0755 "$TLS_DIR"
+    (umask 077 && openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 \
+        -nodes -days 3650 -subj "/CN=$host.local" \
+        -addext "subjectAltName=DNS:$host.local,DNS:$host,DNS:dahlia.local" \
+        -keyout "$TLS_DIR/dashboard.key" -out "$TLS_DIR/dashboard.crt" 2>/dev/null)
+    chmod 0600 "$TLS_DIR/dashboard.key"
+    chmod 0644 "$TLS_DIR/dashboard.crt"
+}
+
+setup_nginx() {
+    ln -sf "$SITE" /etc/nginx/sites-enabled/dahlia
+    # Debian's default site also listens on port 80.
+    if [ -L /etc/nginx/sites-enabled/default ]; then
+        rm -f /etc/nginx/sites-enabled/default
+    fi
+}
+
+case "$1" in
+    configure)
+        setup_user
+        setup_tls
+        setup_nginx
+        systemd-tmpfiles --create dahlia-dashboard.conf >/dev/null 2>&1 || true
+        systemctl enable dahlia-dashboard.service >/dev/null 2>&1 || true
+        if [ -d /run/systemd/system ]; then
+            systemctl daemon-reload
+            systemctl restart dahlia-dashboard.service || true
+            if nginx -t >/dev/null 2>&1; then
+                systemctl reload-or-restart nginx.service || true
+            else
+                echo "dahlia-dashboard: nginx configuration test failed, see nginx -t" >&2
+            fi
+        fi
+        ;;
+    abort-upgrade|abort-remove|abort-deconfigure)
+        ;;
+    *)
+        echo "postinst called with unknown argument '$1'" >&2
+        exit 1
+        ;;
+esac
+
+exit 0
