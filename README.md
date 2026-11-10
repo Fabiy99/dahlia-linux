@@ -53,7 +53,8 @@ noch ohne Web-UI und Storage-Funktionen.
   zusammengeführt. Der Mover schiebt im Hintergrund vom Cache auf die HDDs, die Pfade
   bleiben gleich.
 - Vorhandene Platten mit Daten (ext4, XFS, Btrfs) werden ohne Formatieren eingebunden.
-  Nur leere Platten ohne Partitionen lassen sich im Dashboard formatieren.
+  Leere Platten lassen sich im Dashboard formatieren; von anderen Platten (auch NTFS/exFAT)
+  kopiert Dahlia vorher die Daten nach `/mnt/user` und prüft sie.
 - Das Web-UI läuft ohne root-Rechte. Systemänderungen gehen über einen kleinen root-Dienst
   mit einer festen Liste erlaubter Aktionen.
 
@@ -141,7 +142,8 @@ without web UI or storage features yet.
 - Apps and shares only see `/mnt/user`, a mergerfs pool of cache SSD and HDDs. The mover
   shifts data from cache to HDDs in the background; paths stay the same.
 - Existing disks with data (ext4, XFS, Btrfs) are added without formatting.
-  Only blank disks without partitions can be formatted in the dashboard.
+  Blank disks can be formatted in the dashboard; other disks (also NTFS/exFAT) have their
+  data copied to `/mnt/user` and verified first.
 - The web UI runs without root. System changes go through a small root service that only
   accepts a fixed list of actions.
 

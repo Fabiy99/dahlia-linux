@@ -355,6 +355,13 @@ ul.history li .hint { margin: 0; }
 ul.history li .fail { flex-basis: 100%; color: var(--danger); overflow-wrap: anywhere; }
 #ups-status { margin-bottom: 1rem; }
 
+#import-status { gap: .4rem; }
+#import-status .bar { width: 100%; }
+#import-status.bad { border-color: var(--danger); }
+#import-status .fail { color: var(--danger); overflow-wrap: anywhere; }
+.input-prefix { display: flex; align-items: center; gap: .3rem; }
+.input-prefix input { flex: 1; min-width: 0; }
+
 /* --- shares ------------------------------------------------------------------- */
 .notice:not(div) { display: block; }
 table.shares code { font-size: .8rem; color: var(--muted); }

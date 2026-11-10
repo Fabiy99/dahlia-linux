@@ -86,7 +86,8 @@ weekly `scrub`. Mover and SnapRAID share a lock and never run at the same time.
 ### dahlia-disk (from milestone 3)
 
 `dahlia-disk` from the `dahlia-storage` package implements the layout. `add` never
-formats; only `format` creates a filesystem, and only on a blank disk without partitions.
+formats; only `format` creates a filesystem: on a blank disk, or on one whose data `import`
+has copied to `/mnt/user` and verified.
 State lives in `/etc/dahlia/storage.json`; everything else is generated from it.
 
 ```sh
@@ -97,6 +98,7 @@ dahlia-disk add <UUID> --role cache       # SSD filesystem as /mnt/cache (from M
 dahlia-disk add <UUID> --role external    # e.g. NTFS under /mnt/external/<name>
 dahlia-disk remove <UUID>                 # unmount; data stays on the disk
 dahlia-disk format /dev/sdX --fs xfs      # blank disk: GPT, one partition, XFS/ext4/Btrfs
+dahlia-disk import <UUID> --to <name>     # mount read-only, rsync to /mnt/user/<name>, compare
 dahlia-disk apply                         # regenerate units and pools from storage.json
 dahlia-disk snapraid-config [--write]     # generate /etc/snapraid.conf
 ```
@@ -182,7 +184,8 @@ Protocol: one request per connection, one JSON line each way.
 | `storage.add` | `uuid`, `role` (data, parity, cache, external) | `dahlia-disk add` |
 | `storage.remove` | `uuid`, `force` (optional) | `dahlia-disk remove` |
 | `storage.set_option` | `name`, `value` (integer) | `dahlia-disk set-option` |
-| `storage.format` | `device` (whole disk), `filesystem` (`xfs`, `ext4`, `btrfs`), `confirm` (disk name repeated) | `dahlia-disk format`, blank disks only |
+| `storage.format` | `device` (whole disk), `filesystem` (`xfs`, `ext4`, `btrfs`), `confirm` (disk name repeated) | `dahlia-disk format`, blank or imported disks only |
+| `storage.import` / `storage.import_status` | `uuid`, `target` (name below `/mnt/user`) | `dahlia-disk import` as unit `dahlia-import`, progress in `/run/dahlia/import.json` |
 | `job.start` | `job` (mover, snapraid-sync, snapraid-scrub) | starts the unit, returns at once |
 | `job.status` | `job` (plus `update`) | State and last result |
 | `updates.check` | - | `apt-get update`, list of upgrades |

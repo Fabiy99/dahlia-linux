@@ -8,9 +8,11 @@
     dahlia-disk set-minfreespace SIZE
     dahlia-disk set-option NAME VALUE
     dahlia-disk format DEVICE --fs xfs|ext4|btrfs [--label LABEL] [--json]
+    dahlia-disk import UUID --to NAME [--check]
 
 add mounts a disk with the filesystem it has. Only format writes a new
-filesystem, and only on a whole disk without partitions and filesystem.
+filesystem: on a whole disk without filesystems, or one whose filesystems
+import has copied to /mnt/user/NAME and verified.
 """
 
 from __future__ import annotations
@@ -24,7 +26,7 @@ import subprocess
 import sys
 import time
 
-from . import disks, snapraid, state, units
+from . import disks, importer, snapraid, state, units
 
 CONTROL_FILE = ".mergerfs"
 BRANCHES_XATTR = "user.mergerfs.branches"
@@ -177,6 +179,9 @@ def cmd_list(args) -> int:
         registered_uuids={d.uuid for d in st.disks},
         allow_loop=disks.allow_loop_from_env(),
     )
+    done = importer.imported_uuids()
+    for d in found:
+        d.imported = bool(d.uuid) and d.uuid in done
     if args.json:
         print(json.dumps([d.to_dict() for d in found], indent=2))
         return 0
@@ -273,13 +278,17 @@ def cmd_format(args) -> int:
             registered_uuids={d.uuid for d in st.disks},
             allow_loop=disks.allow_loop_from_env(),
         )
-        dev = disks.formattable(found, args.device)
-        # One GPT partition over the whole disk, type Linux filesystem.
-        subprocess.run(["wipefs", "--all", "--quiet", dev.path], check=True)
-        subprocess.run(["sfdisk", "--quiet", dev.path], input="label: gpt\n,,L\n",
+        entries = disks.formattable(found, args.device, importer.imported_uuids())
+        # Old signatures first, partitions before the disk, then one GPT
+        # partition over the whole disk, type Linux filesystem.
+        for e in entries:
+            if e.path != e.disk:
+                subprocess.run(["wipefs", "--all", "--quiet", e.path], check=True)
+        subprocess.run(["wipefs", "--all", "--quiet", args.device], check=True)
+        subprocess.run(["sfdisk", "--quiet", args.device], input="label: gpt\n,,L\n",
                        text=True, check=True)
         subprocess.run(["udevadm", "settle"], check=False)
-        part = disks.partition_path(dev.path)
+        part = disks.partition_path(args.device)
         wait_for(part)
         subprocess.run([*MKFS[args.fs], args.label, part], check=True)
         # Let udev pick up the new UUID so /dev/disk/by-uuid/ exists for add.
@@ -288,10 +297,31 @@ def cmd_format(args) -> int:
         uuid = disks.blkid_probe(part).get("UUID", "")
         if not uuid:
             raise DiskError(f"{part} has no filesystem UUID after mkfs")
+        importer.forget({e.uuid for e in entries if e.uuid})
     if args.json:
-        print(json.dumps({"device": dev.path, "partition": part, "fstype": args.fs, "uuid": uuid}))
+        print(json.dumps({"device": args.device, "partition": part, "fstype": args.fs,
+                          "uuid": uuid}))
     else:
-        print(f"{dev.path}: {args.fs} on {part}, UUID {uuid}")
+        print(f"{args.device}: {args.fs} on {part}, UUID {uuid}")
+    return 0
+
+
+def cmd_import(args) -> int:
+    with state.locked():
+        st = state.load()
+        found = disks.classify(
+            disks.run_lsblk(),
+            registered_uuids={d.uuid for d in st.disks},
+            allow_loop=disks.allow_loop_from_env(),
+        )
+        dev = importer.check_source(found, args.uuid)
+        target = importer.check_target(args.to)
+    if args.check:
+        print(f"{dev.path} ({dev.fstype}) can be copied to {target}")
+        return 0
+    # Not under the storage lock: copying takes hours.
+    res = importer.run_import(dev, target)
+    print(f"{dev.path}: copied to {res['target']} and verified")
     return 0
 
 
@@ -415,6 +445,12 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--json", action="store_true")
     s.set_defaults(func=cmd_format)
 
+    s = sub.add_parser("import", help="copy a disk's data to /mnt/user/NAME and verify it")
+    s.add_argument("uuid")
+    s.add_argument("--to", required=True)
+    s.add_argument("--check", action="store_true", help="only check source and target")
+    s.set_defaults(func=cmd_import)
+
     s = sub.add_parser("remove", help="unmount a disk and drop it from Dahlia")
     s.add_argument("uuid")
     s.add_argument("--force", action="store_true", help="remove a cache that still holds files")
@@ -442,7 +478,7 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
         return args.func(args)
-    except (DiskError, snapraid.SnapraidError, ValueError) as e:
+    except (DiskError, importer.ImportError_, snapraid.SnapraidError, ValueError) as e:
         print(f"dahlia-disk: {e}", file=sys.stderr)
         return 1
     except subprocess.CalledProcessError as e:

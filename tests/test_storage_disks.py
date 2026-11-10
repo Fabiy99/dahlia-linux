@@ -142,15 +142,27 @@ def test_enrich_fills_missing_signatures_from_probe():
     assert calls == ["/dev/loop3"]  # devices udev already knows are not probed
 
 
-def test_only_blank_whole_disks_are_formattable():
+def test_only_blank_or_imported_whole_disks_are_formattable():
     found = disks.classify(LSBLK)
-    assert disks.formattable(found, "/dev/sdc").path == "/dev/sdc"
-    for device, why in [("/dev/nvme0n1", "not a blank disk"), ("/dev/nvme0n1p2", "partition"),
-                        ("/dev/sda", "not a blank disk"), ("/dev/sda1", "partition"),
-                        ("/dev/sdb", "can join the pool"), ("/dev/sde", "member of"),
-                        ("/dev/sdz", "not a blank disk")]:
+    assert [d.path for d in disks.formattable(found, "/dev/sdc")] == ["/dev/sdc"]
+    for device, why in [("/dev/nvme0n1", "running system"), ("/dev/nvme0n1p2", "partition"),
+                        ("/dev/sda", "holds data"), ("/dev/sda1", "partition"),
+                        ("/dev/sdb", "holds data"), ("/dev/sde", "member of"),
+                        ("/dev/sdg", "mounted outside"), ("/dev/sdz", "not a disk")]:
         with pytest.raises(ValueError, match=why):
             disks.formattable(found, device)
+
+
+def test_imported_disk_becomes_formattable():
+    found = disks.classify(LSBLK)
+    entries = disks.formattable(found, "/dev/sdf", imported={"NTFS1234"})
+    assert [d.path for d in entries] == ["/dev/sdf1"]
+    with pytest.raises(ValueError, match="holds data"):
+        disks.formattable(found, "/dev/sdf", imported={"other"})
+    # A registered disk stays untouchable even after an import.
+    found = disks.classify(LSBLK, registered_uuids={"uuid-sda1"})
+    with pytest.raises(ValueError, match="managed by Dahlia"):
+        disks.formattable(found, "/dev/sda", imported={"uuid-sda1"})
 
 
 def test_formattable_refuses_blank_system_disk():

@@ -146,6 +146,41 @@ def test_storage_format_runs_dahlia_disk(ctx):
                                        "confirm": "nvme0n1"})["ok"]
 
 
+def test_storage_import_starts_background_job(ctx):
+    for bad in [{"uuid": "1234-ABCD", "target": "../etc"}, {"uuid": "x;y", "target": "old"},
+                {"uuid": "1234-ABCD", "target": "-rf"}]:
+        assert err_code(run(ctx, "storage.import", bad)) == protocol.INVALID_PARAMS
+    assert ctx.runner.calls == []
+    res = run(ctx, "storage.import", {"uuid": "1234-ABCD", "target": "old-sdb"})["result"]
+    assert res == {"uuid": "1234-ABCD", "target": "/mnt/user/old-sdb"}
+    assert ["dahlia-disk", "import", "1234-ABCD", "--to", "old-sdb", "--check"] in ctx.runner.calls
+    job = ctx.runner.calls[-1]
+    assert job[:2] == ["systemd-run", "--unit=dahlia-import"]
+    assert job[-5:] == ["dahlia-disk", "import", "1234-ABCD", "--to", "old-sdb"]
+
+
+def test_storage_import_refuses_second_job_and_bad_source(ctx):
+    ctx.runner.answers[("systemctl", "is-active")] = (0, "active\n", "")
+    assert err_code(run(ctx, "storage.import", {"uuid": "1234-ABCD", "target": "a"})) == \
+        protocol.BUSY
+    ctx.runner.answers[("systemctl", "is-active")] = (3, "inactive\n", "")
+    ctx.runner.answers[("dahlia-disk", "import")] = (1, "", "dahlia-disk: not mounted\n")
+    reply = run(ctx, "storage.import", {"uuid": "1234-ABCD", "target": "a"})
+    assert err_code(reply) == protocol.FAILED and "not mounted" in reply["error"]["message"]
+    assert not any(c[0] == "systemd-run" for c in ctx.runner.calls)
+
+
+def test_storage_import_status(ctx, tmp_path):
+    ctx.run_dir = tmp_path
+    assert run(ctx, "storage.import_status")["result"] == {"import": None}
+    (tmp_path / "import.json").write_text('{"phase": "copy", "percent": 40, "error": ""}')
+    ctx.runner.answers[("systemctl", "is-active")] = (0, "active\n", "")
+    assert run(ctx, "storage.import_status")["result"]["import"]["phase"] == "copy"
+    ctx.runner.answers[("systemctl", "is-active")] = (3, "inactive\n", "")
+    got = run(ctx, "storage.import_status")["result"]["import"]
+    assert got["phase"] == "failed" and got["error"] == "import stopped"
+
+
 def test_storage_remove_force_must_be_bool(ctx):
     params = {"uuid": "1234-ABCD", "force": "yes"}
     assert err_code(run(ctx, "storage.remove", params)) == protocol.INVALID_PARAMS
@@ -463,6 +498,8 @@ def test_action_list_is_fixed():
         "shares.user_remove",
         "storage.add",
         "storage.format",
+        "storage.import",
+        "storage.import_status",
         "storage.list",
         "storage.remove",
         "storage.set_option",

@@ -201,6 +201,7 @@
       <section id="view-storage" hidden>
         <div id="pool-summary" class="tiles pools"></div>
         <p class="hint" data-i18n="storage.hint"></p>
+        <div id="import-status" class="notice" hidden></div>
         <div id="disks" class="disk-list"></div>
         <div class="actions"><button id="storage-refresh" data-i18n="common.refresh"></button></div>
       </section>
@@ -510,6 +511,20 @@
   </form>
 </dialog>
 
+<dialog id="import-dialog">
+  <form id="import-form" method="dialog">
+    <h2 id="import-title"></h2>
+    <p class="hint" id="import-text"></p>
+    <label><span data-i18n="storage.import_target"></span>
+      <span class="input-prefix"><code data-i18n="storage.import_prefix"></code><input name="target" autocomplete="off" required pattern="[A-Za-z0-9][A-Za-z0-9._\-]{0,63}"></span>
+    </label>
+    <div class="dialog-actions">
+      <button value="cancel" formnovalidate data-i18n="common.cancel"></button>
+      <button value="ok" class="primary" data-i18n="storage.import_start"></button>
+    </div>
+  </form>
+</dialog>
+
 <dialog id="format-dialog">
   <form id="format-form" method="dialog">
     <h2 id="format-title"></h2>
@@ -556,6 +571,7 @@
       </select>
       <button class="add" data-i18n="storage.add"></button>
       <button class="remove danger" data-i18n="storage.remove"></button>
+      <button class="import" data-i18n="storage.import"></button>
       <button class="format danger" data-i18n="storage.format"></button>
     </div>
   </div>

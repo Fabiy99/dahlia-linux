@@ -196,6 +196,8 @@ def test_actions_go_to_agent(env):
     client.post("/api/storage/remove", json={"uuid": "1234-ABCD", "force": True}, headers=CSRF)
     client.post("/api/storage/format", json={"device": "/dev/sdb", "filesystem": "xfs",
                                              "confirm": "sdb"}, headers=CSRF)
+    client.post("/api/storage/import", json={"uuid": "1234-ABCD", "target": "old"}, headers=CSRF)
+    client.get("/api/storage/import")
     client.post("/api/jobs/mover/start", headers=CSRF)
     client.post("/api/updates/apply", headers=CSRF)
     client.post("/api/system/hostname", json={"hostname": "nas"}, headers=CSRF)
@@ -203,6 +205,8 @@ def test_actions_go_to_agent(env):
         ("storage.add", {"uuid": "1234-ABCD", "role": "data"}),
         ("storage.remove", {"uuid": "1234-ABCD", "force": True}),
         ("storage.format", {"device": "/dev/sdb", "filesystem": "xfs", "confirm": "sdb"}),
+        ("storage.import", {"uuid": "1234-ABCD", "target": "old"}),
+        ("storage.import_status", {}),
         ("job.start", {"job": "mover"}),
         ("updates.apply", {}),
         ("system.set_hostname", {"hostname": "nas"}),

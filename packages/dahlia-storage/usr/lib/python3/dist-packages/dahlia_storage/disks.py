@@ -50,6 +50,7 @@ class Device:
     # candidate, external-only, empty, system, mounted, foreign, unsupported, registered
     status: str
     reason: str
+    imported: bool = False  # data copied to /mnt/user by dahlia-disk import
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -197,16 +198,24 @@ def _device(node: dict, disk: dict, status: str, reason: str) -> Device:
     )
 
 
-def formattable(found: list[Device], device: str) -> Device:
-    """The blank whole disk `device`, or ValueError why it may not be formatted."""
-    dev = next((d for d in found if d.path == device), None)
-    if dev is None:
-        raise ValueError(f"{device} is not a blank disk")
-    if dev.path != dev.disk:
-        raise ValueError(f"{device} is a partition; only whole blank disks are formatted")
-    if dev.status != "empty":
-        raise ValueError(f"{device} cannot be formatted: {dev.reason}")
-    return dev
+def formattable(found: list[Device], device: str,
+                imported: set[str] | frozenset[str] = frozenset()) -> list[Device]:
+    """Entries of the whole disk `device`, or ValueError why it may not be formatted.
+
+    A disk qualifies when nothing on it is in use and every filesystem on it
+    is either absent or was copied away by a finished import.
+    """
+    entries = [d for d in found if d.disk == device]
+    if not entries:
+        if any(d.path == device for d in found):
+            raise ValueError(f"{device} is a partition; only whole disks are formatted")
+        raise ValueError(f"{device} is not a disk Dahlia can use")
+    for d in entries:
+        if d.status in ("system", "registered", "mounted", "foreign"):
+            raise ValueError(f"{device} cannot be formatted: {d.reason}")
+        if d.status != "empty" and d.uuid not in imported:
+            raise ValueError(f"{d.path} holds data ({d.fstype}); import it before formatting")
+    return entries
 
 
 def partition_path(disk: str) -> str:
