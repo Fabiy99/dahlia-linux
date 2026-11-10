@@ -218,20 +218,20 @@ jq -e '.aliases == []' /var/lib/dahlia/mdns-aliases.json >/dev/null || fail "ali
 if curl -sf --max-time 3 "http://$lan_ip:8099/" >/dev/null; then fail "port link still open"; fi
 
 step "install to the system SSD, one folder on the array"
-[ -d /srv/dahlia ] || fail "/srv/dahlia not created by the postinst"
+[ -d /srv ] || fail "/srv missing"
 mkdir -p /mnt/user/Kino
-call apps.install '{"id": "whoami", "location": "system", "folders": {"media": "array:Kino"}}' \
+call apps.install '{"id": "whoami", "location": "/srv", "folders": {"media": "/mnt/user/Kino"}}' \
     >/dev/null
 wait_job
-[ -d /srv/dahlia/appdata/whoami/config ] || fail "appdata not on the system SSD"
+[ -d /srv/appdata/whoami/config ] || fail "appdata not on the system SSD"
 mounts="$(docker inspect -f '{{range .Mounts}}{{.Source}}={{.Destination}} {{end}}' dahlia-whoami)"
 echo "$mounts"
-grep -q '/srv/dahlia/appdata/whoami/config=/config' <<<"$mounts" || fail "config mount wrong"
+grep -q '/srv/appdata/whoami/config=/config' <<<"$mounts" || fail "config mount wrong"
 grep -q '/mnt/user/Kino=/media' <<<"$mounts" || fail "media mount wrong"
-call apps.list | jq -e '.apps[] | select(.id == "whoami") | .location == "system"' >/dev/null \
+call apps.list | jq -e '.apps[] | select(.id == "whoami") | .location == "/srv"' >/dev/null \
     || fail "location not listed"
 call apps.remove '{"id": "whoami", "delete_data": true}' >/dev/null
-[ ! -e /srv/dahlia/appdata/whoami ] || fail "system appdata not deleted"
+[ ! -e /srv/appdata/whoami ] || fail "system appdata not deleted"
 [ -d /mnt/user/Kino ] || fail "chosen share folder deleted"
 
 step "stack: app with PostgreSQL and MariaDB"

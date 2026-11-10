@@ -14,7 +14,7 @@ fail() { echo "FAIL: $*" >&2; exit 1; }
 step() { echo; echo "== $*"; }
 
 cleanup() {
-    for m in "$WORK"/check "$WORK"/root/srv/dahlia "$WORK"/root "$WORK"/ext; do
+    for m in "$WORK"/check "$WORK"/root/srv "$WORK"/root "$WORK"/ext; do
         mountpoint -q "$m" && umount "$m"
     done
     for l in "${LOOPS[@]}"; do losetup -d "$l" || true; done
@@ -32,7 +32,7 @@ loop() {
 
 export DAHLIA_NO_SYSTEMCTL=1
 
-step "Btrfs root: subvolume @dahlia and a mount unit"
+step "Btrfs root: subvolume @srv and a mount unit"
 BTRFS="$(loop btrfs 300M)"
 mkfs.btrfs -q "$BTRFS"
 mkdir -p "$WORK/top" "$WORK/root" "$WORK/units" "$WORK/check"
@@ -40,34 +40,34 @@ mount "$BTRFS" "$WORK/top"
 btrfs -q subvolume create "$WORK/top/@rootfs"
 umount "$WORK/top"
 mount -o subvol=@rootfs "$BTRFS" "$WORK/root"
-DAHLIA_SYSTEM_ROOT="$WORK/root" DAHLIA_SYSTEM_DATA="$WORK/root/srv/dahlia" \
+DAHLIA_SYSTEM_ROOT="$WORK/root" DAHLIA_SYSTEM_DATA="$WORK/root/srv" \
     DAHLIA_UNIT_DIR="$WORK/units" "$SCRIPT"
 unit="$(ls "$WORK/units")"
 [ "$(echo "$unit" | wc -l)" = 1 ] || fail "expected one unit, got: $unit"
-case "$unit" in *srv-dahlia.mount) ;; *) fail "unit name $unit" ;; esac
+case "$unit" in *srv.mount) ;; *) fail "unit name $unit" ;; esac
 uuid="$(blkid -s UUID -o value "$BTRFS")"
 grep -qx "What=/dev/disk/by-uuid/$uuid" "$WORK/units/$unit" || fail "What= wrong"
-grep -qx "Where=$WORK/root/srv/dahlia" "$WORK/units/$unit" || fail "Where= wrong"
-grep -qx "Options=subvol=@dahlia,noatime,nofail" "$WORK/units/$unit" || fail "Options= wrong"
+grep -qx "Where=$WORK/root/srv" "$WORK/units/$unit" || fail "Where= wrong"
+grep -qx "Options=subvol=@srv,noatime,nofail" "$WORK/units/$unit" || fail "Options= wrong"
 mount -o subvolid=5 "$BTRFS" "$WORK/check"
-btrfs subvolume show "$WORK/check/@dahlia" >/dev/null || fail "@dahlia missing"
+btrfs subvolume show "$WORK/check/@srv" >/dev/null || fail "@srv missing"
 umount "$WORK/check"
-[ -d "$WORK/root/srv/dahlia" ] || fail "mount point missing"
+[ -d "$WORK/root/srv" ] || fail "mount point missing"
 
 step "Btrfs: the subvolume is outside snapshots of the root"
-mount -o subvol=@dahlia "$BTRFS" "$WORK/root/srv/dahlia"
-echo keep > "$WORK/root/srv/dahlia/data"
+mount -o subvol=@srv "$BTRFS" "$WORK/root/srv"
+echo keep > "$WORK/root/srv/data"
 btrfs -q subvolume snapshot "$WORK/root" "$WORK/root/snap"
-[ ! -e "$WORK/root/snap/srv/dahlia/data" ] || fail "app data ended up in a root snapshot"
+[ ! -e "$WORK/root/snap/srv/data" ] || fail "app data ended up in a root snapshot"
 btrfs -q subvolume delete "$WORK/root/snap"
 
 step "Btrfs: a second run changes nothing"
 before="$(sha256sum "$WORK/units/$unit")"
-DAHLIA_SYSTEM_ROOT="$WORK/root" DAHLIA_SYSTEM_DATA="$WORK/root/srv/dahlia" \
+DAHLIA_SYSTEM_ROOT="$WORK/root" DAHLIA_SYSTEM_DATA="$WORK/root/srv" \
     DAHLIA_UNIT_DIR="$WORK/units" "$SCRIPT"
 [ "$(sha256sum "$WORK/units/$unit")" = "$before" ] || fail "unit rewritten"
-[ "$(cat "$WORK/root/srv/dahlia/data")" = keep ] || fail "data changed"
-umount "$WORK/root/srv/dahlia"
+[ "$(cat "$WORK/root/srv/data")" = keep ] || fail "data changed"
+umount "$WORK/root/srv"
 umount "$WORK/root"
 
 step "ext4 root: plain directory, no unit"
@@ -75,9 +75,9 @@ EXT="$(loop ext4 64M)"
 mkfs.ext4 -q "$EXT"
 mkdir -p "$WORK/ext" "$WORK/units-ext"
 mount "$EXT" "$WORK/ext"
-DAHLIA_SYSTEM_ROOT="$WORK/ext" DAHLIA_SYSTEM_DATA="$WORK/ext/srv/dahlia" \
+DAHLIA_SYSTEM_ROOT="$WORK/ext" DAHLIA_SYSTEM_DATA="$WORK/ext/srv" \
     DAHLIA_UNIT_DIR="$WORK/units-ext" "$SCRIPT"
-[ -d "$WORK/ext/srv/dahlia" ] || fail "directory missing"
+[ -d "$WORK/ext/srv" ] || fail "directory missing"
 [ -z "$(ls -A "$WORK/units-ext")" ] || fail "unit written on ext4"
 
 echo

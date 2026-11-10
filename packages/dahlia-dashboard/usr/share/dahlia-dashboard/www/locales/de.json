@@ -117,7 +117,7 @@
   "apps.title": "Apps",
   "apps.installed": "Installiert",
   "apps.catalog": "Katalog",
-  "apps.hint": "Apps laufen als Docker-Container. Ihre Daten liegen je nach Wahl bei der Installation im Array (/mnt/user/appdata) oder auf der System-SSD (/srv/dahlia/appdata).",
+  "apps.hint": "Apps laufen als Docker-Container. Ihre Daten liegen je nach Wahl bei der Installation im Array (/mnt/user/appdata) oder auf der System-SSD (/srv/appdata).",
   "apps.refresh": "Katalog aktualisieren",
   "apps.install": "Installieren",
   "apps.update": "Aktualisieren",

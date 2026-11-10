@@ -107,7 +107,7 @@ class AppOpBody(BaseModel):
 
 
 class MkdirBody(BaseModel):
-    root: str = "array"
+    root: str = "/mnt/user"
     path: str
 
 
@@ -416,7 +416,7 @@ def create_app(cfg: Config | None = None) -> FastAPI:
         return agent(f"apps.{op}", params)
 
     @app.get("/api/files", dependencies=authed)
-    def files_browse(root: str = "array", path: str = ""):
+    def files_browse(root: str = "/mnt/user", path: str = ""):
         return agent("files.browse", {"root": root, "path": path})
 
     @app.post("/api/files/mkdir", dependencies=changing)

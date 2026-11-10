@@ -19,7 +19,7 @@ Beide Fassungen inhaltlich gleich halten.
 - Storage: Datenplatten einzeln unter `/mnt/diskN`, Parity unter `/mnt/parityN`,
   Cache unter `/mnt/cache` (Btrfs, RAID1 bei zwei SSDs), `/mnt/storage` = mergerfs nur HDDs,
   `/mnt/user` = mergerfs Cache + HDDs. Freigaben nutzen nur `/mnt/user`. Apps liegen wahlweise
-  auf `/mnt/user` oder auf der System-SSD unter `/srv/dahlia` (Btrfs-Subvolume `@dahlia`).
+  auf `/mnt/user` oder auf der System-SSD unter `/srv` (auf Btrfs eigenes Subvolume `@srv`).
 - Platten über generierte systemd-Mount-Units mit `nofail`, nicht über `/etc/fstab`.
 - Web-UI (`dahlia-dashboard`) läuft unprivilegiert. Alles, was root braucht, geht über
   `dahlia-agent` (Unix-Socket, feste Aktionsliste, Parameter werden geprüft).

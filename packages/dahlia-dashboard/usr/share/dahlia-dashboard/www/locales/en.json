@@ -117,7 +117,7 @@
   "apps.title": "Apps",
   "apps.installed": "Installed",
   "apps.catalog": "Catalog",
-  "apps.hint": "Apps run as Docker containers. Depending on the choice at install, their data lives on the array (/mnt/user/appdata) or on the system SSD (/srv/dahlia/appdata).",
+  "apps.hint": "Apps run as Docker containers. Depending on the choice at install, their data lives on the array (/mnt/user/appdata) or on the system SSD (/srv/appdata).",
   "apps.refresh": "Refresh catalog",
   "apps.install": "Install",
   "apps.update": "Update",

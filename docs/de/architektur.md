@@ -74,7 +74,7 @@ Einmal-Code geschützt, der auf tty1 und in `/etc/motd` steht (ab Meilenstein 5)
 | `/mnt/external` | USB- und NTFS-Platten, außerhalb von Pool und SnapRAID |
 
 SMB-Freigaben nutzen nur `/mnt/user`. Apps liegen auf `/mnt/user` oder, wenn man es bei der
-Installation wählt oder kein Array da ist, auf der System-SSD unter `/srv/dahlia` (siehe Apps). Neue Dateien landen auf dem Cache
+Installation wählt oder kein Array da ist, auf der System-SSD unter `/srv` (siehe Apps). Neue Dateien landen auf dem Cache
 (`category.create=ff`), der Mover verschiebt sie nachts nach `/mnt/storage`. Der Pfad unter
 `/mnt/user` ändert sich dabei nicht.
 
@@ -196,7 +196,7 @@ Protokoll: eine Anfrage pro Verbindung, je eine JSON-Zeile hin und zurück.
 | `updates.apply` | - | `apt-get full-upgrade` über die Unit `dahlia-update.service` |
 | `apps.catalog` | `refresh` (optional) | App-Katalog und sein Stand, mit `refresh` vorher herunterladen |
 | `apps.list` | - | installierte Apps mit Container-Zustand, Version, verfügbarem Update |
-| `apps.install`, `apps.update` | `id`, bei `install` `location` (optional, `array` oder `system`) und `folders` (optional, Freigabe -> `array:<Pfad>` oder `system:<Pfad>`) | im Hintergrund als Unit `dahlia-app-<id>`; die Ordner bleiben bei Updates erhalten |
+| `apps.install`, `apps.update` | `id`, bei `install` `location` (optional, `/mnt/user` oder `/srv`) und `folders` (optional, Freigabe -> Ordner unter `/mnt/user` oder `/srv`) | im Hintergrund als Unit `dahlia-app-<id>`; die Ordner bleiben bei Updates erhalten |
 | `apps.job` | `id` | Zustand der letzten Installation bzw. Aktualisierung |
 | `apps.start`, `apps.stop` | `id` | starten bzw. stoppen, gilt auch für den nächsten Boot |
 | `apps.remove` | `id`, `delete_data` (optional) | Container entfernen, Daten nur auf Wunsch |
@@ -330,8 +330,8 @@ Vorlage unter `login` nennt.
 | --- | --- |
 | Web-Port | Docker veröffentlicht ihn auf `127.0.0.1:41000-41999`; nginx lauscht im LAN auf dem öffentlichen Port der Vorlage (Port-Link `http://<server>:<port>/`) und auf 443 für `<id>.<domain>` und `<id>.local` |
 | LAN-Ports | nur wenn die Vorlage sie nennt; das Dashboard zeigt sie vor der Installation |
-| Speicherort | `array` = `/mnt/user`, `system` = `/srv/dahlia` auf der System-SSD. Wahl bei der Installation, ohne Array automatisch `system`. Apps von vor 0.7 liegen auf dem Array |
-| System-SSD | `/srv/dahlia` ist auf Btrfs das Subvolume `@dahlia` auf oberster Ebene, eingehängt über `srv-dahlia.mount` (angelegt von `/usr/lib/dahlia/system-data.sh` im postinst). Es gehört nicht zu den snapper-Snapshots von `/`: ein Rollback setzt App-Daten nicht zurück und verliert sie nicht. Auf anderen Dateisystemen ein normaler Ordner |
+| Speicherort | Array `/mnt/user` oder System-SSD `/srv` (FHS: Daten, die das System bereitstellt). Wahl bei der Installation, ohne Array automatisch `/srv`. Apps von vor 0.7 liegen auf dem Array |
+| System-SSD | `/srv` ist auf Btrfs ein eigenes Subvolume `@srv` auf oberster Ebene wie bei openSUSE, eingehängt über `srv.mount` (angelegt von `/usr/lib/dahlia/system-data.sh` im postinst). Es gehört nicht zu den snapper-Snapshots von `/`: ein Rollback setzt App-Daten nicht zurück und verliert sie nicht. Auf anderen Dateisystemen ein normaler Ordner |
 | Daten | `<Ort>/appdata/<id>/...` (Besitzer `dahlia-apps`), Freigaben `<Ort>/<name>`; Apps auf dem Array starten nur mit eingehängtem Array |
 | Einrichtung | Das Dashboard zeigt vor der Installation die Voraussetzungen und die Freigaben der App. Man wählt den Speicherort; "Ändern" öffnet einen Ordnerbaum auf System-SSD oder Array (mit "Neuer Ordner"), auch gemischt; der Pfad im Container bleibt gleich |
 | Start | Docker startet nichts selbst (`restart: no`); `dahlia-apps.service` startet die aktivierten Apps nach den Platten |
@@ -342,7 +342,7 @@ Vorlage unter `login` nennt.
 
 ```sh
 dahlia-apps catalog --refresh
-dahlia-apps install jellyfin [--location system] [--folder media=array:Filme/Serien]
+dahlia-apps install jellyfin [--location /srv] [--folder media=/mnt/user/Filme/Serien]
 dahlia-apps list
 dahlia-apps updates                # Apps mit neuerer Vorlage im Katalog
 dahlia-apps update jellyfin

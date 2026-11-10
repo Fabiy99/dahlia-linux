@@ -67,7 +67,7 @@ def env(tmp_path):
         catalog=tmp_path / "catalog",
         pool=tmp_path / "user",
         config=tmp_path / "apps.json",
-        system=tmp_path / "srv" / "dahlia",
+        system=tmp_path / "srv",
     )
     dpaths = domains.Paths(
         config=tmp_path / "domains.json",
@@ -188,7 +188,8 @@ def test_compose_lan_ports(env):
 
 def test_install(env):
     result = env.install("whoami")
-    assert result == {"id": "whoami", "host_port": 41000, "enabled": True, "location": "array"}
+    assert result == {"id": "whoami", "host_port": 41000, "enabled": True,
+                      "location": str(env.paths.pool)}
     d = env.paths.apps / "whoami"
     assert json.loads((d / "compose.json").read_text())["services"]["app"]["ports"] == [
         "127.0.0.1:41000:80/tcp"
@@ -208,15 +209,15 @@ def test_install(env):
 def test_install_on_array_needs_pool(env):
     env.mounted = lambda p: False
     with pytest.raises(AppError, match="not mounted"):
-        env.install("whoami", location="array")
+        env.install("whoami", location=str(env.paths.pool))
     with pytest.raises(AppError, match="not mounted"):
-        env.install("whoami", {"media": "array:Filme"}, location="system")
+        env.install("whoami", {"media": f"{env.paths.pool}/Filme"}, location=str(env.paths.system))
     assert not (env.paths.apps / "whoami").exists()
 
 
 def test_install_without_array_goes_to_system(env):
     env.mounted = lambda p: False
-    assert env.install("whoami")["location"] == "system"
+    assert env.install("whoami")["location"] == str(env.paths.system)
     app = json.loads((env.paths.apps / "whoami/compose.json").read_text())["services"]["app"]
     sources = {v["target"]: v["source"] for v in app["volumes"]}
     assert sources == {"/config": str(env.paths.system / "appdata/whoami/config"),
@@ -227,15 +228,16 @@ def test_install_without_array_goes_to_system(env):
     env.update("whoami")
     app = json.loads((env.paths.apps / "whoami/compose.json").read_text())["services"]["app"]
     assert {v["target"]: v["source"] for v in app["volumes"]} == sources
-    assert env.list()[0]["location"] == "system"
+    assert env.list()[0]["location"] == str(env.paths.system)
     env.remove("whoami", delete_data=True)
     assert not (env.paths.system / "appdata/whoami").exists()
 
 
 def test_system_app_with_share_on_array(env):
-    env.install("whoami", {"media": "array:Filme"}, location="system")
+    env.install("whoami", {"media": f"{env.paths.pool}/Filme"}, location=str(env.paths.system))
     state = json.loads((env.paths.apps / "whoami/state.json").read_text())
-    assert state["location"] == "system" and state["folders"] == {"media": "array:Filme"}
+    assert state["location"] == str(env.paths.system)
+    assert state["folders"] == {"media": f"{env.paths.pool}/Filme"}
     assert (env.paths.pool / "Filme").is_dir()
     env.docker.calls.clear()
     env.mounted = lambda p: False
@@ -259,7 +261,7 @@ def test_old_apps_stay_on_array(env):
 
 def test_install_rejects_unknown_location(env):
     with pytest.raises(AppError, match="unknown location"):
-        env.install("whoami", location="usb")
+        env.install("whoami", location="/media/usb")
 
 
 def test_precheck(env):
@@ -280,13 +282,13 @@ def test_precheck(env):
 
 def test_install_with_chosen_folder_survives_update(env):
     (env.paths.pool / "Filme").mkdir()
-    env.install("whoami", {"media": "Filme/Kino"})
+    env.install("whoami", {"media": f"{env.paths.pool}/Filme/Kino"})
     app = json.loads((env.paths.apps / "whoami/compose.json").read_text())["services"]["app"]
     sources = {v["target"]: v["source"] for v in app["volumes"]}
     assert sources["/media"] == str(env.paths.pool / "Filme/Kino")
     assert (env.paths.pool / "Filme/Kino").is_dir() and not (env.paths.pool / "media").exists()
     assert json.loads((env.paths.apps / "whoami/state.json").read_text())["folders"] == {
-        "media": "array:Filme/Kino"}
+        "media": f"{env.paths.pool}/Filme/Kino"}
     env.update("whoami")
     app = json.loads((env.paths.apps / "whoami/compose.json").read_text())["services"]["app"]
     assert {v["target"]: v["source"] for v in app["volumes"]}["/media"] == sources["/media"]
@@ -295,14 +297,17 @@ def test_install_with_chosen_folder_survives_update(env):
 @pytest.mark.parametrize("folders,why", [
     ({"media": "../etc"}, "not a folder"),
     ({"media": "/etc"}, "not a folder"),
-    ({"media": "Filme/../../etc"}, "not a folder"),
-    ({"media": "usb:Filme"}, "not a folder"),
-    ({"media": "appdata/other"}, "app data"),
-    ({"media": "system:appdata/other"}, "app data"),
-    ({"config": "x"}, "no share config"),
-    ({"media": "a\nb"}, "not a folder"),
+    ({"media": "Filme"}, "not a folder"),
+    ({"media": "{pool}/Filme/../../etc"}, "not a folder"),
+    ({"media": "{pool}"}, "not a folder"),
+    ({"media": "{pool}/appdata/other"}, "app data"),
+    ({"media": "{system}/appdata/other"}, "app data"),
+    ({"config": "{pool}/x"}, "no share config"),
+    ({"media": "{pool}/a\nb"}, "not a folder"),
 ])
 def test_install_rejects_bad_folders(env, folders, why):
+    folders = {k: v.format(pool=env.paths.pool, system=env.paths.system)
+               for k, v in folders.items()}
     with pytest.raises(AppError, match=why):
         env.precheck("install", "whoami", folders)
     with pytest.raises(AppError, match=why):
@@ -313,7 +318,7 @@ def test_install_rejects_bad_folders(env, folders, why):
 def test_install_rejects_symlink_out_of_pool(env, tmp_path):
     (env.paths.pool / "escape").symlink_to(tmp_path)
     with pytest.raises(AppError, match="outside"):
-        env.install("whoami", {"media": "escape/x"})
+        env.install("whoami", {"media": f"{env.paths.pool}/escape/x"})
 
 
 def test_catalog_lists_shares(env):

@@ -919,7 +919,7 @@ function renderInstalled(installed) {
     const remove = iconButton("trash", "apps.remove", async () => {
       if (!await ask(t("apps.confirm_remove", { name: app.name }), "apps.remove", true)) return;
       const deleteData = await ask(t("apps.confirm_delete_data", {
-        path: `${app.location === "system" ? "/srv/dahlia" : "/mnt/user"}/appdata/${app.id}` }),
+        path: `${app.location || ARRAY}/appdata/${app.id}` }),
                                    "apps.delete_data", true);
       await api("POST", `apps/${app.id}/remove`, { delete_data: deleteData });
       say(t("apps.removed", { name: app.name }), "ok");
@@ -944,49 +944,46 @@ function renderInstalled(installed) {
 
 // --- install dialog and folder picker -------------------------------------------
 
-// Locations for app data and folders: "array" (/mnt/user) and "system" (/srv/dahlia).
-let folderRoot = "array";
+// Locations for app data and folders: the array and the system SSD.
+const ARRAY = "/mnt/user";
+const SYSTEM = "/srv";
+let folderRoot = ARRAY;
 let folderPath = "";
-let locationPaths = { array: "/mnt/user", system: "/srv/dahlia" };
 
 function joinPath(base, name) {
   return base ? `${base}/${name}` : name;
 }
 
 function fullPath(root, path) {
-  return path ? `${locationPaths[root]}/${path}` : locationPaths[root];
+  return path ? `${root}/${path}` : root;
 }
 
 // Two buttons, one per location; the chosen one is pressed.
 function placeButtons(box, current, available, onPick) {
   box.replaceChildren();
-  for (const name of ["system", "array"]) {
+  for (const [name, root] of [["system", SYSTEM], ["array", ARRAY]]) {
     const b = el("button", "place");
     b.type = "button";
-    b.setAttribute("aria-pressed", String(name === current));
-    b.disabled = !available[name];
-    b.append(el("b", "", tv("location", name)), el("small", "hint", locationPaths[name]));
-    b.addEventListener("click", () => onPick(name));
+    b.setAttribute("aria-pressed", String(root === current));
+    b.disabled = !available[root];
+    b.append(el("b", "", tv("location", name)), el("small", "hint", root));
+    b.addEventListener("click", () => onPick(root));
     box.append(b);
   }
 }
 
 async function showFolder(root, path) {
-  const data = await api("GET", `files?root=${root}&path=${encodeURIComponent(path)}`);
+  const data = await api("GET", `files?root=${encodeURIComponent(root)}&path=${encodeURIComponent(path)}`);
   const available = {};
-  for (const loc of data.locations) {
-    locationPaths[loc.name] = loc.path;
-    // The system SSD folder is created on the first install when missing.
-    available[loc.name] = loc.available || loc.name === "system";
-  }
+  for (const loc of data.locations) available[loc.path] = loc.available;
   folderRoot = root;
   folderPath = path;
   placeButtons(document.getElementById("folder-roots"), root, available,
-               (name) => showFolder(name, "").catch(sayError));
+               (to) => showFolder(to, "").catch(sayError));
   const crumbs = document.getElementById("folder-crumbs");
   crumbs.replaceChildren();
   const parts = path ? path.split("/") : [];
-  const rootBtn = el("button", "link-btn", locationPaths[root]);
+  const rootBtn = el("button", "link-btn", root);
   rootBtn.type = "button";
   rootBtn.addEventListener("click", () => showFolder(root, "").catch(sayError));
   crumbs.append(rootBtn);
@@ -1064,8 +1061,7 @@ function checkItem(state, text, action) {
 // goes and its folders; resolves with {location, folders} or null on cancel.
 async function installDialog(app) {
   const dlg = document.getElementById("install-dialog");
-  const pool = await api("GET", "files?root=array&path=");
-  for (const loc of pool.locations) locationPaths[loc.name] = loc.path;
+  const pool = await api("GET", `files?root=${encodeURIComponent(ARRAY)}&path=`);
   document.getElementById("install-title").textContent = t("install.title", { name: app.name });
   document.getElementById("install-desc").textContent = app.description[lang] || app.description.en || "";
   const checks = document.getElementById("install-checks");
@@ -1085,7 +1081,7 @@ async function installDialog(app) {
   if (extra) checks.append(checkItem("ok", t("apps.confirm_services", { services: extra })));
   checks.append(checkItem("ok", t("install.download")));
 
-  let location = pool.mounted ? "array" : "system";
+  let location = pool.mounted ? ARRAY : SYSTEM;
   // share name -> {root, path} when changed; unchanged shares follow the location.
   const chosen = {};
   const rows = [];
@@ -1116,9 +1112,9 @@ async function installDialog(app) {
   }
   const appdata = document.getElementById("install-appdata");
   const placeBox = document.getElementById("install-location");
-  const setLocation = (name) => {
-    location = name;
-    placeButtons(placeBox, location, { system: true, array: pool.mounted }, setLocation);
+  const setLocation = (root) => {
+    location = root;
+    placeButtons(placeBox, location, { [SYSTEM]: true, [ARRAY]: pool.mounted }, setLocation);
     appdata.textContent = t("install.appdata", { path: fullPath(location, `appdata/${app.id}`) });
     rows.forEach((show) => show());
   };
@@ -1134,7 +1130,7 @@ async function installDialog(app) {
       if (dlg.returnValue !== "ok") { resolve(null); return; }
       const folders = {};
       for (const [name, c] of Object.entries(chosen)) {
-        if (c.root !== location || c.path !== name) folders[name] = `${c.root}:${c.path}`;
+        if (c.root !== location || c.path !== name) folders[name] = fullPath(c.root, c.path);
       }
       resolve({ location, folders });
     }, { once: true });
