@@ -10,6 +10,7 @@ import os
 import re
 import socket
 import subprocess
+import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -62,6 +63,11 @@ class Context:
     etc: Path = Path("/etc")
     run_dir: Path = Path("/run/dahlia")
     pool: Path = Path("/mnt/user")
+    var: Path = Path("/var/lib/dahlia")
+    hostname: Callable[[], str] = socket.gethostname
+    clock: Callable[[], float] = time.time
+    # Notification senders by channel; tests replace them, None = the real ones.
+    senders: dict | None = None
 
 
 # --- parameter checks ---------------------------------------------------------
@@ -724,4 +730,4 @@ def agent_actions(ctx: Context):
 
 
 # Actions in their own modules; importing them registers them.
-from . import containers, hardware, network, settings, smb  # noqa: E402, F401
+from . import containers, hardware, network, notify, settings, smb, ups  # noqa: E402, F401

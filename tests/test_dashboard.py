@@ -471,3 +471,25 @@ def test_shares_endpoints(env):
         ("shares.user_remove", {"name": "anna"}),
     ]
     assert client.post("/api/shares/media/remove").status_code == 403
+
+
+def test_notify_and_ups_endpoints(env):
+    client, agent, _ = logged_in(env)
+    agent.calls.clear()
+    client.get("/api/notify")
+    client.post("/api/notify/ntfy", json={"settings": {"enabled": True, "topic": "x"}},
+                headers=CSRF)
+    client.post("/api/notify/events", json={"events": {"usage": False}}, headers=CSRF)
+    client.post("/api/notify/test", headers=CSRF)
+    client.get("/api/ups")
+    client.post("/api/ups", json={"mode": "usb", "shutdown_minutes": 5}, headers=CSRF)
+    assert agent.calls == [
+        ("notify.get", {}),
+        ("notify.set", {"channel": "ntfy", "settings": {"enabled": True, "topic": "x"}}),
+        ("notify.set_events", {"events": {"usage": False}}),
+        ("notify.test", {}),
+        ("ups.get", {}),
+        ("ups.set", {"mode": "usb", "host": "", "port": 3493, "name": "ups", "user": "",
+                     "password": "", "shutdown_minutes": 5}),
+    ]
+    assert client.post("/api/notify/test").status_code == 403

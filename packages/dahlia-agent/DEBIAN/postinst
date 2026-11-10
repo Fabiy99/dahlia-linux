@@ -26,7 +26,7 @@ case "$1" in
         chmod 0755 /var/lib/dahlia
         chmod 0700 /var/lib/dahlia/apps
         systemctl enable dahlia-agent.socket dahlia-apps.service dahlia-mdns.service \
-            dahlia-domains.timer dahlia-apps-catalog.timer dahlia-spindown.service >/dev/null 2>&1 || true
+            dahlia-domains.timer dahlia-apps-catalog.timer dahlia-spindown.service dahlia-notify.timer >/dev/null 2>&1 || true
         # Local CA, server certificate, app proxies. nginx may not be
         # configured yet; dahlia-dashboard runs this again.
         dahlia-domains apply >/dev/null || echo "dahlia-agent: dahlia-domains apply failed" >&2
@@ -35,11 +35,16 @@ case "$1" in
             sysctl -q -p /usr/lib/sysctl.d/50-dahlia-apps.conf || true
             # A running agent keeps the old code until restarted.
             systemctl try-restart dahlia-agent.service || true
-            systemctl start dahlia-agent.socket dahlia-domains.timer dahlia-apps-catalog.timer || true
+            systemctl start dahlia-agent.socket dahlia-domains.timer dahlia-apps-catalog.timer dahlia-notify.timer || true
             systemctl restart dahlia-mdns.service || true
             # Samba stays off until the first share is created in the dashboard.
             if [ ! -e /etc/dahlia/shares.json ]; then
                 systemctl disable --now smbd.service nmbd.service >/dev/null 2>&1 || true
+            fi
+            # NUT stays off until a UPS is set up in the dashboard.
+            if [ ! -e /etc/dahlia/ups.json ]; then
+                systemctl disable --now nut-monitor.service nut-server.service \
+                    nut-driver.target >/dev/null 2>&1 || true
             fi
             # daemon.json (ports on 127.0.0.1 only) applies after a restart.
             # Only while no app is installed: a restart stops containers.

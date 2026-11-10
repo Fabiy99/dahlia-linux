@@ -1317,7 +1317,8 @@ async function loadAccount() {
   setSidebar(info);
   document.querySelector("#hostname-form [name=hostname]").value = info.hostname;
   // Each card loads on its own; one failing part does not hide the others.
-  await Promise.all([loadTime(), loadNetwork(), loadSpindown(), loadSchedules()]
+  await Promise.all([loadTime(), loadNetwork(), loadSpindown(), loadSchedules(),
+               loadNotify(), loadUps()]
     .map((p) => p.catch(sayError)));
 }
 
@@ -1460,6 +1461,154 @@ async function loadSchedules() {
   const data = await api("GET", "settings/schedules");
   document.getElementById("schedules").replaceChildren(
     ...SCHEDULE_JOBS.map((job) => scheduleRow(job, data.schedules[job])));
+}
+
+// --- settings: notifications and UPS ----------------------------------------------
+
+const NOTIFY_CHANNELS = ["email", "ntfy", "gotify"];
+const NOTIFY_SECRETS = { email: "password", ntfy: "token", gotify: "token" };
+const UPS_SHUTDOWN = [0, 1, 2, 5, 10, 15, 30, 60];
+
+async function loadNotify() {
+  const data = await api("GET", "notify");
+  for (const ch of NOTIFY_CHANNELS) {
+    const c = data[ch];
+    const form = document.querySelector(`form[data-channel=${ch}]`);
+    for (const input of form.elements) {
+      if (!input.name) continue;
+      if (input.type === "checkbox") input.checked = Boolean(c[input.name]);
+      else if (input.name === NOTIFY_SECRETS[ch]) {
+        input.value = "";
+        input.placeholder = c[`${input.name}_set`] ? t("notify.secret_kept") : "";
+      } else input.value = c[input.name] ?? "";
+    }
+    const state = document.getElementById(`ch-state-${ch}`);
+    state.textContent = c.enabled ? t("notify.on") : t("notify.off");
+    state.className = `badge ${c.enabled ? "ok" : ""}`;
+  }
+  const events = document.getElementById("notify-events");
+  events.replaceChildren(...Object.entries(data.events).map(([key, on]) => {
+    const label = el("label", "check");
+    const box = el("input");
+    box.type = "checkbox";
+    box.checked = on;
+    box.addEventListener("change", async () => {
+      try {
+        await api("POST", "notify/events", { events: { [key]: box.checked } });
+        say(t("notify.events_saved"), "ok");
+      } catch (err) {
+        box.checked = !box.checked;
+        sayError(err);
+      }
+    });
+    label.append(box, el("span", "", tv("notify.event", key)));
+    return label;
+  }));
+  const hist = document.getElementById("notify-history");
+  hist.replaceChildren();
+  if (!data.history.length) hist.append(el("li", "hint", t("notify.no_history")));
+  for (const h of data.history.slice(0, 10)) {
+    const li = el("li");
+    const when = new Date(h.time * 1000).toLocaleString(lang);
+    const failed = Object.entries(h.results).filter(([, r]) => r !== "ok");
+    li.append(badge(tv("level", h.level), { info: "info", warning: "warn", critical: "crit" }[h.level]),
+              el("b", "", h.title), el("small", "hint", when));
+    li.title = h.message;
+    if (failed.length) li.append(el("small", "fail", failed.map(([c, r]) => `${tv("notify", c)}: ${r}`).join(" · ")));
+    hist.append(li);
+  }
+}
+
+function channelSettings(form) {
+  const out = {};
+  for (const input of form.elements) {
+    if (!input.name) continue;
+    if (input.type === "checkbox") out[input.name] = input.checked;
+    else if (input.type === "number") out[input.name] = Number(input.value);
+    else out[input.name] = input.value.trim();
+  }
+  return out;
+}
+
+function renderUpsMode() {
+  const f = document.getElementById("ups-form").elements;
+  const mode = f.mode.value;
+  document.getElementById("ups-remote").hidden = mode !== "remote";
+  f.shutdown_minutes.disabled = mode === "off";
+}
+
+async function loadUps() {
+  const data = await api("GET", "ups");
+  const f = document.getElementById("ups-form").elements;
+  fillOptions(f.shutdown_minutes, UPS_SHUTDOWN,
+              (m) => (m === 0 ? t("ups.on_low_battery") : t("ups.after", { n: m })));
+  f.mode.value = data.mode;
+  f.host.value = data.host;
+  f.port.value = data.port;
+  f.name.value = data.name;
+  f.user.value = data.user;
+  f.password.value = "";
+  f.password.placeholder = data.password_set ? t("notify.secret_kept") : "";
+  f.shutdown_minutes.value = String(UPS_SHUTDOWN.includes(data.shutdown_minutes) ? data.shutdown_minutes : 0);
+  renderUpsMode();
+  const dl = document.getElementById("ups-status");
+  dl.replaceChildren();
+  const s = data.status;
+  if (!s) {
+    fact(dl, "ups.state", t("ups.mode_off"));
+    return;
+  }
+  if (!s.reachable) {
+    fact(dl, "ups.state", badge(t("ups.unreachable"), "crit"));
+    fact(dl, "ups.error", s.error);
+    return;
+  }
+  const state = s.low_battery ? badge(t("ups.low_battery"), "crit")
+    : s.on_battery ? badge(t("ups.on_battery"), "warn") : badge(t("ups.online"), "ok");
+  fact(dl, "ups.state", state);
+  if (s.model) fact(dl, "ups.model", s.model);
+  if (s.charge !== null) fact(dl, "ups.charge", `${s.charge} %`);
+  if (s.runtime !== null) fact(dl, "ups.runtime", t("ups.minutes", { n: Math.round(s.runtime / 60) }));
+  if (s.load !== null) fact(dl, "ups.load", `${s.load} %`);
+}
+
+function bindNotifyUps() {
+  for (const form of document.querySelectorAll("form[data-channel]")) {
+    form.addEventListener("submit", (e) => {
+      e.preventDefault();
+      const ch = form.dataset.channel;
+      guarded(e.submitter, async () => {
+        await api("POST", `notify/${ch}`, { settings: channelSettings(form) });
+        say(t("notify.saved", { channel: tv("notify", ch) }), "ok");
+        await loadNotify();
+      });
+    });
+  }
+  const test = document.getElementById("notify-test");
+  test.addEventListener("click", () => guarded(test, async () => {
+    const res = await api("POST", "notify/test");
+    const lines = Object.entries(res.results).map(([c, r]) => `${tv("notify", c)}: ${r === "ok" ? t("notify.sent") : r}`);
+    const ok = Object.values(res.results).every((r) => r === "ok");
+    say(lines.join("\n"), ok ? "ok" : "error");
+    await loadNotify();
+  }));
+  const ups = document.getElementById("ups-form");
+  ups.elements.mode.addEventListener("change", renderUpsMode);
+  ups.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const f = ups.elements;
+    const body = { mode: f.mode.value, name: f.name.value.trim() || "ups",
+                   shutdown_minutes: Number(f.shutdown_minutes.value) };
+    if (body.mode === "remote") {
+      Object.assign(body, { host: f.host.value.trim(), port: Number(f.port.value) || 3493,
+                            user: f.user.value.trim(), password: f.password.value });
+    }
+    guarded(e.submitter, async () => {
+      await api("POST", "ups", body);
+      say(t("ups.saved"), "ok");
+      await loadUps();
+    });
+  });
 }
 
 // --- forms ----------------------------------------------------------------------
@@ -1658,6 +1807,7 @@ async function start() {
   bindButtons();
   bindShares();
   bindFormat();
+  bindNotifyUps();
   try {
     const state = await api("GET", "state");
     if (state.setup_required) show("setup");
