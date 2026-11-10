@@ -445,8 +445,12 @@ def unit_state(ctx: Context, unit: str) -> dict:
     }
 
 
+def is_active(state: dict) -> bool:
+    return state["active"] in ("active", "activating", "deactivating", "reloading")
+
+
 def is_running(ctx: Context, unit: str) -> bool:
-    return unit_state(ctx, unit)["active"] in ("active", "activating", "deactivating", "reloading")
+    return is_active(unit_state(ctx, unit))
 
 
 @action(
@@ -573,11 +577,16 @@ def start_app_job(ctx: Context, app_id: str, command: str):
     unit = app_unit(app_id)
     if is_running(ctx, unit):
         raise AgentError(BUSY, f"{app_id} is busy")
+    # No data disk, port taken, ...: report it now, not as a failed job.
+    dahlia_apps(ctx, "precheck", command, app_id)
+    # A failed job stays loaded, so apps.job can report it; clear it first.
+    # (CollectMode=inactive-or-failed would unload it, and systemctl show
+    # then reports an unknown unit as inactive with Result=success.)
+    ctx.runner.run(["systemctl", "reset-failed", unit], check=False)
     ctx.runner.run([
         "systemd-run",
         f"--unit={unit}",
         f"--description=Dahlia app {command} {app_id}",
-        "--property=CollectMode=inactive-or-failed",
         "--property=After=docker.service",
         "--",
         "/usr/sbin/dahlia-apps",
@@ -599,10 +608,21 @@ def apps_update(ctx: Context, id: str):
     return start_app_job(ctx, id, "update")
 
 
+def job_error(ctx: Context, unit: str) -> str:
+    """Last error dahlia-apps logged in the unit's journal, or ""."""
+    out = ctx.runner.run(["journalctl", "-u", unit, "-n", "50", "-o", "cat", "--no-pager"]).stdout
+    errors = [ln.strip() for ln in out.splitlines() if ln.startswith("dahlia-apps: ")]
+    return errors[-1].removeprefix("dahlia-apps: ")[:500] if errors else ""
+
+
 @action("apps.job", mutating=False, params={"id": Param(str, pattern=APP_ID_RE)})
 def apps_job(ctx: Context, id: str):
-    """State of the last install or update of an app."""
-    return {"id": id, **unit_state(ctx, app_unit(id))}
+    """State of the last install or update of an app, with the error if it failed."""
+    unit = app_unit(id)
+    state = unit_state(ctx, unit)
+    if state["result"] != "success" and not is_active(state):
+        state["error"] = job_error(ctx, unit)
+    return {"id": id, **state}
 
 
 @action("apps.start", mutating=True, params={"id": Param(str, pattern=APP_ID_RE)})

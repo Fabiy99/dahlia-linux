@@ -663,6 +663,7 @@ async function appJob(id, op, name) {
   await loadApps();
   const job = await waitForAppJob(id);
   if (job && job.result === "success") say(t(`apps.${op}_done`, { name }), "ok");
+  else if (job && job.error) say(t("apps.job_failed_reason", { name, error: job.error }), "error");
   else say(t("apps.job_failed", { name, unit: `dahlia-app-${id}` }), "error");
   if (current === "apps") await loadApps();
 }

@@ -136,6 +136,7 @@
   "apps.update_running": "Updating {name} …",
   "apps.update_done": "{name} is updated.",
   "apps.job_failed": "{name}: the operation failed. Details: journalctl -u {unit}",
+  "apps.job_failed_reason": "{name}: the operation failed: {error}",
   "app_status.running": "running",
   "app_status.exited": "stopped",
   "app_status.created": "created",

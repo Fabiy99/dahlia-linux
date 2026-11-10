@@ -136,6 +136,7 @@
   "apps.update_running": "{name} wird aktualisiert …",
   "apps.update_done": "{name} ist aktualisiert.",
   "apps.job_failed": "{name}: der Vorgang ist fehlgeschlagen. Details: journalctl -u {unit}",
+  "apps.job_failed_reason": "{name}: der Vorgang ist fehlgeschlagen: {error}",
   "app_status.running": "läuft",
   "app_status.exited": "gestoppt",
   "app_status.created": "angelegt",

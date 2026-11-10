@@ -920,11 +920,9 @@ class Apps:
             "skipped": meta.get("skipped", []),
         }
 
-    def install(self, app_id: str) -> dict:
-        """Install from the cached catalog and start the app with all its services."""
+    def _install_template(self, app_id: str) -> tuple[Template, str]:
         self._require_pool()
-        d = self.paths.app_dir(app_id)
-        if (d / "state.json").exists():
+        if (self.paths.app_dir(app_id) / "state.json").exists():
             raise AppError(f"{app_id} is already installed")
         src = self.paths.catalog / f"{app_id}.yaml"
         if not src.is_file():
@@ -932,6 +930,24 @@ class Apps:
         text = src.read_text()
         t = parse_template(text, app_id)
         self._check_public_ports(t)
+        return t, text
+
+    def precheck(self, op: str, app_id: str) -> dict:
+        """Checks an install or update job would fail on, so the caller gets
+        the reason right away instead of a failed background job."""
+        if op == "install":
+            self._install_template(app_id)
+        elif op == "update":
+            load_installed(self.paths, app_id)
+            self._require_pool()
+        else:
+            raise AppError(f"no precheck for {op}")
+        return {"id": app_id, "ok": True}
+
+    def install(self, app_id: str) -> dict:
+        """Install from the cached catalog and start the app with all its services."""
+        t, text = self._install_template(app_id)
+        d = self.paths.app_dir(app_id)
         taken_host, _ = used_ports(self.paths)
         host_port = pick_host_port(taken_host, self.port_check) if t.web_port else None
         self._prepare_dirs(t)
@@ -1089,6 +1105,9 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("updates", help="installed apps with a newer template in the catalog")
     for name in ("install", "update", "start", "stop"):
         sub.add_parser(name).add_argument("id")
+    s = sub.add_parser("precheck", help="fail early if install/update cannot work")
+    s.add_argument("op", choices=("install", "update"))
+    s.add_argument("id")
     s = sub.add_parser("remove")
     s.add_argument("id")
     s.add_argument("--delete-data", action="store_true",
@@ -1113,6 +1132,8 @@ def main(argv: list[str] | None = None) -> int:
             result = apps.list()
         elif args.command == "updates":
             result = apps.updates()
+        elif args.command == "precheck":
+            result = apps.precheck(args.op, args.id)
         elif args.command == "remove":
             result = apps.remove(args.id, delete_data=args.delete_data)
         elif args.command == "start-enabled":

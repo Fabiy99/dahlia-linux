@@ -512,6 +512,33 @@ def test_apps_install_runs_in_background(ctx):
     assert cmd[-3:] == ["/usr/sbin/dahlia-apps", "install", "jellyfin"]
 
 
+def test_apps_install_checks_before_starting_job(ctx):
+    run(ctx, "apps.install", {"id": "jellyfin"})
+    assert ["dahlia-apps", "precheck", "install", "jellyfin"] in ctx.runner.calls
+    ctx.runner.calls.clear()
+    ctx.runner.answers[("dahlia-apps", "precheck")] = (
+        1, "", "dahlia-apps: /mnt/user is not mounted; add a data disk first\n")
+    reply = run(ctx, "apps.install", {"id": "jellyfin"})
+    assert err_code(reply) == protocol.FAILED
+    assert "add a data disk" in reply["error"]["message"]
+    assert not any(c[0] == "systemd-run" for c in ctx.runner.calls)
+
+
+def test_apps_job_reports_error_of_failed_job(ctx):
+    ctx.runner.answers[("systemctl", "show")] = (
+        0, "ActiveState=failed\nSubState=failed\nResult=exit-code\nExecMainStatus=1\n", "")
+    ctx.runner.answers[("journalctl",)] = (
+        0, "pulling\ndahlia-apps: old\ndahlia-apps: image pull failed: timeout\n", "")
+    job = run(ctx, "apps.job", {"id": "jellyfin"})["result"]
+    assert job["error"] == "image pull failed: timeout"
+
+
+def test_apps_job_success_has_no_error(ctx):
+    job = run(ctx, "apps.job", {"id": "jellyfin"})["result"]
+    assert "error" not in job
+    assert not any(c[0] == "journalctl" for c in ctx.runner.calls)
+
+
 @pytest.mark.parametrize("app_id", ["../x", "Jelly", "a", "x" * 40, "-x", "a b"])
 def test_apps_bad_id(ctx, app_id):
     for act in ("apps.install", "apps.start", "apps.remove", "apps.job"):

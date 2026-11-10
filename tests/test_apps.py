@@ -211,6 +211,22 @@ def test_install_needs_pool(env):
     assert not (env.paths.apps / "whoami").exists()
 
 
+def test_precheck(env):
+    assert env.precheck("install", "whoami")["ok"]
+    assert env.docker.calls == []
+    with pytest.raises(AppError, match="not in the catalog"):
+        env.precheck("install", "nextcloud")
+    with pytest.raises(AppError, match="not installed"):
+        env.precheck("update", "whoami")
+    env.install("whoami")
+    with pytest.raises(AppError, match="already installed"):
+        env.precheck("install", "whoami")
+    assert env.precheck("update", "whoami")["ok"]
+    env.mounted = lambda p: False
+    with pytest.raises(AppError, match="add a data disk"):
+        env.precheck("update", "whoami")
+
+
 def test_install_unknown_app(env):
     with pytest.raises(AppError, match="not in the catalog"):
         env.install("nextcloud")
