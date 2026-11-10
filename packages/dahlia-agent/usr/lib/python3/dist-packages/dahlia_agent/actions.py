@@ -421,6 +421,101 @@ def updates_apply(ctx: Context):
     return {"job": "update", "started": True}
 
 
+# --- apps ---------------------------------------------------------------------
+
+APP_ID_RE = re.compile(r"^[a-z][a-z0-9-]{1,30}$")
+
+
+def dahlia_apps(ctx: Context, *args: str, timeout: int = 300):
+    out = ctx.runner.run(["dahlia-apps", *args], timeout=timeout).stdout
+    return json.loads(out) if out.strip() else None
+
+
+def app_unit(app_id: str) -> str:
+    return f"dahlia-app-{app_id}.service"
+
+
+@action(
+    "apps.catalog",
+    mutating=True,
+    params={"refresh": Param(bool, required=False, default=False)},
+)
+def apps_catalog(ctx: Context, refresh: bool):
+    """Templates in the app catalog; refresh downloads it first."""
+    args = ["catalog", "--refresh"] if refresh else ["catalog"]
+    return {"apps": dahlia_apps(ctx, *args, timeout=600)}
+
+
+@action("apps.list", mutating=False)
+def apps_list(ctx: Context):
+    """Installed apps with container status."""
+    return {"apps": dahlia_apps(ctx, "list")}
+
+
+def start_app_job(ctx: Context, app_id: str, command: str):
+    unit = app_unit(app_id)
+    if is_running(ctx, unit):
+        raise AgentError(BUSY, f"{app_id} is busy")
+    ctx.runner.run([
+        "systemd-run",
+        f"--unit={unit}",
+        f"--description=Dahlia app {command} {app_id}",
+        "--property=CollectMode=inactive-or-failed",
+        "--property=After=docker.service",
+        "--",
+        "/usr/sbin/dahlia-apps",
+        command,
+        app_id,
+    ])
+    return {"id": app_id, "started": True}
+
+
+@action("apps.install", mutating=True, params={"id": Param(str, pattern=APP_ID_RE)})
+def apps_install(ctx: Context, id: str):
+    """Install an app from the catalog in the background (image pull)."""
+    return start_app_job(ctx, id, "install")
+
+
+@action("apps.update", mutating=True, params={"id": Param(str, pattern=APP_ID_RE)})
+def apps_update(ctx: Context, id: str):
+    """Pull the current image and template of an app in the background."""
+    return start_app_job(ctx, id, "update")
+
+
+@action("apps.job", mutating=False, params={"id": Param(str, pattern=APP_ID_RE)})
+def apps_job(ctx: Context, id: str):
+    """State of the last install or update of an app."""
+    return {"id": id, **unit_state(ctx, app_unit(id))}
+
+
+@action("apps.start", mutating=True, params={"id": Param(str, pattern=APP_ID_RE)})
+def apps_start(ctx: Context, id: str):
+    """Start an app and start it at boot."""
+    return dahlia_apps(ctx, "start", id)
+
+
+@action("apps.stop", mutating=True, params={"id": Param(str, pattern=APP_ID_RE)})
+def apps_stop(ctx: Context, id: str):
+    """Stop an app and keep it stopped at boot."""
+    return dahlia_apps(ctx, "stop", id)
+
+
+@action(
+    "apps.remove",
+    mutating=True,
+    params={
+        "id": Param(str, pattern=APP_ID_RE),
+        "delete_data": Param(bool, required=False, default=False),
+    },
+)
+def apps_remove(ctx: Context, id: str, delete_data: bool):
+    """Remove an app; its data under /mnt/user/appdata only on request."""
+    if is_running(ctx, app_unit(id)):
+        raise AgentError(BUSY, f"{id} is busy")
+    args = ["remove", id] + (["--delete-data"] if delete_data else [])
+    return dahlia_apps(ctx, *args, timeout=600)
+
+
 # --- meta ---------------------------------------------------------------------
 
 

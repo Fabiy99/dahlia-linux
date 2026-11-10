@@ -29,6 +29,8 @@ class FakeAgent:
             raise self.errors[action]
         if action == "system.info":
             return {"hostname": "dahlia", "version": "0.2.0"}
+        if action in ("apps.list", "apps.catalog"):
+            return {"apps": [{"id": "whoami", "refresh": params.get("refresh")}]}
         if action == "job.status":
             return {"job": params["job"], "active": "inactive"}
         return {"action": action}
@@ -297,6 +299,7 @@ def used_keys():
     keys |= {f"role.{r}" for r in ("data", "parity", "cache", "external")}
     keys |= {f"job.{j}" for j in ("mover", "snapraid-sync", "snapraid-scrub", "update")}
     keys |= {f"overview.{a}_started" for a in ("reboot", "poweroff")}
+    keys |= {f"apps.{op}_{s}" for op in ("install", "update") for s in ("running", "done")}
     return keys
 
 
@@ -313,3 +316,24 @@ def test_no_hardcoded_text_in_html():
     body = re.sub(r"<title>.*?</title>|<span class=\"brand\">.*?</span>", "", body)
     text = re.sub(r"<[^>]+>", " ", body)
     assert text.split() == []
+
+
+def test_apps_endpoints(env):
+    client, agent, _ = logged_in(env)
+    agent.calls.clear()
+    data = client.get("/api/apps").json()
+    assert data["installed"][0]["id"] == "whoami"
+    assert ("apps.catalog", {"refresh": False}) in agent.calls
+    client.post("/api/apps/catalog/refresh", headers=CSRF)
+    client.post("/api/apps/whoami/install", headers=CSRF)
+    client.post("/api/apps/whoami/remove", json={"delete_data": True}, headers=CSRF)
+    client.post("/api/apps/whoami/stop", headers=CSRF)
+    client.get("/api/apps/whoami/job")
+    assert agent.calls[2:] == [
+        ("apps.catalog", {"refresh": True}),
+        ("apps.install", {"id": "whoami"}),
+        ("apps.remove", {"id": "whoami", "delete_data": True}),
+        ("apps.stop", {"id": "whoami"}),
+        ("apps.job", {"id": "whoami"}),
+    ]
+    assert client.post("/api/apps/whoami/exec", headers=CSRF).status_code == 404

@@ -267,6 +267,14 @@ def test_updates_apply_busy(ctx):
 def test_action_list_is_fixed():
     assert sorted(actions.ACTIONS) == [
         "agent.actions",
+        "apps.catalog",
+        "apps.install",
+        "apps.job",
+        "apps.list",
+        "apps.remove",
+        "apps.start",
+        "apps.stop",
+        "apps.update",
         "job.start",
         "job.status",
         "storage.add",
@@ -375,3 +383,40 @@ def test_entry_points_exist():
     root = Path(__file__).resolve().parent.parent / "packages" / "dahlia-agent"
     for exe in ("usr/sbin/dahlia-agent", "usr/bin/dahlia-agent-call"):
         assert os.access(root / exe, os.X_OK)
+
+
+# --- apps ---------------------------------------------------------------------
+
+
+def test_apps_install_runs_in_background(ctx):
+    assert run(ctx, "apps.install", {"id": "jellyfin"})["ok"]
+    cmd = ctx.runner.calls[-1]
+    assert cmd[:2] == ["systemd-run", "--unit=dahlia-app-jellyfin.service"]
+    assert cmd[-3:] == ["/usr/sbin/dahlia-apps", "install", "jellyfin"]
+
+
+@pytest.mark.parametrize("app_id", ["../x", "Jelly", "a", "x" * 40, "-x", "a b"])
+def test_apps_bad_id(ctx, app_id):
+    for act in ("apps.install", "apps.start", "apps.remove", "apps.job"):
+        assert err_code(run(ctx, act, {"id": app_id})) == protocol.INVALID_PARAMS
+    assert ctx.runner.calls == []
+
+
+def test_apps_busy(ctx):
+    ctx.runner.answers[("systemctl", "show")] = (0, RUNNING, "")
+    assert err_code(run(ctx, "apps.install", {"id": "jellyfin"})) == protocol.BUSY
+    assert err_code(run(ctx, "apps.remove", {"id": "jellyfin"})) == protocol.BUSY
+
+
+def test_apps_remove_and_list(ctx):
+    ctx.runner.answers[("dahlia-apps", "remove")] = (0, '{"id": "x1", "data_deleted": true}', "")
+    ctx.runner.answers[("dahlia-apps", "list")] = (0, "[]", "")
+    assert run(ctx, "apps.remove", {"id": "x1", "delete_data": True})["ok"]
+    assert ["dahlia-apps", "remove", "x1", "--delete-data"] in ctx.runner.calls
+    assert run(ctx, "apps.list")["result"] == {"apps": []}
+
+
+def test_apps_catalog_refresh(ctx):
+    ctx.runner.answers[("dahlia-apps", "catalog")] = (0, "[]", "")
+    assert run(ctx, "apps.catalog", {"refresh": True})["ok"]
+    assert ctx.runner.calls[-1] == ["dahlia-apps", "catalog", "--refresh"]
