@@ -168,6 +168,86 @@ def test_system_info_without_release(ctx):
     assert run(ctx, "system.info")["result"]["version"] is None
 
 
+CPUINFO = """processor\t: 0
+model name\t: AMD Ryzen 5 5600G with Radeon Graphics
+processor\t: 1
+model name\t: AMD Ryzen 5 5600G with Radeon Graphics
+"""
+
+NETDEV = """Inter-|   Receive                            |  Transmit
+ face |bytes    packets errs drop fifo frame compressed multicast|bytes    packets ...
+    lo:    1000      10    0    0    0     0          0         0     1000      10 0 0 0 0 0 0
+enp1s0: 5000000    4000    0    0    0     0          0         0   700000    3000 0 0 0 0 0 0
+docker0:    10       1    0    0    0     0          0         0       20       1 0 0 0 0 0 0
+veth12ab:    10       1    0    0    0     0          0         0       20       1 0 0 0 0 0 0
+"""
+
+IP_ADDR = json.dumps([
+    {"ifname": "enp1s0", "addr_info": [{"family": "inet", "local": "192.168.1.10",
+                                        "prefixlen": 24}]},
+    {"ifname": "docker0", "addr_info": [{"family": "inet", "local": "172.17.0.1",
+                                         "prefixlen": 16}]},
+])
+
+
+def test_system_stats(ctx, monkeypatch):
+    (ctx.proc / "cpuinfo").write_text(CPUINFO)
+    (ctx.proc / "stat").write_text("cpu  100 0 50 800 50 0 0 0 0 0\ncpu0 1 2 3 4 5 6 7 8\n")
+    with (ctx.proc / "meminfo").open("a") as f:
+        f.write("SwapTotal: 4096 kB\nSwapFree: 1024 kB\n")
+    (ctx.proc / "net").mkdir()
+    (ctx.proc / "net/dev").write_text(NETDEV)
+    (ctx.proc / "self").mkdir()
+    (ctx.proc / "self/mounts").write_text(
+        "/dev/sda2 / btrfs rw,subvol=/@rootfs 0 0\n"
+        "proc /proc proc rw 0 0\n"
+        "/dev/sdb1 /mnt/disk1 xfs rw 0 0\n"
+        "disk1 /mnt/storage fuse.mergerfs rw 0 0\n"
+        "/dev/sdc1 /mnt/external/My\\040Disk ntfs3 rw 0 0\n"
+        "/dev/sda2 / btrfs rw,subvol=/@snap 0 0\n"
+        "/dev/sdd1 /mnt/gone ext4 rw 0 0\n"
+    )
+    real_statvfs = os.statvfs
+
+    def fake_statvfs(path):
+        if path == "/mnt/gone":
+            raise OSError("stale")
+        if path.startswith("/mnt/"):
+            return os.statvfs_result((4096, 4096, 1000, 400, 300, 0, 0, 0, 0, 255))
+        return real_statvfs(path)
+
+    monkeypatch.setattr(actions.os, "statvfs", fake_statvfs)
+    ctx.runner.answers[("ip", "-j")] = (0, IP_ADDR, "")
+    s = run(ctx, "system.stats")["result"]
+    assert s["uptime_seconds"] == 12345
+    assert s["cpu"] == {"model": "AMD Ryzen 5 5600G with Radeon Graphics", "cores": 2,
+                        "total": 1000, "idle": 850}
+    assert s["swap"] == {"total": 4096 * 1024, "used": 3072 * 1024}
+    assert s["network"] == [{"name": "enp1s0", "rx_bytes": 5000000, "tx_bytes": 700000,
+                             "addresses": ["192.168.1.10/24"]}]
+    fs = {f["mountpoint"]: f for f in s["filesystems"]}
+    assert list(fs) == ["/", "/mnt/disk1", "/mnt/storage", "/mnt/external/My Disk"]
+    assert fs["/mnt/disk1"] == {"mountpoint": "/mnt/disk1", "source": "/dev/sdb1",
+                                "fstype": "xfs", "size": 4096000, "used": 2457600,
+                                "free": 1228800}
+    assert fs["/"]["source"] == "/dev/sda2"
+
+
+def test_system_stats_without_ip_output(ctx):
+    (ctx.proc / "cpuinfo").write_text("")
+    (ctx.proc / "stat").write_text("cpu  1 2 3 4 5 6 7 8\n")
+    (ctx.proc / "net").mkdir()
+    (ctx.proc / "net/dev").write_text(NETDEV)
+    (ctx.proc / "self").mkdir()
+    (ctx.proc / "self/mounts").write_text("")
+    ctx.runner.answers[("ip", "-j")] = (1, "", "")
+    s = run(ctx, "system.stats")["result"]
+    assert s["cpu"]["model"] is None
+    assert s["network"][0]["addresses"] == []
+    assert s["filesystems"] == []
+    assert s["swap"] == {"total": 0, "used": 0}
+
+
 @pytest.mark.parametrize("name", ["", "Dahlia", "-x", "x-", "a.b", "a" * 64, "dahlia.local", "ä"])
 def test_hostname_rejected(ctx, name):
     reply = run(ctx, "system.set_hostname", {"hostname": name})
@@ -321,6 +401,7 @@ def test_action_list_is_fixed():
         "system.poweroff",
         "system.reboot",
         "system.set_hostname",
+        "system.stats",
         "updates.apply",
         "updates.check",
     ]

@@ -189,6 +189,121 @@ def system_info(ctx: Context):
     }
 
 
+# Interfaces of containers, bridges and VMs; the stats show the physical ones.
+VIRTUAL_IFACES = ("lo", "docker", "br-", "veth", "virbr", "incusbr", "tap", "tun")
+
+
+def read_cpu(proc: Path) -> dict:
+    """CPU model, core count and the summed jiffies since boot.
+
+    The client takes two samples and computes the busy share from the
+    difference of total and idle.
+    """
+    model, cores = None, 0
+    for line in (proc / "cpuinfo").read_text().splitlines():
+        key, _, value = line.partition(":")
+        key = key.strip()
+        if key == "processor":
+            cores += 1
+        elif key == "model name" and model is None:
+            model = value.strip()
+    fields = (proc / "stat").read_text().splitlines()[0].split()
+    times = [int(x) for x in fields[1:9]]
+    idle = times[3] + times[4]  # idle + iowait
+    return {"model": model, "cores": cores, "total": sum(times), "idle": idle}
+
+
+def read_swap(proc: Path) -> dict:
+    values = {}
+    for line in (proc / "meminfo").read_text().splitlines():
+        key, _, rest = line.partition(":")
+        parts = rest.split()
+        if parts:
+            values[key] = int(parts[0]) * 1024
+    total = values.get("SwapTotal", 0)
+    return {"total": total, "used": total - values.get("SwapFree", 0)}
+
+
+def read_network(proc: Path) -> list[dict]:
+    """Byte counters of the physical interfaces from /proc/net/dev."""
+    out = []
+    for line in (proc / "net/dev").read_text().splitlines()[2:]:
+        name, _, rest = line.partition(":")
+        name = name.strip()
+        if not name or name.startswith(VIRTUAL_IFACES):
+            continue
+        cols = rest.split()
+        out.append({"name": name, "rx_bytes": int(cols[0]), "tx_bytes": int(cols[8])})
+    return out
+
+
+def interface_addresses(ctx: Context) -> dict[str, list[str]]:
+    proc = ctx.runner.run(["ip", "-j", "addr", "show", "scope", "global"], check=False)
+    try:
+        data = json.loads(proc.stdout or "[]")
+    except ValueError:
+        return {}
+    return {
+        str(i.get("ifname")): [f"{a['local']}/{a['prefixlen']}" for a in i.get("addr_info", [])
+                               if a.get("local") and a.get("prefixlen") is not None]
+        for i in data
+    }
+
+
+def unescape_mount(path: str) -> str:
+    """Octal escapes in /proc/self/mounts (space is \\040)."""
+    return re.sub(r"\\([0-7]{3})", lambda m: chr(int(m.group(1), 8)), path)
+
+
+def read_filesystems(proc: Path) -> list[dict]:
+    """Size and use of / and of every filesystem under /mnt.
+
+    Data disks, parity, cache, the mergerfs pools and external disks all
+    live under /mnt, so this is what the dashboard shows as storage.
+    """
+    out, seen = [], set()
+    for line in (proc / "self/mounts").read_text().splitlines():
+        parts = line.split()
+        if len(parts) < 3:
+            continue
+        source, mountpoint, fstype = unescape_mount(parts[0]), unescape_mount(parts[1]), parts[2]
+        if mountpoint != "/" and not mountpoint.startswith("/mnt/"):
+            continue
+        if mountpoint in seen:
+            continue
+        try:
+            st = os.statvfs(mountpoint)
+        except OSError:
+            continue
+        seen.add(mountpoint)
+        size = st.f_blocks * st.f_frsize
+        free = st.f_bavail * st.f_frsize
+        used = size - st.f_bfree * st.f_frsize
+        out.append({"mountpoint": mountpoint, "source": source, "fstype": fstype,
+                    "size": size, "used": used, "free": free})
+    return out
+
+
+@action("system.stats", mutating=False)
+def system_stats(ctx: Context):
+    """Live values for the overview: CPU, memory, swap, network, filesystems."""
+    uptime = float((ctx.proc / "uptime").read_text().split()[0])
+    load = [float(x) for x in (ctx.proc / "loadavg").read_text().split()[:3]]
+    addresses = interface_addresses(ctx)
+    network = read_network(ctx.proc)
+    for iface in network:
+        iface["addresses"] = addresses.get(iface["name"], [])
+    return {
+        "uptime_seconds": int(uptime),
+        "load": load,
+        "cpu": read_cpu(ctx.proc),
+        "memory": read_meminfo(ctx.proc / "meminfo"),
+        "swap": read_swap(ctx.proc),
+        "network": network,
+        "filesystems": read_filesystems(ctx.proc),
+    }
+
+
 def rewrite_hosts(text: str, hostname: str) -> str:
     """Point the Debian 127.0.1.1 line at the new hostname."""
     entry = f"127.0.1.1\t{hostname}"

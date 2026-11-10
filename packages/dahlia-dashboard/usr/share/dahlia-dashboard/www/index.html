@@ -8,172 +8,279 @@
 <script src="/app.js" defer></script>
 </head>
 <body>
-<header>
-  <span class="brand">Dahlia</span>
-  <nav id="nav" hidden>
-    <button data-view="overview" data-i18n="nav.overview"></button>
-    <button data-view="storage" data-i18n="nav.storage"></button>
-    <button data-view="apps" data-i18n="nav.apps"></button>
-    <button data-view="domains" data-i18n="nav.domains"></button>
-    <button data-view="jobs" data-i18n="nav.jobs"></button>
-    <button data-view="updates" data-i18n="nav.updates"></button>
-    <button data-view="account" data-i18n="nav.account"></button>
-  </nav>
-  <span class="spacer"></span>
-  <select id="lang" aria-label="Language">
-    <option value="de">Deutsch</option>
-    <option value="en">English</option>
-  </select>
-  <button id="logout" data-i18n="nav.logout" hidden></button>
-</header>
+<svg class="sprite" aria-hidden="true">
+  <symbol id="i-logo" viewBox="0 0 24 24"><circle cx="12" cy="12" r="2.6"/><path d="M12 3c2 2.2 2 4.6 0 6.4C10 7.6 10 5.2 12 3Zm0 18c-2-2.2-2-4.6 0-6.4 2 1.8 2 4.2 0 6.4ZM3 12c2.2-2 4.6-2 6.4 0-1.8 2-4.2 2-6.4 0Zm18 0c-2.2 2-4.6 2-6.4 0 1.8-2 4.2-2 6.4 0ZM5.6 5.6c3-.2 4.7 1.5 4.5 4.5-3 .2-4.7-1.5-4.5-4.5Zm12.8 12.8c-3 .2-4.7-1.5-4.5-4.5 3-.2 4.7 1.5 4.5 4.5Zm0-12.8c.2 3-1.5 4.7-4.5 4.5-.2-3 1.5-4.7 4.5-4.5ZM5.6 18.4c-.2-3 1.5-4.7 4.5-4.5.2 3-1.5 4.7-4.5 4.5Z"/></symbol>
+  <symbol id="i-overview" viewBox="0 0 24 24"><rect x="3" y="3" width="7.5" height="9" rx="1.5"/><rect x="13.5" y="3" width="7.5" height="5" rx="1.5"/><rect x="13.5" y="11" width="7.5" height="10" rx="1.5"/><rect x="3" y="15" width="7.5" height="6" rx="1.5"/></symbol>
+  <symbol id="i-storage" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="7" rx="1.5"/><rect x="3" y="13" width="18" height="7" rx="1.5"/><path d="M7 7.5h.01M7 16.5h.01M11 7.5h6M11 16.5h6"/></symbol>
+  <symbol id="i-apps" viewBox="0 0 24 24"><path d="M12 2.8 20 7v10l-8 4.2L4 17V7l8-4.2Z"/><path d="M4 7l8 4.2L20 7M12 11.2v10"/></symbol>
+  <symbol id="i-domains" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.6 2.6 3.8 5.6 3.8 9s-1.2 6.4-3.8 9c-2.6-2.6-3.8-5.6-3.8-9S9.4 5.6 12 3Z"/></symbol>
+  <symbol id="i-jobs" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></symbol>
+  <symbol id="i-updates" viewBox="0 0 24 24"><path d="M20 12a8 8 0 0 1-14.3 4.9M4 12a8 8 0 0 1 14.3-4.9"/><path d="M18.5 3v4.2h-4.2M5.5 21v-4.2h4.2"/></symbol>
+  <symbol id="i-account" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c.8-4 4-6 8-6s7.2 2 8 6"/></symbol>
+  <symbol id="i-logout" viewBox="0 0 24 24"><path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3M10 8l-4 4 4 4M6 12h10"/></symbol>
+  <symbol id="i-power" viewBox="0 0 24 24"><path d="M12 3v8"/><path d="M6.6 6.6a8 8 0 1 0 10.8 0"/></symbol>
+  <symbol id="i-reboot" viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.3-5.7"/><path d="M20 4v5h-5"/></symbol>
+  <symbol id="i-cpu" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/><rect x="9.5" y="9.5" width="5" height="5" rx=".8"/><path d="M9 2.5V6M15 2.5V6M9 18v3.5M15 18v3.5M2.5 9H6M2.5 15H6M18 9h3.5M18 15h3.5"/></symbol>
+  <symbol id="i-memory" viewBox="0 0 24 24"><rect x="2.5" y="7" width="19" height="10" rx="1.5"/><path d="M6.5 10.5v3M10 10.5v3M14 10.5v3M17.5 10.5v3M5 17v2.5M19 17v2.5"/></symbol>
+  <symbol id="i-network" viewBox="0 0 24 24"><rect x="9" y="2.5" width="6" height="5" rx="1"/><rect x="2.5" y="16.5" width="6" height="5" rx="1"/><rect x="15.5" y="16.5" width="6" height="5" rx="1"/><path d="M12 7.5V12M5.5 16.5V12h13v4.5"/></symbol>
+  <symbol id="i-server" viewBox="0 0 24 24"><rect x="3" y="3.5" width="18" height="7" rx="1.5"/><rect x="3" y="13.5" width="18" height="7" rx="1.5"/><path d="M7 7h.01M7 17h.01"/></symbol>
+  <symbol id="i-external" viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9M18 14v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4"/></symbol>
+  <symbol id="i-play" viewBox="0 0 24 24"><path d="M7 4.5v15l12-7.5-12-7.5Z"/></symbol>
+  <symbol id="i-stop" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="1.5"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M9 7V4.5h6V7M6.5 7l1 13h9l1-13M10 11v5.5M14 11v5.5"/></symbol>
+  <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 3.5v12M7 10.5l5 5 5-5M4.5 20.5h15"/></symbol>
+  <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></symbol>
+</svg>
 
-<main>
-  <p id="message" role="status" hidden></p>
-
-  <section id="view-setup" hidden>
-    <h1 data-i18n="setup.title"></h1>
-    <p data-i18n="setup.intro"></p>
-    <form id="setup-form">
-      <label><span data-i18n="setup.code"></span><input name="code" autocomplete="off" required></label>
-      <label><span data-i18n="field.username"></span><input name="username" autocomplete="username" required></label>
-      <label><span data-i18n="field.password"></span><input name="password" type="password" autocomplete="new-password" required></label>
-      <label><span data-i18n="field.password_repeat"></span><input name="password2" type="password" autocomplete="new-password" required></label>
-      <label><span data-i18n="field.hostname"></span><input name="hostname" placeholder="dahlia"></label>
-      <p class="hint" data-i18n="setup.hint"></p>
-      <button type="submit" data-i18n="setup.submit"></button>
-    </form>
-  </section>
-
-  <section id="view-login" hidden>
-    <h1 data-i18n="login.title"></h1>
-    <form id="login-form">
-      <label><span data-i18n="field.username"></span><input name="username" autocomplete="username" required></label>
-      <label><span data-i18n="field.password"></span><input name="password" type="password" autocomplete="current-password" required></label>
-      <button type="submit" data-i18n="login.submit"></button>
-    </form>
-  </section>
-
-  <section id="view-overview" hidden>
-    <h1 data-i18n="overview.title"></h1>
-    <dl id="system-info" class="facts"></dl>
-    <form id="hostname-form" class="inline">
-      <label><span data-i18n="field.hostname"></span><input name="hostname" required></label>
-      <button type="submit" data-i18n="overview.set_hostname"></button>
-    </form>
-    <div class="actions">
-      <button id="reboot" class="danger" data-i18n="overview.reboot"></button>
-      <button id="poweroff" class="danger" data-i18n="overview.poweroff"></button>
+<div id="shell" class="shell">
+  <aside id="sidebar" class="sidebar" hidden>
+    <div class="side-brand"><svg class="logo"><use href="#i-logo"/></svg><span class="brand">Dahlia</span></div>
+    <div class="side-host">
+      <span class="dot ok"></span>
+      <span id="side-hostname" class="side-hostname"></span>
+      <span id="side-version" class="side-version"></span>
     </div>
-  </section>
+    <nav id="nav">
+      <button data-view="overview"><svg><use href="#i-overview"/></svg><span data-i18n="nav.overview"></span></button>
+      <button data-view="storage"><svg><use href="#i-storage"/></svg><span data-i18n="nav.storage"></span></button>
+      <button data-view="apps"><svg><use href="#i-apps"/></svg><span data-i18n="nav.apps"></span><span id="nav-apps-badge" class="count" hidden></span></button>
+      <button data-view="domains"><svg><use href="#i-domains"/></svg><span data-i18n="nav.domains"></span></button>
+      <button data-view="jobs"><svg><use href="#i-jobs"/></svg><span data-i18n="nav.jobs"></span></button>
+      <button data-view="updates"><svg><use href="#i-updates"/></svg><span data-i18n="nav.updates"></span></button>
+      <button data-view="account"><svg><use href="#i-account"/></svg><span data-i18n="nav.account"></span></button>
+    </nav>
+  </aside>
 
-  <section id="view-storage" hidden>
-    <h1 data-i18n="storage.title"></h1>
-    <p class="hint" data-i18n="storage.hint"></p>
-    <table>
-      <thead><tr>
-        <th data-i18n="storage.device"></th><th data-i18n="storage.fs"></th>
-        <th data-i18n="storage.size"></th><th data-i18n="storage.status"></th>
-        <th data-i18n="storage.model"></th><th></th>
-      </tr></thead>
-      <tbody id="disks"></tbody>
-    </table>
-    <button id="storage-refresh" data-i18n="common.refresh"></button>
-  </section>
+  <div class="content">
+    <header class="topbar">
+      <button id="menu" class="icon-btn menu-btn" hidden data-i18n-title="nav.menu"><svg><use href="#i-menu"/></svg></button>
+      <h1 id="page-title"></h1>
+      <span class="spacer"></span>
+      <select id="lang" aria-label="Language">
+        <option value="de">Deutsch</option>
+        <option value="en">English</option>
+      </select>
+      <button id="logout" class="icon-btn" hidden data-i18n-title="nav.logout"><svg><use href="#i-logout"/></svg></button>
+    </header>
 
-  <section id="view-apps" hidden>
-    <h1 data-i18n="apps.title"></h1>
-    <h2 data-i18n="apps.installed"></h2>
-    <button id="apps-update-all" class="primary" hidden></button>
-    <table>
-      <thead><tr>
-        <th data-i18n="apps.name"></th><th data-i18n="apps.version"></th>
-        <th data-i18n="apps.status"></th><th data-i18n="apps.address"></th><th></th>
-      </tr></thead>
-      <tbody id="apps-installed"></tbody>
-    </table>
-    <h2 data-i18n="apps.catalog"></h2>
-    <p class="hint" data-i18n="apps.hint"></p>
-    <p class="hint" id="apps-refreshed"></p>
-    <div class="actions">
-      <input id="apps-search" type="search" data-i18n-placeholder="apps.search">
-      <select id="apps-category"></select>
-      <button id="apps-refresh" data-i18n="apps.refresh"></button>
+    <main>
+      <section id="view-setup" class="auth" hidden>
+        <div class="card auth-card">
+          <div class="auth-brand"><svg class="logo"><use href="#i-logo"/></svg><span class="brand">Dahlia</span></div>
+          <h2 data-i18n="setup.title"></h2>
+          <p class="hint" data-i18n="setup.intro"></p>
+          <form id="setup-form">
+            <label><span data-i18n="setup.code"></span><input name="code" autocomplete="off" required></label>
+            <label><span data-i18n="field.username"></span><input name="username" autocomplete="username" required></label>
+            <label><span data-i18n="field.password"></span><input name="password" type="password" autocomplete="new-password" required></label>
+            <label><span data-i18n="field.password_repeat"></span><input name="password2" type="password" autocomplete="new-password" required></label>
+            <label><span data-i18n="field.hostname"></span><input name="hostname" placeholder="dahlia"></label>
+            <p class="hint" data-i18n="setup.hint"></p>
+            <button type="submit" data-i18n="setup.submit"></button>
+          </form>
+        </div>
+      </section>
+
+      <section id="view-login" class="auth" hidden>
+        <div class="card auth-card">
+          <div class="auth-brand"><svg class="logo"><use href="#i-logo"/></svg><span class="brand">Dahlia</span></div>
+          <h2 data-i18n="login.title"></h2>
+          <form id="login-form">
+            <label><span data-i18n="field.username"></span><input name="username" autocomplete="username" required></label>
+            <label><span data-i18n="field.password"></span><input name="password" type="password" autocomplete="current-password" required></label>
+            <button type="submit" data-i18n="login.submit"></button>
+          </form>
+        </div>
+      </section>
+
+      <section id="view-overview" hidden>
+        <div class="tiles">
+          <article class="card tile">
+            <header><svg><use href="#i-server"/></svg><h2 data-i18n="overview.system"></h2></header>
+            <dl id="system-info" class="facts"></dl>
+            <div class="tile-actions">
+              <button id="reboot" class="danger"><svg><use href="#i-reboot"/></svg><span data-i18n="overview.reboot"></span></button>
+              <button id="poweroff" class="danger"><svg><use href="#i-power"/></svg><span data-i18n="overview.poweroff"></span></button>
+            </div>
+          </article>
+
+          <article class="card tile">
+            <header><svg><use href="#i-cpu"/></svg><h2 data-i18n="overview.cpu"></h2></header>
+            <div class="gauge-row">
+              <div id="cpu-gauge" class="gauge"></div>
+              <dl id="cpu-info" class="facts compact"></dl>
+            </div>
+            <div id="cpu-history" class="spark"></div>
+          </article>
+
+          <article class="card tile">
+            <header><svg><use href="#i-memory"/></svg><h2 data-i18n="overview.memory"></h2></header>
+            <div class="gauge-row">
+              <div id="mem-gauge" class="gauge"></div>
+              <dl id="mem-info" class="facts compact"></dl>
+            </div>
+            <div id="mem-history" class="spark"></div>
+          </article>
+
+          <article class="card tile">
+            <header><svg><use href="#i-network"/></svg><h2 data-i18n="overview.network"></h2></header>
+            <div id="net-info" class="net-list"></div>
+          </article>
+
+          <article class="card tile wide">
+            <header><svg><use href="#i-storage"/></svg><h2 data-i18n="overview.storage"></h2>
+              <button class="link-btn" data-goto="storage" data-i18n="overview.manage"></button></header>
+            <div id="fs-list" class="usage-list"></div>
+          </article>
+
+          <article class="card tile wide">
+            <header><svg><use href="#i-apps"/></svg><h2 data-i18n="overview.apps"></h2>
+              <button class="link-btn" data-goto="apps" data-i18n="overview.manage"></button></header>
+            <div id="overview-apps" class="app-mini-list"></div>
+          </article>
+
+          <article class="card tile">
+            <header><svg><use href="#i-jobs"/></svg><h2 data-i18n="overview.jobs"></h2>
+              <button class="link-btn" data-goto="jobs" data-i18n="overview.manage"></button></header>
+            <div id="overview-jobs" class="job-mini-list"></div>
+          </article>
+        </div>
+      </section>
+
+      <section id="view-storage" hidden>
+        <div id="pool-summary" class="tiles pools"></div>
+        <p class="hint" data-i18n="storage.hint"></p>
+        <div id="disks" class="disk-list"></div>
+        <div class="actions"><button id="storage-refresh" data-i18n="common.refresh"></button></div>
+      </section>
+
+      <section id="view-apps" hidden>
+        <div class="section-head">
+          <h2 data-i18n="apps.installed"></h2>
+          <button id="apps-update-all" class="primary" hidden></button>
+        </div>
+        <div id="apps-installed" class="app-grid"></div>
+
+        <div class="section-head">
+          <h2 data-i18n="apps.catalog"></h2>
+          <button id="apps-refresh" data-i18n="apps.refresh"></button>
+        </div>
+        <p class="hint" data-i18n="apps.hint"></p>
+        <p class="hint" id="apps-refreshed"></p>
+        <div class="filters">
+          <input id="apps-search" type="search" data-i18n-placeholder="apps.search">
+          <select id="apps-category"></select>
+        </div>
+        <div id="apps-catalog" class="app-grid catalog"></div>
+      </section>
+
+      <section id="view-domains" hidden>
+        <div class="tiles two">
+          <article class="card">
+            <h2 data-i18n="domains.title"></h2>
+            <p class="hint" data-i18n="domains.hint"></p>
+            <form id="domains-form">
+              <label><span data-i18n="domains.domain"></span><input name="domain" required></label>
+              <label class="check"><input name="mdns_aliases" type="checkbox"><span data-i18n="domains.mdns"></span></label>
+              <p class="hint" data-i18n="domains.domain_hint"></p>
+              <button type="submit" data-i18n="common.save"></button>
+            </form>
+          </article>
+          <article class="card">
+            <h2 data-i18n="domains.dns_title"></h2>
+            <p class="hint" data-i18n="domains.dns_hint"></p>
+            <table>
+              <thead><tr><th data-i18n="domains.record"></th><th data-i18n="domains.target"></th></tr></thead>
+              <tbody id="dns-records"></tbody>
+            </table>
+          </article>
+        </div>
+        <article class="card">
+          <h2 data-i18n="domains.ca_title"></h2>
+          <p class="hint" data-i18n="domains.ca_hint"></p>
+          <dl id="tls-info" class="facts"></dl>
+          <p><a class="button" href="/dahlia-ca.crt" download><svg><use href="#i-download"/></svg><span data-i18n="domains.ca_download"></span></a></p>
+        </article>
+      </section>
+
+      <section id="view-jobs" hidden>
+        <article class="card">
+          <table>
+            <thead><tr>
+              <th data-i18n="jobs.job"></th><th data-i18n="jobs.state"></th>
+              <th data-i18n="jobs.result"></th><th data-i18n="jobs.last_run"></th><th></th>
+            </tr></thead>
+            <tbody id="jobs"></tbody>
+          </table>
+          <div class="actions"><button id="jobs-refresh" data-i18n="common.refresh"></button></div>
+        </article>
+      </section>
+
+      <section id="view-updates" hidden>
+        <article class="card">
+          <p class="hint" data-i18n="updates.hint"></p>
+          <div class="actions">
+            <button id="updates-check" data-i18n="updates.check"></button>
+            <button id="updates-apply" class="primary" data-i18n="updates.apply" disabled></button>
+          </div>
+          <p id="updates-status"></p>
+          <table>
+            <thead><tr>
+              <th data-i18n="updates.package"></th><th data-i18n="updates.current"></th>
+              <th data-i18n="updates.new"></th><th data-i18n="updates.origin"></th>
+            </tr></thead>
+            <tbody id="updates"></tbody>
+          </table>
+        </article>
+      </section>
+
+      <section id="view-account" hidden>
+        <div class="tiles two">
+          <article class="card">
+            <h2 data-i18n="account.password_title"></h2>
+            <form id="password-form">
+              <label><span data-i18n="account.old"></span><input name="old" type="password" autocomplete="current-password" required></label>
+              <label><span data-i18n="field.password"></span><input name="new" type="password" autocomplete="new-password" required></label>
+              <label><span data-i18n="field.password_repeat"></span><input name="new2" type="password" autocomplete="new-password" required></label>
+              <button type="submit" data-i18n="account.submit"></button>
+            </form>
+          </article>
+          <article class="card">
+            <h2 data-i18n="account.server_title"></h2>
+            <form id="hostname-form">
+              <label><span data-i18n="field.hostname"></span><input name="hostname" required></label>
+              <p class="hint" data-i18n="account.hostname_hint"></p>
+              <button type="submit" data-i18n="overview.set_hostname"></button>
+            </form>
+          </article>
+        </div>
+      </section>
+    </main>
+  </div>
+</div>
+
+<div id="toasts" class="toasts" role="status" aria-live="polite"></div>
+
+<dialog id="dialog">
+  <form method="dialog">
+    <p id="dialog-text"></p>
+    <div class="dialog-actions">
+      <button value="cancel" id="dialog-cancel" data-i18n="common.cancel"></button>
+      <button value="ok" id="dialog-ok" class="primary" data-i18n="common.ok"></button>
     </div>
-    <table>
-      <thead><tr>
-        <th data-i18n="apps.name"></th><th data-i18n="apps.category"></th>
-        <th data-i18n="apps.description"></th><th data-i18n="apps.version"></th><th></th>
-      </tr></thead>
-      <tbody id="apps-catalog"></tbody>
-    </table>
-  </section>
-
-  <section id="view-domains" hidden>
-    <h1 data-i18n="domains.title"></h1>
-    <p class="hint" data-i18n="domains.hint"></p>
-    <form id="domains-form">
-      <label><span data-i18n="domains.domain"></span><input name="domain" required></label>
-      <label class="check"><input name="mdns_aliases" type="checkbox"><span data-i18n="domains.mdns"></span></label>
-      <p class="hint" data-i18n="domains.domain_hint"></p>
-      <button type="submit" data-i18n="common.save"></button>
-    </form>
-    <h2 data-i18n="domains.dns_title"></h2>
-    <p class="hint" data-i18n="domains.dns_hint"></p>
-    <table>
-      <thead><tr><th data-i18n="domains.record"></th><th data-i18n="domains.target"></th></tr></thead>
-      <tbody id="dns-records"></tbody>
-    </table>
-    <h2 data-i18n="domains.ca_title"></h2>
-    <p class="hint" data-i18n="domains.ca_hint"></p>
-    <dl id="tls-info" class="facts"></dl>
-    <p><a href="/dahlia-ca.crt" download data-i18n="domains.ca_download"></a></p>
-  </section>
-
-  <section id="view-jobs" hidden>
-    <h1 data-i18n="jobs.title"></h1>
-    <table>
-      <thead><tr>
-        <th data-i18n="jobs.job"></th><th data-i18n="jobs.state"></th>
-        <th data-i18n="jobs.result"></th><th data-i18n="jobs.last_run"></th><th></th>
-      </tr></thead>
-      <tbody id="jobs"></tbody>
-    </table>
-    <button id="jobs-refresh" data-i18n="common.refresh"></button>
-  </section>
-
-  <section id="view-updates" hidden>
-    <h1 data-i18n="updates.title"></h1>
-    <p class="hint" data-i18n="updates.hint"></p>
-    <div class="actions">
-      <button id="updates-check" data-i18n="updates.check"></button>
-      <button id="updates-apply" data-i18n="updates.apply" disabled></button>
-    </div>
-    <p id="updates-status"></p>
-    <table>
-      <thead><tr>
-        <th data-i18n="updates.package"></th><th data-i18n="updates.current"></th>
-        <th data-i18n="updates.new"></th><th data-i18n="updates.origin"></th>
-      </tr></thead>
-      <tbody id="updates"></tbody>
-    </table>
-  </section>
-
-  <section id="view-account" hidden>
-    <h1 data-i18n="account.title"></h1>
-    <form id="password-form">
-      <label><span data-i18n="account.old"></span><input name="old" type="password" autocomplete="current-password" required></label>
-      <label><span data-i18n="field.password"></span><input name="new" type="password" autocomplete="new-password" required></label>
-      <label><span data-i18n="field.password_repeat"></span><input name="new2" type="password" autocomplete="new-password" required></label>
-      <button type="submit" data-i18n="account.submit"></button>
-    </form>
-  </section>
-</main>
+  </form>
+</dialog>
 
 <template id="disk-row">
-  <tr>
-    <td class="path"></td><td class="fs"></td><td class="size"></td><td class="status"></td>
-    <td class="model"></td>
-    <td class="ops">
+  <div class="part">
+    <div class="part-main">
+      <span class="path"></span>
+      <span class="fs"></span>
+      <span class="size"></span>
+      <span class="badge status"></span>
+    </div>
+    <div class="part-usage"></div>
+    <div class="ops">
       <select class="role">
         <option value="data" data-i18n="role.data"></option>
         <option value="parity" data-i18n="role.parity"></option>
@@ -182,8 +289,8 @@
       </select>
       <button class="add" data-i18n="storage.add"></button>
       <button class="remove danger" data-i18n="storage.remove"></button>
-    </td>
-  </tr>
+    </div>
+  </div>
 </template>
 </body>
 </html>

@@ -242,6 +242,10 @@ def create_app(cfg: Config | None = None) -> FastAPI:
     def system():
         return agent("system.info")
 
+    @app.get("/api/stats", dependencies=authed)
+    def stats():
+        return agent("system.stats")
+
     @app.post("/api/system/hostname", dependencies=changing)
     def hostname(body: HostnameBody):
         return agent("system.set_hostname", {"hostname": body.hostname})

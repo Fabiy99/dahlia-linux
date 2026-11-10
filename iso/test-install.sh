@@ -278,6 +278,13 @@ info="$(web "$BASE/api/system")"
 echo "$info"
 grep -q "\"version\":\"$VERSION\"" <<<"$info" || dashboard_fail "system info via dahlia-agent failed"
 web "$BASE/api/jobs" | grep -q '"mover"' || dashboard_fail "job status via dahlia-agent failed"
+# Live values from /proc and statvfs on the real system: the root
+# filesystem is btrfs and the CPU counters are filled.
+stats="$(web "$BASE/api/stats")"
+echo "$stats"
+grep -q '"mountpoint":"/","source":"[^"]*","fstype":"btrfs"' <<<"$stats" \
+    || dashboard_fail "system stats lack the root filesystem"
+grep -qE '"cpu":\{"model":[^}]*"cores":[1-9]' <<<"$stats" || dashboard_fail "system stats lack the CPU"
 echo "OK: dashboard setup, login and agent calls work"
 
 # Local CA: the server certificate must verify against the CA the

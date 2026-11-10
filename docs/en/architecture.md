@@ -155,6 +155,7 @@ Protocol: one request per connection, one JSON line each way.
 | Action | Parameters | Effect |
 | --- | --- | --- |
 | `system.info` | - | Hostname, version, kernel, uptime, load, memory |
+| `system.stats` | - | CPU counters, memory, swap, network, usage of `/` and `/mnt/*` |
 | `system.set_hostname` | `hostname` (one DNS label, lower case) | `hostnamectl`, `/etc/hosts`, Avahi, new certificate |
 | `system.reboot`, `system.poweroff` | - | `systemctl --no-block ...` |
 | `storage.list` | - | `dahlia-disk list --json` |
@@ -206,9 +207,22 @@ SSH or the console.
 | Protection | changing requests need the header `X-Dahlia-Request`; 5 failures per IP within 5 minutes, then blocked |
 | Root actions | only through `dahlia-agent`; `dahlia-ui` is a member of the group `dahlia-agent` |
 
-Pages: overview (system data, server name, reboot, power off), disks (add in a role,
-remove), jobs (start mover, SnapRAID sync and scrub, state), apps, domains (domain, mDNS
-aliases, DNS records, CA download), updates (check, install), account (change password).
+Layout: sidebar with server name and version, content in tiles. Confirmations use an own
+dialog, messages appear at the bottom right.
+
+| Page | Content |
+| --- | --- |
+| Overview | system (version, kernel, CPU, address, reboot, power off), CPU and RAM usage with history, network (throughput per interface), usage of the system SSD, the pools and every disk under `/mnt`, apps with state, jobs with last result |
+| Disks | usage of `/mnt/user`, `/mnt/storage` and `/mnt/cache`; one card per physical disk with model, serial number and its filesystems (status, usage, add in a role, remove) |
+| Apps | installed apps as cards (state, addresses, updates, start/stop), catalog with search and categories |
+| Domains | domain, mDNS aliases, DNS records, CA download |
+| Jobs | start mover, SnapRAID sync and scrub, state |
+| Updates | check, install |
+| Settings | dashboard password, server name |
+
+The live values come from the agent action `system.stats` (`/proc`, `statvfs`,
+`ip -j addr`); the overview polls it every 3 seconds while it is open. The frontend
+computes the CPU usage from two samples.
 
 Forgotten password: `sudo rm /var/lib/dahlia-dashboard/users.json` and
 `sudo systemctl restart dahlia-dashboard` open the setup wizard with a new code.
