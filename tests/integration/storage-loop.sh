@@ -214,7 +214,8 @@ done
 check_data d2 /mnt/user
 
 step "format: only a blank whole disk, one GPT partition, then a candidate"
-truncate -s 300M "$WORK/blank.img"
+# mkfs.xfs needs more than 300 MB.
+truncate -s 512M "$WORK/blank.img"
 blank="$(losetup --find --show --partscan "$WORK/blank.img")"; LOOPS+=("$blank")
 d1_loop="${LOOPS[0]}"
 if dahlia-disk format "$d1_loop" --fs xfs 2>/dev/null; then fail "formatted a disk with data"; fi
