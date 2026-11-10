@@ -289,6 +289,10 @@ grep -qE '"cpu":\{"model":[^}]*"cores":[1-9]' <<<"$stats" || dashboard_fail "sys
 web "$BASE/api/hardware" | grep -q '"path":"/dev/vda"' || dashboard_fail "hardware lacks the system disk"
 web "$BASE/api/docker" | grep -q '"containers":' || dashboard_fail "docker list via dahlia-agent failed"
 web "$BASE/api/log?lines=20" | grep -q '"lines":\["' || dashboard_fail "system log via dahlia-agent failed"
+# Settings: time zones from timedatectl, the ifupdown interface, the timers.
+web "$BASE/api/settings/time" | grep -q '"timezones":\["' || dashboard_fail "settings.time failed"
+web "$BASE/api/settings/network" | grep -q '"iface":"' || dashboard_fail "settings.network failed"
+web "$BASE/api/settings/schedules" | grep -q '"mover":{' || dashboard_fail "settings.schedules failed"
 web -o /dev/null -w '%{content_type}' "$BASE/manifest.webmanifest" | grep -q 'application/manifest+json' \
     || dashboard_fail "web app manifest not served as application/manifest+json"
 echo "OK: dashboard setup, login and agent calls work"

@@ -270,6 +270,7 @@ function show(view) {
   if (view === "overview") startStats();
   else stopStats();
   if (view !== "docker") stopDockerStats();
+  if (view !== "account") clearTimeout(netTimer);
 }
 
 function setLoggedIn(on) {
@@ -1115,6 +1116,150 @@ async function loadAccount() {
   const info = await api("GET", "system");
   setSidebar(info);
   document.querySelector("#hostname-form [name=hostname]").value = info.hostname;
+  // Each card loads on its own; one failing part does not hide the others.
+  await Promise.all([loadTime(), loadNetwork(), loadSpindown(), loadSchedules()]
+    .map((p) => p.catch(sayError)));
+}
+
+// --- settings: time, network, spindown, schedules ---------------------------------
+
+const SCHEDULE_JOBS = ["mover", "snapraid-sync", "snapraid-scrub"];
+const FREQUENCIES = ["off", "hourly", "daily", "weekly", "monthly"];
+const WEEKDAYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
+let netTimer = null;
+
+function fillOptions(select, values, label) {
+  select.replaceChildren(...values.map((v) => {
+    const o = el("option", "", label(v));
+    o.value = String(v);
+    return o;
+  }));
+}
+
+function minutesLabel(m) {
+  if (m === -1) return t("settings.spindown_inherit");
+  if (m === 0) return t("settings.spindown_never");
+  return m < 60 ? t("settings.minutes", { n: m }) : t("settings.hours", { n: m / 60 });
+}
+
+async function loadTime() {
+  const data = await api("GET", "settings/time");
+  const f = document.getElementById("time-form");
+  fillOptions(f.elements.timezone, data.timezones, (z) => z);
+  f.elements.timezone.value = data.timezone;
+  f.elements.ntp.checked = data.ntp;
+  let key = "settings.ntp_off";
+  if (data.ntp) key = data.synchronized ? "settings.ntp_synced" : "settings.ntp_waiting";
+  document.getElementById("time-state").textContent = t(key, { time: data.time });
+}
+
+function renderNetMode() {
+  const f = document.getElementById("network-form");
+  const isStatic = f.elements.mode.value === "static";
+  document.getElementById("net-static").hidden = !isStatic;
+  for (const name of ["address", "gateway", "dns"]) f.elements[name].required = isStatic;
+}
+
+function pollNetwork() {
+  clearTimeout(netTimer);
+  // While the address changes, requests fail; keep trying.
+  netTimer = setTimeout(() => loadNetwork().catch(pollNetwork), 3000);
+}
+
+async function loadNetwork() {
+  const data = await api("GET", "settings/network");
+  const f = document.getElementById("network-form");
+  f.elements.mode.value = data.mode;
+  // Prefill with what DHCP gave, so switching to static starts from the current address.
+  f.elements.address.value = data.address || data.current[0] || "";
+  f.elements.gateway.value = data.gateway || data.current_gateway || "";
+  f.elements.dns.value = data.dns.join(", ");
+  document.getElementById("net-current").textContent = t("settings.net_current", {
+    iface: data.iface, address: data.current.join(", ") || "–", gateway: data.current_gateway || "–",
+  });
+  renderNetMode();
+  const box = document.getElementById("net-pending");
+  const confirm = document.getElementById("net-confirm");
+  clearTimeout(netTimer);
+  box.hidden = data.pending === null && !data.reverted;
+  confirm.hidden = data.pending === null;
+  if (data.pending !== null) {
+    document.getElementById("net-pending-text").textContent = t("settings.net_pending", { s: data.pending });
+    pollNetwork();
+  } else if (data.reverted) {
+    document.getElementById("net-pending-text").textContent = t("settings.net_reverted");
+  }
+}
+
+async function loadSpindown() {
+  const data = await api("GET", "settings/spindown");
+  const f = document.getElementById("spindown-form");
+  fillOptions(f.elements.default, data.choices, minutesLabel);
+  f.elements.default.value = String(data.default ?? 0);
+  const box = document.getElementById("spindown-disks");
+  box.replaceChildren();
+  if (!data.disks.length) box.append(el("p", "hint", t("settings.spindown_none")));
+  for (const d of data.disks) {
+    const label = el("label");
+    label.append(el("span", "", [d.path, d.model, formatBytes(d.size)].filter(Boolean).join(" · ")));
+    const sel = el("select");
+    sel.dataset.serial = d.serial || "";
+    sel.disabled = !d.serial;
+    fillOptions(sel, [-1, ...data.choices], minutesLabel);
+    sel.value = String(d.minutes);
+    label.append(sel);
+    box.append(label);
+  }
+}
+
+function scheduleRow(job, s) {
+  const row = el("form", "schedule");
+  const freq = el("select");
+  fillOptions(freq, FREQUENCIES, (v) => t(`schedule.${v}`));
+  freq.value = s.frequency;
+  const time = el("input");
+  time.type = "time";
+  time.value = s.time;
+  time.required = true;
+  const weekday = el("select");
+  fillOptions(weekday, WEEKDAYS, (v) => t(`weekday.${v}`));
+  weekday.value = s.weekday;
+  const monthday = el("select");
+  fillOptions(monthday, Array.from({ length: 28 }, (_, i) => i + 1), (n) => t("schedule.monthday", { n }));
+  monthday.value = String(s.monthday);
+  const save = el("button", "", t("common.save"));
+  save.type = "submit";
+  const sync = () => {
+    time.hidden = freq.value === "off";
+    time.title = freq.value === "hourly" ? t("schedule.hourly_hint") : "";
+    weekday.hidden = freq.value !== "weekly";
+    monthday.hidden = freq.value !== "monthly";
+  };
+  freq.addEventListener("change", sync);
+  sync();
+  const fields = el("div", "schedule-fields");
+  fields.append(freq, weekday, monthday, time, save);
+  const active = s.enabled && s.frequency !== "off" && s.next;
+  row.append(el("b", "", tv("job", job)), fields,
+             el("small", "hint", active ? t("schedule.next", { time: s.next }) : t("schedule.disabled")));
+  row.addEventListener("submit", (e) => {
+    e.preventDefault();
+    guarded(save, async () => {
+      await api("POST", `settings/schedules/${job}`, {
+        frequency: freq.value, time: time.value || s.time, weekday: weekday.value,
+        monthday: Number(monthday.value),
+      });
+      say(t("schedule.saved", { job: tv("job", job) }), "ok");
+      await loadSchedules();
+    });
+  });
+  return row;
+}
+
+async function loadSchedules() {
+  const data = await api("GET", "settings/schedules");
+  document.getElementById("schedules").replaceChildren(
+    ...SCHEDULE_JOBS.map((job) => scheduleRow(job, data.schedules[job])));
 }
 
 // --- forms ----------------------------------------------------------------------
@@ -1170,6 +1315,59 @@ function bindForms() {
       const res = await api("POST", "domains", { domain, mdns_aliases: mdns });
       await loadDomains();
       say(t(res.ca_renewed ? "domains.saved_new_ca" : "domains.saved"), "ok");
+    });
+  });
+
+  document.getElementById("time-form").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const f = e.target.elements;
+    guarded(e.submitter, async () => {
+      await api("POST", "settings/time", { timezone: f.timezone.value, ntp: f.ntp.checked });
+      say(t("settings.time_saved"), "ok");
+      await loadTime();
+    });
+  });
+
+  const netForm = document.getElementById("network-form");
+  netForm.elements.mode.addEventListener("change", renderNetMode);
+  netForm.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const f = e.target.elements;
+    const body = { mode: f.mode.value };
+    if (body.mode === "static") {
+      Object.assign(body, { address: f.address.value.trim(), gateway: f.gateway.value.trim(),
+                            dns: f.dns.value.trim() });
+    }
+    guarded(e.submitter, async () => {
+      if (!await ask(t("settings.net_confirm"), "settings.net_apply", true)) return;
+      const res = await api("POST", "settings/network", body);
+      say(t("settings.net_started", { s: res.rollback_seconds }), "ok");
+      pollNetwork();
+    });
+  });
+  const netConfirm = document.getElementById("net-confirm");
+  netConfirm.addEventListener("click", () => guarded(netConfirm, async () => {
+    await api("POST", "settings/network/confirm");
+    say(t("settings.net_kept"), "ok");
+    setTimeout(() => loadNetwork().catch(sayError), 1500);
+  }));
+
+  document.getElementById("spindown-form").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const disks = {};
+    for (const sel of document.querySelectorAll("#spindown-disks select")) {
+      if (sel.dataset.serial) disks[sel.dataset.serial] = Number(sel.value);
+    }
+    guarded(e.submitter, async () => {
+      const res = await api("POST", "settings/spindown", {
+        default: Number(e.target.elements.default.value), disks,
+      });
+      if (res.failed.length) {
+        say(t("settings.spindown_failed", { disks: res.failed.map((f) => `${f.path}: ${f.error}`).join("\n") }), "error");
+      } else {
+        say(t("settings.spindown_saved"), "ok");
+      }
+      await loadSpindown();
     });
   });
 

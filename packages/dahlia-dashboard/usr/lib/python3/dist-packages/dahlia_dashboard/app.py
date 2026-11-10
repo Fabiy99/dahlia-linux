@@ -114,6 +114,30 @@ class DiskRemoveBody(BaseModel):
     force: bool = False
 
 
+class TimeBody(BaseModel):
+    timezone: str
+    ntp: bool
+
+
+class NetworkBody(BaseModel):
+    mode: str
+    address: str = ""
+    gateway: str = ""
+    dns: str = ""
+
+
+class SpindownBody(BaseModel):
+    default: int
+    disks: dict[str, int] = {}
+
+
+class ScheduleBody(BaseModel):
+    frequency: str
+    time: str = "03:00"
+    weekday: str = "sun"
+    monthday: int = 1
+
+
 def create_app(cfg: Config | None = None) -> FastAPI:
     cfg = cfg or Config()
     users = UserStore(cfg.state_dir / "users.json")
@@ -357,6 +381,44 @@ def create_app(cfg: Config | None = None) -> FastAPI:
     @app.get("/api/log", dependencies=authed)
     def system_log(lines: int = 300, priority: str = "info", unit: str = ""):
         return agent("system.log", {"lines": lines, "priority": priority, "unit": unit})
+
+    # --- settings -------------------------------------------------------------
+
+    @app.get("/api/settings/time", dependencies=authed)
+    def settings_time():
+        return agent("settings.time")
+
+    @app.post("/api/settings/time", dependencies=changing)
+    def settings_set_time(body: TimeBody):
+        return agent("settings.set_time", body.model_dump())
+
+    @app.get("/api/settings/network", dependencies=authed)
+    def settings_network():
+        return agent("settings.network")
+
+    @app.post("/api/settings/network", dependencies=changing)
+    def settings_set_network(body: NetworkBody):
+        return agent("settings.set_network", body.model_dump())
+
+    @app.post("/api/settings/network/confirm", dependencies=changing)
+    def settings_confirm_network():
+        return agent("settings.confirm_network")
+
+    @app.get("/api/settings/spindown", dependencies=authed)
+    def settings_spindown():
+        return agent("settings.spindown")
+
+    @app.post("/api/settings/spindown", dependencies=changing)
+    def settings_set_spindown(body: SpindownBody):
+        return agent("settings.set_spindown", body.model_dump())
+
+    @app.get("/api/settings/schedules", dependencies=authed)
+    def settings_schedules():
+        return agent("settings.schedules")
+
+    @app.post("/api/settings/schedules/{job}", dependencies=changing)
+    def settings_set_schedule(job: str, body: ScheduleBody):
+        return agent("settings.set_schedule", {"job": job, **body.model_dump()})
 
     # --- domains --------------------------------------------------------------
 

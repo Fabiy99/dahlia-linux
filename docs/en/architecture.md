@@ -158,6 +158,11 @@ Protocol: one request per connection, one JSON line each way.
 | `system.stats` | - | CPU counters, memory, swap, network, usage of `/` and `/mnt/*` |
 | `system.hardware` | - | mainboard (DMI), CPU temperature (hwmon), SMART per disk with `smartctl -n standby` (does not wake a sleeping disk) |
 | `system.log` | `lines`, `priority`, `unit` (optional) | `journalctl -n … -p …` |
+| `settings.time` / `settings.set_time` | `timezone`, `ntp` | `timedatectl set-timezone`, `set-ntp` |
+| `settings.network` / `settings.set_network` | `mode` (`dhcp`/`static`), `address` (CIDR), `gateway`, `dns` | `/etc/network/interfaces`, applied by `dahlia-network` with rollback |
+| `settings.confirm_network` | – | confirms the new network settings |
+| `settings.spindown` / `settings.set_spindown` | `default`, `disks` (serial → minutes) | `/etc/dahlia/spindown.json`, `hdparm -S` |
+| `settings.schedules` / `settings.set_schedule` | `job`, `frequency`, `time`, `weekday`, `monthday` | drop-in `OnCalendar=` for the timers |
 | `docker.list`, `docker.stats`, `docker.disk` | - | all containers, CPU/RAM per container, space used by images, volumes, build cache |
 | `docker.container` | `name`, `op` (`start`, `stop`, `restart`) | `docker <op> -- <name>` |
 | `docker.logs` | `name`, `lines` (10 to 5000) | `docker logs --tail` |
@@ -228,7 +233,20 @@ and tablets.
 | Jobs | start mover, SnapRAID sync and scrub, state |
 | System log | journal filtered by level and service |
 | Updates | check, install |
-| Settings | dashboard password, server name |
+| Settings | time and time zone, network (DHCP/static), disk spindown, mover and SnapRAID schedules, dashboard password, server name |
+
+Settings (M9b):
+
+- Network: `settings.set_network` writes the new configuration to
+  `/etc/network/interfaces.dahlia-new` and starts `dahlia-network apply` as a
+  transient unit. It takes the interface down with the old configuration, swaps
+  the files and brings it up again. Unless the change is confirmed with
+  `settings.confirm_network` within 180 seconds, the old configuration is restored.
+- Spindown: a default for all spinning disks plus values per serial number.
+  `dahlia-spindown.service` applies them at boot, a udev rule for disks plugged in
+  later. SSDs and NVMe are skipped.
+- Schedules: drop-ins under `/etc/systemd/system/<timer>.d/dahlia-schedule.conf`,
+  saved values in `/etc/dahlia/schedules.json`. "Off" disables the timer.
 
 The live values come from the agent action `system.stats` (`/proc`, `statvfs`,
 `ip -j addr`); the overview polls it every 3 seconds while it is open. The frontend
