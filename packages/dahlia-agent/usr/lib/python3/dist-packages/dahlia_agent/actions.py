@@ -474,7 +474,11 @@ def job_start(ctx: Context, job: str):
 )
 def job_status(ctx: Context, job: str):
     """State and last result of a job."""
-    return {"job": job, **unit_state(ctx, JOBS[job])}
+    state = unit_state(ctx, JOBS[job])
+    # Jobs are static units; systemd reports "success" for one that never ran.
+    if not state["started"]:
+        state["result"] = ""
+    return {"job": job, **state}
 
 
 # --- updates ------------------------------------------------------------------
@@ -514,23 +518,9 @@ def updates_check(ctx: Context):
     return {"packages": parse_simulation(out.stdout)}
 
 
-UPDATE_CMD = [
-    "systemd-run",
-    "--unit=dahlia-update",
-    "--description=Dahlia system update",
-    "--property=CollectMode=inactive-or-failed",
-    "--setenv=DEBIAN_FRONTEND=noninteractive",
-    "--setenv=LC_ALL=C.UTF-8",
-    "--",
-    "/usr/bin/apt-get",
-    "-y",
-    "-q",
-    "-o",
-    "Dpkg::Options::=--force-confdef",
-    "-o",
-    "Dpkg::Options::=--force-confold",
-    "full-upgrade",
-]
+# dahlia-update.service is a static unit, so its last run stays visible in
+# systemctl show (a transient unit would be gone after it finished).
+UPDATE_CMD = ["systemctl", "start", "--no-block", "dahlia-update.service"]
 
 
 @action("updates.apply", mutating=True)

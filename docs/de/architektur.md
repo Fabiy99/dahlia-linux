@@ -168,7 +168,7 @@ Protokoll: eine Anfrage pro Verbindung, je eine JSON-Zeile hin und zurück.
 | `job.start` | `job` (mover, snapraid-sync, snapraid-scrub) | startet die Unit, kehrt sofort zurück |
 | `job.status` | `job` (dazu `update`) | Zustand und letztes Ergebnis |
 | `updates.check` | - | `apt-get update`, Liste der Upgrades |
-| `updates.apply` | - | `apt-get full-upgrade` als Unit `dahlia-update` |
+| `updates.apply` | - | `apt-get full-upgrade` über die Unit `dahlia-update.service` |
 | `apps.catalog` | `refresh` (optional) | App-Katalog und sein Stand, mit `refresh` vorher herunterladen |
 | `apps.list` | - | installierte Apps mit Container-Zustand, Version, verfügbarem Update |
 | `apps.install`, `apps.update` | `id` | im Hintergrund als Unit `dahlia-app-<id>` |
