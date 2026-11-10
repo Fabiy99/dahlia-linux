@@ -80,7 +80,14 @@ findmnt -n /mnt/user >/dev/null || fail "/mnt/user not mounted"
 
 step "local catalog"
 mkdir -p "$WORK/catalog/apps"
-echo '{"apps": ["whoami"]}' > "$WORK/catalog/index.json"
+echo '{"apps": ["whoami", "broken"]}' > "$WORK/catalog/index.json"
+cat > "$WORK/catalog/apps/broken.yaml" <<'YAML'
+schema: 1
+id: broken
+name: Broken
+description: {de: Image fehlt, en: image does not exist}
+image: traefik/whoami:v0.0.0-dahlia-missing
+YAML
 cat > "$WORK/catalog/apps/whoami.yaml" <<'YAML'
 schema: 1
 id: whoami
@@ -97,6 +104,22 @@ printf '{"catalog": "file://%s/catalog/"}\n' "$WORK" > /etc/dahlia/apps.json
 call apps.catalog '{"refresh": true}' | jq -e '.apps[0].id == "whoami"' >/dev/null \
     || fail "catalog refresh failed"
 cp "$WORK/apps.json.orig" /etc/dahlia/apps.json
+
+step "a failed install reports the reason and can be retried"
+for _ in 1 2; do
+    call apps.install '{"id": "broken"}' >/dev/null
+    for _ in $(seq 1 60); do
+        state="$(call apps.job '{"id": "broken"}')"
+        case "$(jq -r .active <<<"$state")" in
+            active|activating) sleep 2 ;;
+            *) break ;;
+        esac
+    done
+    echo "$state"
+    jq -e '.result != "success" and (.error | length) > 0' <<<"$state" >/dev/null \
+        || fail "failed install not reported with a reason"
+    [ ! -e /var/lib/dahlia/apps/broken ] || fail "failed install left files behind"
+done
 
 step "install through the agent"
 call apps.install '{"id": "whoami"}' >/dev/null
