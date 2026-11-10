@@ -12,6 +12,12 @@ case "$1" in
             adduser --system --group --no-create-home --home /nonexistent \
                 --shell /usr/sbin/nologin dahlia-apps
         fi
+        # avahi-publish fails over D-Bus as a systemd DynamicUser
+        # ("Failed to create client object"), so dahlia-mdns gets a fixed one.
+        if ! getent passwd dahlia-mdns >/dev/null; then
+            adduser --system --group --no-create-home --home /nonexistent \
+                --shell /usr/sbin/nologin dahlia-mdns
+        fi
         mkdir -p /var/lib/dahlia/apps
         chmod 0755 /var/lib/dahlia
         chmod 0700 /var/lib/dahlia/apps

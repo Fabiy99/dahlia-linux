@@ -237,7 +237,7 @@ lokalen DNS an, z. B. in AdGuard Home unter Filter > DNS-Umschreibungen
 (`*.dahlia.home.arpa` -> IP des Servers). Das Dashboard zeigt die Einträge mit der
 aktuellen Adresse.
 
-mDNS-Aliase: `dahlia-mdns.service` (ohne Rechte, `DynamicUser`) veröffentlicht für jede App
+mDNS-Aliase: `dahlia-mdns.service` (ohne Rechte, Benutzer `dahlia-mdns`) veröffentlicht für jede App
 mit Web-Oberfläche `<app>.local` per `avahi-publish` auf der primären IPv4-Adresse. Ändert
 sich die Adresse, folgen die Aliase nach höchstens 10 Sekunden. Eine App, die so heißt wie
 der Server, bekommt keinen Alias.
