@@ -96,6 +96,8 @@ step "storage.add and storage.remove through the agent"
 truncate -s 256M "$WORK/disk1.img"
 LOOP="$(losetup --find --show "$WORK/disk1.img")"
 mkfs.ext4 -q -L agentdisk "$LOOP"
+# udev only sees the new filesystem (and creates by-uuid) after a change event.
+udevadm trigger --action=change "$LOOP"
 udevadm settle
 uuid="$(blkid -s UUID -o value "$LOOP")"
 call storage.list | jq -e --arg u "$uuid" '.disks | map(.uuid) | index($u)' >/dev/null \
