@@ -8,7 +8,14 @@ addr="$(hostname -I 2>/dev/null | cut -d' ' -f1)"
 
 printf '\n  Dahlia Linux %s\n\n' "$DAHLIA_VERSION"
 printf '  Host : %s.local\n' "$host"
-printf '  IPv4 : %s\n\n' "${addr:-none}"
+printf '  IPv4 : %s\n' "${addr:-none}"
+
+# Local CA from dahlia-domains; compare before importing it into a browser.
+ca=/etc/dahlia/tls/ca.crt
+if [ -r "$ca" ] && command -v openssl >/dev/null; then
+    printf '  CA   : %s\n' "$(openssl x509 -noout -fingerprint -sha256 -in "$ca" | cut -d= -f2)"
+fi
+printf '\n'
 
 # Written by dahlia-dashboard while no dashboard account exists.
 code_file=/run/dahlia-dashboard/setup-code

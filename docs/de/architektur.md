@@ -2,7 +2,7 @@
 
 [English version](../en/architecture.md)
 
-Stand: Meilenstein 6. Dieses Dokument beschreibt das Zielbild. Was davon schon gebaut ist,
+Stand: Meilenstein 7. Dieses Dokument beschreibt das Zielbild. Was davon schon gebaut ist,
 steht in der README unter "Meilensteine".
 
 ## Installation
@@ -132,7 +132,7 @@ Protokoll: eine Anfrage pro Verbindung, je eine JSON-Zeile hin und zurück.
 | Aktion | Parameter | Wirkung |
 | --- | --- | --- |
 | `system.info` | - | Hostname, Version, Kernel, Uptime, Last, Speicher |
-| `system.set_hostname` | `hostname` (ein DNS-Label, klein) | `hostnamectl`, `/etc/hosts`, Avahi |
+| `system.set_hostname` | `hostname` (ein DNS-Label, klein) | `hostnamectl`, `/etc/hosts`, Avahi, neues Zertifikat |
 | `system.reboot`, `system.poweroff` | - | `systemctl --no-block ...` |
 | `storage.list` | - | `dahlia-disk list --json` |
 | `storage.add` | `uuid`, `role` (data, parity, cache, external) | `dahlia-disk add` |
@@ -148,6 +148,8 @@ Protokoll: eine Anfrage pro Verbindung, je eine JSON-Zeile hin und zurück.
 | `apps.job` | `id` | Zustand der letzten Installation bzw. Aktualisierung |
 | `apps.start`, `apps.stop` | `id` | starten bzw. stoppen, gilt auch für den nächsten Boot |
 | `apps.remove` | `id`, `delete_data` (optional) | Container entfernen, Daten nur auf Wunsch |
+| `domains.get` | - | Domain, mDNS-Aliase, nötige DNS-Einträge, Zertifikate |
+| `domains.set` | `domain`, `mdns_aliases` | `dahlia-domains set`, Zertifikat und Proxy neu |
 | `agent.actions` | - | diese Liste |
 
 Unbekannte Aktionen, unbekannte oder fehlende Parameter und falsche Typen werden abgelehnt,
@@ -164,8 +166,9 @@ sudo dahlia-agent-call storage.add '{"uuid": "<UUID>", "role": "data"}'
 
 ### Dashboard (ab Meilenstein 5)
 
-Aufruf: `https://<server>.local/` (Port 80 leitet auf 443 um). Bis Meilenstein 7 ist das
-Zertifikat selbst signiert (`/etc/dahlia/tls/dashboard.crt`), der Browser warnt einmal.
+Aufruf: `https://<server>.local/` (Port 80 leitet auf 443 um). Das Zertifikat stellt die
+lokale Dahlia-CA aus (siehe "Netzwerk und Namen"). Bis die CA im Browser importiert ist,
+warnt der Browser.
 
 Beim ersten Aufruf gibt es nur den Einrichtungsassistenten. Er verlangt den Einmal-Code,
 den der Server auf der Konsole (tty1 und serielle Konsole) und beim SSH-Login zeigt. Der
@@ -183,7 +186,8 @@ nur für das Web-UI, nicht für SSH oder die Konsole.
 
 Seiten: Übersicht (Systemdaten, Servername, Neustart, Ausschalten), Platten (hinzufügen
 in einer Rolle, entfernen), Aufgaben (Mover, SnapRAID-Sync und -Scrub starten, Zustand),
-Updates (suchen, installieren), Konto (Passwort ändern).
+Apps, Domains (Domain, mDNS-Aliase, DNS-Einträge, CA-Download), Updates (suchen,
+installieren), Konto (Passwort ändern).
 
 Passwort vergessen: `sudo rm /var/lib/dahlia-dashboard/users.json` und
 `sudo systemctl restart dahlia-dashboard` öffnen den Einrichtungsassistenten mit neuem Code.
@@ -202,7 +206,7 @@ abgelehnt, also auch `privileged`, Host-Netzwerk, Geräte und Capabilities.
 
 | Punkt | Umsetzung |
 | --- | --- |
-| Web-Port | Docker veröffentlicht ihn auf `127.0.0.1:41000-41999`, nginx lauscht im LAN auf dem öffentlichen Port der Vorlage (Port-Link `http://<server>:<port>/`) |
+| Web-Port | Docker veröffentlicht ihn auf `127.0.0.1:41000-41999`; nginx lauscht im LAN auf dem öffentlichen Port der Vorlage (Port-Link `http://<server>:<port>/`) und auf 443 für `<id>.<domain>` und `<id>.local` |
 | LAN-Ports | nur wenn die Vorlage sie nennt; das Dashboard zeigt sie vor der Installation |
 | Daten | `/mnt/user/appdata/<id>/...` (Besitzer `dahlia-apps`), Freigaben `/mnt/user/<name>`; ohne eingehängtes Array keine Installation |
 | Start | Docker startet nichts selbst (`restart: no`); `dahlia-apps.service` startet die aktivierten Apps nach den Platten |
@@ -216,13 +220,56 @@ dahlia-apps remove jellyfin [--delete-data]
 dahlia-apps check app.yaml        # Vorlage prüfen
 ```
 
-## Netzwerk und Namen
+## Netzwerk und Namen (ab Meilenstein 7)
 
-- Server: `dahlia.local` über Avahi.
-- Apps: Port-Links (Standard), einstufige mDNS-Aliase (`jellyfin.local`) oder
-  `*.dahlia.home.arpa` über AdGuard-Rewrites.
-- Zertifikate von einer lokalen Dahlia-CA. Das CA-Zertifikat steht im Dashboard zum
-  Download bereit.
+| Name | Weg | Voraussetzung |
+| --- | --- | --- |
+| `https://<server>.local/` | Dashboard, Avahi-Hostname | keine |
+| `https://<domain>/` | Dashboard | DNS-Eintrag `<domain>` auf den Server |
+| `https://<app>.<domain>/` | App über nginx | DNS-Eintrag `*.<domain>` auf den Server |
+| `https://<app>.local/` | App über nginx, mDNS-Alias | mDNS-Aliase eingeschaltet |
+| `http://<server>.local:<port>/` | Port-Link | keine |
+
+Die Domain ist standardmäßig `dahlia.home.arpa` (RFC 8375) und steht in
+`/etc/dahlia/domains.json`. Mehrstufige `.local`-Namen (`jellyfin.dahlia.local`) werden
+abgelehnt, weil mDNS-Clients sie nicht zuverlässig auflösen. Die DNS-Einträge legt man im
+lokalen DNS an, z. B. in AdGuard Home unter Filter > DNS-Umschreibungen
+(`*.dahlia.home.arpa` -> IP des Servers). Das Dashboard zeigt die Einträge mit der
+aktuellen Adresse.
+
+mDNS-Aliase: `dahlia-mdns.service` (ohne Rechte, Benutzer `dahlia-mdns`) veröffentlicht für jede App
+mit Web-Oberfläche `<app>.local` per `avahi-publish` auf der primären IPv4-Adresse. Ändert
+sich die Adresse, folgen die Aliase nach höchstens 10 Sekunden. Eine App, die so heißt wie
+der Server, bekommt keinen Alias.
+
+Zertifikate (`dahlia-domains`, Teil von `dahlia-agent`):
+
+| Datei | Inhalt |
+| --- | --- |
+| `/etc/dahlia/tls/ca.key`, `ca.crt` | lokale CA, EC P-256, 20 Jahre; Schlüssel nur für root lesbar |
+| `/etc/dahlia/tls/server.key`, `server.crt` | Server-Zertifikat für nginx, 825 Tage |
+
+Die CA hat Namensbeschränkungen (`nameConstraints`): sie kann nur Namen unter `.local`,
+`home.arpa`, der eigenen Domain und private IPv4-Adressen (10/8, 172.16/12, 192.168/16)
+signieren. Wer sie importiert, vertraut ihr also für keine anderen Websites. Das
+Server-Zertifikat enthält `<server>.local`, `<domain>`, `*.<domain>`, die mDNS-Aliase und
+die privaten IPv4-Adressen des Servers. `dahlia-domains.timer` prüft täglich und nach dem
+Boot: neue Adresse, neue App, weniger als 30 Tage Restlaufzeit führen zu einem neuen
+Zertifikat. Eine Domain außerhalb von `home.arpa` braucht eine neue CA; das Dashboard sagt
+dann, dass die CA neu importiert werden muss.
+
+CA importieren: im Dashboard unter Domains `dahlia-ca.crt` herunterladen und den
+SHA-256-Fingerabdruck mit der Anzeige nach dem Login (Konsole oder SSH) vergleichen.
+Danach unter Windows mit `certutil -addstore -f Root dahlia-ca.crt` (als Administrator),
+unter macOS in der Schlüsselbundverwaltung (System, "Immer vertrauen"), unter Debian/Ubuntu
+nach `/usr/local/share/ca-certificates/dahlia-ca.crt` kopieren und `update-ca-certificates`;
+Firefox nutzt seinen eigenen Speicher (Einstellungen > Zertifikate > Importieren).
+
+```sh
+dahlia-domains show
+dahlia-domains set --domain lab.home.arpa --mdns off
+dahlia-domains apply              # Zertifikat und Proxy prüfen, nur bei Bedarf neu
+```
 
 ## Updates
 

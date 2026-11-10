@@ -15,18 +15,10 @@ setup_user() {
 }
 
 setup_tls() {
-    # Self-signed until the local Dahlia CA exists (milestone 7).
-    [ -s "$TLS_DIR/dashboard.crt" ] && [ -s "$TLS_DIR/dashboard.key" ] && return 0
-    local host
-    host="$(hostname -s 2>/dev/null || echo dahlia)"
-    mkdir -p "$TLS_DIR"
-    chmod 0755 "$TLS_DIR"
-    (umask 077 && openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 \
-        -nodes -days 3650 -subj "/CN=$host.local" \
-        -addext "subjectAltName=DNS:$host.local,DNS:$host,DNS:dahlia.local" \
-        -keyout "$TLS_DIR/dashboard.key" -out "$TLS_DIR/dashboard.crt" 2>/dev/null)
-    chmod 0600 "$TLS_DIR/dashboard.key"
-    chmod 0644 "$TLS_DIR/dashboard.crt"
+    # Up to 0.2 the dashboard had its own self-signed certificate.
+    rm -f "$TLS_DIR/dashboard.crt" "$TLS_DIR/dashboard.key"
+    # CA and server certificate come from dahlia-agent.
+    dahlia-domains apply >/dev/null || echo "dahlia-dashboard: dahlia-domains apply failed" >&2
 }
 
 setup_nginx() {
@@ -40,8 +32,8 @@ setup_nginx() {
 case "$1" in
     configure)
         setup_user
-        setup_tls
         setup_nginx
+        setup_tls
         systemd-tmpfiles --create dahlia-dashboard.conf >/dev/null 2>&1 || true
         systemctl enable dahlia-dashboard.service >/dev/null 2>&1 || true
         if [ -d /run/systemd/system ]; then

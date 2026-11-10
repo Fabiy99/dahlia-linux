@@ -25,7 +25,8 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            apt-utils mergerfs fuse3 xfsprogs btrfs-progs e2fsprogs jq python3-yaml nginx
+            apt-utils mergerfs fuse3 xfsprogs btrfs-progs e2fsprogs jq python3-yaml nginx \
+            avahi-daemon avahi-utils
 
       - name: Drop the runner's /mnt fstab entry
         # Same as in storage.yml: the runner's /mnt resource disk entry
@@ -56,3 +57,4 @@ jobs:
           sudo journalctl -u dahlia-agent.service -u dahlia-agent.socket --no-pager | tail -100
           sudo journalctl -n 100 --no-pager -u 'mnt-*' || true
           sudo journalctl -n 60 --no-pager -u docker.service || true
+          sudo journalctl -n 40 --no-pager -u dahlia-mdns.service -u nginx.service || true

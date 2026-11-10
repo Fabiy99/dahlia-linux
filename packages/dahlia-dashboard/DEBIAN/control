@@ -4,7 +4,7 @@ Architecture: all
 Maintainer: Dahlia Linux <https://github.com/Fabiy99/dahlia-linux>
 Section: admin
 Priority: optional
-Depends: python3 (>= 3.11), python3-fastapi, python3-uvicorn, nginx, openssl, adduser, systemd, dahlia-agent (= @VERSION@)
+Depends: python3 (>= 3.11), python3-fastapi, python3-uvicorn, nginx, adduser, systemd, dahlia-agent (= @VERSION@)
 Description: Dahlia Linux web dashboard
  Web UI on https://<server>/ for disks, jobs, updates and the system.
  The backend runs as the unprivileged user dahlia-ui on 127.0.0.1:8080
