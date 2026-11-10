@@ -17,9 +17,8 @@ LOOP=""
 diag() {
     echo "--- systemctl list-jobs"
     systemctl list-jobs --no-pager || true
-    echo "--- processes below dahlia-agent"
-    pid="$(systemctl show -p MainPID --value dahlia-agent.service)"
-    [ "${pid:-0}" != 0 ] && ps -o pid,stat,wchan:32,args --forest -g "$(ps -o sid= -p "$pid")" || true
+    echo "--- processes"
+    ps -eo pid,ppid,stat,wchan:32,args --forest || true
 }
 fail() { echo "FAIL: $*" >&2; diag >&2; exit 1; }
 step() { echo; echo "== $*"; }
