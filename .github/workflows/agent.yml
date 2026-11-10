@@ -1,0 +1,49 @@
+name: agent
+
+on:
+  pull_request:
+    paths:
+      - "packages/dahlia-agent/**"
+      - "packages/dahlia-storage/**"
+      - "tests/integration/agent.sh"
+      - "tools/build-packages.sh"
+      - ".github/workflows/agent.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  systemd:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            apt-utils mergerfs fuse3 xfsprogs btrfs-progs e2fsprogs jq
+
+      - name: Drop the runner's /mnt fstab entry
+        # Same as in storage.yml: the runner's /mnt resource disk entry
+        # would become a failed dependency of every unit below /mnt.
+        run: |
+          sudo sed -i -E 's|^([^#].*[[:space:]]/mnt[[:space:]].*)$|# \1|' /etc/fstab
+          sudo systemctl daemon-reload
+          sudo systemctl reset-failed mnt.mount || true
+
+      - name: Build and install dahlia-storage and dahlia-agent
+        run: |
+          tools/build-packages.sh
+          sudo dpkg -i build/pool/dahlia-storage_*_all.deb build/pool/dahlia-agent_*_all.deb
+
+      - name: Integration test
+        run: sudo tests/integration/agent.sh
+
+      - name: Agent journal on failure
+        if: failure()
+        run: |
+          sudo journalctl -u dahlia-agent.service -u dahlia-agent.socket --no-pager | tail -100
+          sudo journalctl -n 100 --no-pager -u 'mnt-*' || true

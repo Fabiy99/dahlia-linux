@@ -1,0 +1,10 @@
+[Unit]
+Description=Dahlia agent: privileged actions for the web UI
+Requires=dahlia-agent.socket
+After=dahlia-agent.socket dahlia-storage.target
+
+[Service]
+# Runs as root on purpose. No mount namespacing (PrivateTmp, ProtectHome ...):
+# storage actions change mergerfs pools that must be visible system-wide.
+ExecStart=/usr/sbin/dahlia-agent
+Restart=on-failure

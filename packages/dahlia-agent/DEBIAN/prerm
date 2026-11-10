@@ -1,0 +1,20 @@
+#!/bin/bash
+# dahlia-agent prerm
+set -euo pipefail
+
+case "$1" in
+    remove)
+        if [ -d /run/systemd/system ]; then
+            systemctl stop dahlia-agent.socket dahlia-agent.service || true
+        fi
+        systemctl disable dahlia-agent.socket >/dev/null 2>&1 || true
+        ;;
+    upgrade|deconfigure|failed-upgrade)
+        ;;
+    *)
+        echo "prerm called with unknown argument '$1'" >&2
+        exit 1
+        ;;
+esac
+
+exit 0

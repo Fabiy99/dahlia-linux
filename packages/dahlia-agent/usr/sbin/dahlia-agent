@@ -1,0 +1,7 @@
+#!/usr/bin/python3 -I
+# Entry point; the code lives in /usr/lib/python3/dist-packages/dahlia_agent.
+import sys
+
+from dahlia_agent.server import main
+
+sys.exit(main())
