@@ -1,5 +1,8 @@
 """dahlia-disk import: checks before copying and parsing of rsync output."""
 
+import shutil
+import sys
+
 import pytest
 from dahlia_storage import disks, importer
 from test_storage_disks import LSBLK
@@ -57,3 +60,49 @@ def test_rsync_copy_sets_share_group():
     assert "--chown=root:dahlia" in cmd and cmd[-2:] == ["/run/x/", "/mnt/user/old/"]
     assert not any(c.startswith("--chown") for c in importer.rsync_copy("/a", "/b", None))
     assert "--checksum" in importer.rsync_verify("/a", "/b")
+
+
+def test_run_with_progress_splits_carriage_returns():
+    script = ("import sys; sys.stdout.write('  1,000  10%  1MB/s\\r  5,000  50%\\r 10,000 100%\\n')"
+              "; sys.stderr.write('oops\\n'); sys.exit(0)")
+    got = []
+    importer.run_with_progress([sys.executable, "-c", script], lambda b, p: got.append((b, p)))
+    assert got == [(1000, 10), (5000, 50), (10000, 100)]
+    with pytest.raises(importer.ImportError_, match="rsync failed: boom"):
+        importer.run_with_progress(
+            [sys.executable, "-c", "import sys; sys.stderr.write('boom\\n'); sys.exit(23)"],
+            lambda b, p: None)
+
+
+@pytest.mark.skipif(not shutil.which("rsync"), reason="rsync not installed")
+def test_run_import_copies_and_verifies(tmp_path, monkeypatch):
+    base, pool = tmp_path / "mnt", tmp_path / "user"
+    src = base / "1234-ABCD"
+    (src / "photos").mkdir(parents=True)
+    (src / "photos/a.jpg").write_bytes(b"x" * 5000)
+    (src / "notes.txt").write_text("hello")
+    pool.mkdir()
+    monkeypatch.setattr(importer, "MOUNT_BASE", str(base))
+    monkeypatch.setattr(importer, "STATUS_PATH", str(tmp_path / "import.json"))
+    monkeypatch.setattr(importer, "IMPORTED_PATH", str(tmp_path / "imported.json"))
+    monkeypatch.setattr(importer, "share_group", lambda: None)
+    real_run = importer.subprocess.run
+    mounts = []
+
+    def fake_run(cmd, **kw):
+        if cmd[0] in ("mount", "umount"):
+            mounts.append(cmd[0])
+            return importer.subprocess.CompletedProcess(cmd, 0, "", "")
+        return real_run(cmd, **kw)
+
+    monkeypatch.setattr(importer.subprocess, "run", fake_run)
+    dev = disks.classify(LSBLK)[0]
+    dev.uuid, dev.fstype = "1234-ABCD", "ntfs"
+    res = importer.run_import(dev, str(pool / "old"))
+    assert res["phase"] == "done" and mounts == ["mount", "umount"]
+    assert (pool / "old/photos/a.jpg").read_bytes() == b"x" * 5000
+    assert importer.imported_uuids() == {"1234-ABCD"}
+    # A second run into the same target fails and is recorded as failed.
+    with pytest.raises(importer.ImportError_):
+        importer.run_import(dev, str(pool / "old"))
+    assert importer.read_json(importer.STATUS_PATH)["phase"] == "failed"

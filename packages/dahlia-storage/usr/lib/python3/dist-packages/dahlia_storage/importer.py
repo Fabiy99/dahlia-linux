@@ -139,6 +139,26 @@ def differences(itemized: str) -> list[str]:
     return out
 
 
+def run_with_progress(cmd: list[str], on_progress) -> None:
+    """Run rsync and report each progress line; rsync ends those with \\r, not \\n."""
+    # stderr to a file: a full pipe would block rsync while stdout is read.
+    with tempfile.TemporaryFile("w+") as errfile:
+        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=errfile)
+        buf = b""
+        while chunk := proc.stdout.read1(65536):
+            buf += chunk
+            *lines, buf = re.split(rb"[\r\n]", buf)
+            for line in lines:
+                got = parse_progress(line.decode(errors="replace"))
+                if got:
+                    on_progress(*got)
+        code = proc.wait()
+        errfile.seek(0)
+        err = errfile.read().strip().splitlines()
+    if code != 0:
+        raise ImportError_(f"rsync failed: {err[-1] if err else code}")
+
+
 class Status:
     def __init__(self, dev: disks.Device, target: str):
         self.data = {"uuid": dev.uuid, "device": dev.path, "disk": dev.disk, "fstype": dev.fstype,
@@ -176,21 +196,14 @@ def run_import(dev: disks.Device, target: str) -> dict:
             os.chown(target, 0, grp.getgrnam("dahlia").gr_gid)
         os.chmod(target, 0o2775)  # noqa: S103 (shares are group-writable)
         status.set(phase="copy", total=used)
-        # stderr to a file: a full pipe would block rsync while stdout is read.
-        with tempfile.TemporaryFile("w+") as errfile:
-            proc = subprocess.Popen(rsync_copy(mnt, target, share_group()), stdout=subprocess.PIPE,
-                                    stderr=errfile, text=True, newline="\r")
-            last = 0.0
-            for chunk in proc.stdout:
-                got = parse_progress(chunk.strip("\r\n"))
-                if got and time.monotonic() - last > 1:
-                    status.set(bytes=got[0], percent=got[1])
-                    last = time.monotonic()
-            code = proc.wait()
-            errfile.seek(0)
-            lines = errfile.read().strip().splitlines()
-        if code != 0:
-            raise ImportError_(f"rsync failed: {lines[-1] if lines else code}")
+        last = [0.0]
+
+        def progress(done: int, pct: int) -> None:
+            if time.monotonic() - last[0] > 1:
+                status.set(bytes=done, percent=pct)
+                last[0] = time.monotonic()
+
+        run_with_progress(rsync_copy(mnt, target, share_group()), progress)
         status.set(phase="verify", percent=100)
         res = subprocess.run(rsync_verify(mnt, target), capture_output=True, text=True)
         diff = differences(res.stdout)
@@ -202,7 +215,7 @@ def run_import(dev: disks.Device, target: str) -> dict:
         write_json(IMPORTED_PATH, data)
         status.set(phase="done", finished=int(time.time()))
         return status.data
-    except (ImportError_, OSError, subprocess.CalledProcessError) as e:
+    except Exception as e:  # noqa: BLE001 (any failure must end in phase 'failed')
         msg = str(e)
         if isinstance(e, subprocess.CalledProcessError):
             msg = (e.stderr or "").strip() or f"{e.cmd[0]} failed"
