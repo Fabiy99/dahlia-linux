@@ -389,6 +389,75 @@
             <p class="hint" data-i18n="settings.schedules_hint"></p>
             <div id="schedules" class="schedules"></div>
           </article>
+          <article class="card tile wide">
+            <div class="section-head">
+              <h2 data-i18n="notify.title"></h2>
+              <button id="notify-test" data-i18n="notify.test"></button>
+            </div>
+            <p class="hint" data-i18n="notify.hint"></p>
+            <div class="channels">
+              <details class="channel">
+                <summary><span data-i18n="notify.email"></span><span class="badge" id="ch-state-email"></span></summary>
+                <form data-channel="email">
+                  <label class="check"><input name="enabled" type="checkbox"><span data-i18n="notify.enabled"></span></label>
+                  <label><span data-i18n="notify.smtp_host"></span><input name="host" autocomplete="off"></label>
+                  <label><span data-i18n="notify.smtp_port"></span><input name="port" type="number" autocomplete="off" min="1" max="65535"></label>
+                  <label><span data-i18n="notify.smtp_security"></span><select name="security"><option value="starttls" data-i18n="notify.sec_starttls"></option><option value="tls" data-i18n="notify.sec_tls"></option><option value="none" data-i18n="notify.sec_none"></option></select></label>
+                  <label><span data-i18n="notify.smtp_user"></span><input name="user" autocomplete="off"></label>
+                  <label><span data-i18n="notify.smtp_password"></span><input name="password" type="password" autocomplete="off"></label>
+                  <label><span data-i18n="notify.sender"></span><input name="sender" type="email" autocomplete="off"></label>
+                  <label><span data-i18n="notify.to"></span><input name="to" type="email" autocomplete="off"></label>
+                  <button type="submit" data-i18n="common.save"></button>
+                </form>
+              </details>
+              <details class="channel">
+                <summary><span data-i18n="notify.ntfy"></span><span class="badge" id="ch-state-ntfy"></span></summary>
+                <form data-channel="ntfy">
+                  <label class="check"><input name="enabled" type="checkbox"><span data-i18n="notify.enabled"></span></label>
+                  <label><span data-i18n="notify.ntfy_url"></span><input name="url" type="url" autocomplete="off"></label>
+                  <label><span data-i18n="notify.ntfy_topic"></span><input name="topic" autocomplete="off"></label>
+                  <label><span data-i18n="notify.token"></span><input name="token" type="password" autocomplete="off"></label>
+                  <button type="submit" data-i18n="common.save"></button>
+                </form>
+              </details>
+              <details class="channel">
+                <summary><span data-i18n="notify.gotify"></span><span class="badge" id="ch-state-gotify"></span></summary>
+                <form data-channel="gotify">
+                  <label class="check"><input name="enabled" type="checkbox"><span data-i18n="notify.enabled"></span></label>
+                  <label><span data-i18n="notify.gotify_url"></span><input name="url" type="url" autocomplete="off"></label>
+                  <label><span data-i18n="notify.gotify_token"></span><input name="token" type="password" autocomplete="off"></label>
+                  <button type="submit" data-i18n="common.save"></button>
+                </form>
+              </details>
+            </div>
+            <h3 data-i18n="notify.events"></h3>
+            <div id="notify-events" class="check-row"></div>
+            <h3 data-i18n="notify.history"></h3>
+            <ul id="notify-history" class="history"></ul>
+          </article>
+          <article class="card">
+            <h2 data-i18n="ups.title"></h2>
+            <dl id="ups-status" class="facts"></dl>
+            <form id="ups-form">
+              <label><span data-i18n="ups.mode"></span>
+                <select name="mode">
+                  <option value="off" data-i18n="ups.mode_off"></option>
+                  <option value="usb" data-i18n="ups.mode_usb"></option>
+                  <option value="remote" data-i18n="ups.mode_remote"></option>
+                </select>
+              </label>
+              <div id="ups-remote" class="field-group">
+                <label><span data-i18n="ups.host"></span><input name="host" autocomplete="off"></label>
+                <label><span data-i18n="ups.port"></span><input name="port" type="number" autocomplete="off" min="1" max="65535"></label>
+                <label><span data-i18n="ups.name"></span><input name="name" autocomplete="off"></label>
+                <label><span data-i18n="ups.user"></span><input name="user" autocomplete="off"></label>
+                <label><span data-i18n="ups.password"></span><input name="password" type="password" autocomplete="off"></label>
+              </div>
+              <label><span data-i18n="ups.shutdown"></span><select name="shutdown_minutes"></select></label>
+              <p class="hint" data-i18n="ups.hint"></p>
+              <button type="submit" data-i18n="common.save"></button>
+            </form>
+          </article>
         </div>
       </section>
     </main>

@@ -417,6 +417,10 @@ def test_action_list_is_fixed():
         "domains.set",
         "job.start",
         "job.status",
+        "notify.get",
+        "notify.set",
+        "notify.set_events",
+        "notify.test",
         "settings.confirm_network",
         "settings.network",
         "settings.schedules",
@@ -445,6 +449,8 @@ def test_action_list_is_fixed():
         "system.stats",
         "updates.apply",
         "updates.check",
+        "ups.get",
+        "ups.set",
     ]
     assert all(a.description for a in actions.ACTIONS.values())
 
