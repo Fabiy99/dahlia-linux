@@ -1,3 +1,5 @@
+<p align="center"><img src="docs/img/dahlia-logo.svg" width="120" alt=""></p>
+
 # Dahlia Linux
 
 **[Deutsch](#deutsch) | [English](#english)**

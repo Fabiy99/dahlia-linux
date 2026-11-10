@@ -369,3 +369,46 @@ def test_stats_endpoint(env):
     client, agent, _ = logged_in(env)
     assert client.get("/api/stats").json() == {"action": "system.stats"}
     assert ("system.stats", {}) in agent.calls
+
+
+def test_docker_and_hardware_endpoints(env):
+    client, agent, _ = logged_in(env)
+    agent.calls.clear()
+    client.get("/api/docker")
+    client.get("/api/docker/stats")
+    client.get("/api/docker/disk")
+    client.get("/api/docker/web/logs?lines=50")
+    client.post("/api/docker/web/restart", headers=CSRF)
+    client.post("/api/docker/prune", headers=CSRF)
+    client.get("/api/hardware")
+    client.get("/api/log?lines=100&priority=err&unit=ssh.service")
+    assert agent.calls == [
+        ("docker.list", {}),
+        ("docker.stats", {}),
+        ("docker.disk", {}),
+        ("docker.logs", {"name": "web", "lines": 50}),
+        ("docker.container", {"name": "web", "op": "restart"}),
+        ("docker.prune", {}),
+        ("system.hardware", {}),
+        ("system.log", {"lines": 100, "priority": "err", "unit": "ssh.service"}),
+    ]
+    assert client.post("/api/docker/web/rm", headers=CSRF).status_code == 404
+    assert client.post("/api/docker/web/stop").status_code == 403
+
+
+def test_docker_needs_login(env):
+    client, agent, _, _ = env
+    assert client.get("/api/docker").status_code == 401
+    assert client.post("/api/docker/web/stop", headers=CSRF).status_code == 401
+    assert agent.calls == []
+
+
+def test_web_app_manifest():
+    manifest = json.loads((WWW / "manifest.webmanifest").read_text())
+    assert manifest["display"] == "standalone" and manifest["start_url"] == "/"
+    for icon in manifest["icons"]:
+        assert (WWW / icon["src"].lstrip("/")).is_file(), icon["src"]
+    html = (WWW / "index.html").read_text()
+    for ref in ("/manifest.webmanifest", "/apple-touch-icon.png", "/favicon.svg"):
+        assert f'href="{ref}"' in html
+        assert (WWW / ref.lstrip("/")).is_file()

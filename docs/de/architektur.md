@@ -159,6 +159,12 @@ Protokoll: eine Anfrage pro Verbindung, je eine JSON-Zeile hin und zurück.
 | --- | --- | --- |
 | `system.info` | - | Hostname, Version, Kernel, Uptime, Last, Speicher |
 | `system.stats` | - | CPU-Zähler, Speicher, Swap, Netzwerk, Belegung von `/` und `/mnt/*` |
+| `system.hardware` | - | Mainboard (DMI), CPU-Temperatur (hwmon), SMART je Platte mit `smartctl -n standby` (weckt keine schlafende Platte) |
+| `system.log` | `lines`, `priority`, `unit` (optional) | `journalctl -n … -p …` |
+| `docker.list`, `docker.stats`, `docker.disk` | - | alle Container, CPU/RAM je Container, Platzbedarf von Images, Volumes, Build-Cache |
+| `docker.container` | `name`, `op` (`start`, `stop`, `restart`) | `docker <op> -- <name>` |
+| `docker.logs` | `name`, `lines` (10 bis 5000) | `docker logs --tail` |
+| `docker.prune` | - | `docker image prune -a`, `docker builder prune` |
 | `system.set_hostname` | `hostname` (ein DNS-Label, klein) | `hostnamectl`, `/etc/hosts`, Avahi, neues Zertifikat |
 | `system.reboot`, `system.poweroff` | - | `systemctl --no-block ...` |
 | `storage.list` | - | `dahlia-disk list --json` |
@@ -212,15 +218,19 @@ nur für das Web-UI, nicht für SSH oder die Konsole.
 | root-Aktionen | nur über `dahlia-agent`; `dahlia-ui` ist Mitglied der Gruppe `dahlia-agent` |
 
 Aufbau: Seitenleiste mit Servername und Version, Inhalt in Kacheln. Bestätigungen laufen
-über einen eigenen Dialog, Meldungen erscheinen unten rechts.
+über einen eigenen Dialog, Meldungen erscheinen unten rechts. Unter 48rem Breite (Handy)
+wird die Seitenleiste zum Menü, Tabellen werden zu Karten. Ein Web-App-Manifest erlaubt
+„Zum Home-Bildschirm“ auf Handy und Tablet.
 
 | Seite | Inhalt |
 | --- | --- |
-| Übersicht | System (Version, Kernel, CPU, Adresse, Neustart, Ausschalten), CPU- und RAM-Auslastung mit Verlauf, Netzwerk (Durchsatz je Schnittstelle), Belegung von System-SSD, Pools und jeder Platte unter `/mnt`, Apps mit Zustand, Aufgaben mit letztem Ergebnis |
-| Platten | Belegung von `/mnt/user`, `/mnt/storage` und `/mnt/cache`; je physische Platte eine Karte mit Modell, Seriennummer und ihren Dateisystemen (Status, Belegung, hinzufügen in einer Rolle, entfernen) |
+| Übersicht | System (Version, Kernel, CPU, Adresse, Neustart, Ausschalten), CPU- und RAM-Auslastung mit Verlauf, Netzwerk (Durchsatz je Schnittstelle), Belegung von System-SSD, Pools und jeder Platte unter `/mnt`, Platten mit Temperatur und SMART-Zustand, Apps mit Zustand, Aufgaben mit letztem Ergebnis |
+| Platten | Belegung von `/mnt/user`, `/mnt/storage` und `/mnt/cache`; je physische Platte eine Karte mit Modell, Seriennummer, Temperatur, SMART-Zustand und ihren Dateisystemen (Status, Belegung, hinzufügen in einer Rolle, entfernen) |
 | Apps | installierte Apps als Karten (Zustand, Adressen, Updates, Start/Stopp), Katalog mit Suche und Kategorien |
+| Docker | alle Container (auch fremde) mit Zustand, Ports, CPU/RAM, Start/Stopp/Neustart, Logs; Platzbedarf und Aufräumen |
 | Domains | Domain, mDNS-Aliase, DNS-Einträge, CA-Download |
 | Aufgaben | Mover, SnapRAID-Sync und -Scrub starten, Zustand |
+| System-Log | Journal mit Filter nach Stufe und Dienst |
 | Updates | suchen, installieren |
 | Einstellungen | Dashboard-Passwort, Servername |
 
