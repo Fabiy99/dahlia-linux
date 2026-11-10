@@ -1,11 +1,12 @@
 """dahlia-disk: manage Dahlia storage from the command line.
 
     dahlia-disk list [--json]
-    dahlia-disk add UUID --role data|parity|external
-    dahlia-disk remove UUID
+    dahlia-disk add UUID --role data|parity|cache|external
+    dahlia-disk remove UUID [--force]
     dahlia-disk apply
     dahlia-disk snapraid-config [--write]
     dahlia-disk set-minfreespace SIZE
+    dahlia-disk set-option NAME VALUE
 
 Never formats anything. Disks are mounted with the filesystem they have.
 """
@@ -13,6 +14,7 @@ Never formats anything. Disks are mounted with the filesystem they have.
 from __future__ import annotations
 
 import argparse
+import grp
 import json
 import os
 import re
@@ -58,6 +60,24 @@ def release_mountpoint(path: str) -> None:
         os.rmdir(path)
 
 
+def prepare_cache_shares() -> None:
+    """/mnt/cache/shares: first branch of /mnt/user, group 'dahlia' writable."""
+    if os.path.isdir(units.CACHE_SHARES):
+        return
+    os.mkdir(units.CACHE_SHARES)
+    try:
+        gid = grp.getgrnam("dahlia").gr_gid
+    except KeyError:
+        gid = -1
+    os.chown(units.CACHE_SHARES, -1, gid)
+    # Group-writable with setgid: everything below stays in group 'dahlia'.
+    os.chmod(units.CACHE_SHARES, 0o2775)  # noqa: S103
+
+
+def has_files(path: str) -> bool:
+    return any(files for _root, _dirs, files in os.walk(path))
+
+
 def write_units(st: state.State) -> list[str]:
     """Write all generated units, remove stale ones. Returns current unit names."""
     rendered = units.render_all(st)
@@ -96,23 +116,29 @@ def pool_branches_live(pool: str) -> list[str]:
     return [b.split("=", 1)[0] for b in raw.split(":") if b]
 
 
-def pool_add_branch(pool: str, branch: str) -> None:
-    os.setxattr(os.path.join(pool, CONTROL_FILE), BRANCHES_XATTR, f"+>{branch}".encode())
+def pool_add_branch(pool: str, branch: str, first: bool = False) -> None:
+    op = "+<" if first else "+>"
+    os.setxattr(os.path.join(pool, CONTROL_FILE), BRANCHES_XATTR, f"{op}{branch}".encode())
 
 
 def pool_remove_branch(pool: str, branch: str) -> None:
     os.setxattr(os.path.join(pool, CONTROL_FILE), BRANCHES_XATTR, f"-{branch}".encode())
 
 
+def pool_set_option(pool: str, option: str, value: str) -> None:
+    os.setxattr(os.path.join(pool, CONTROL_FILE), f"user.mergerfs.{option}", value.encode())
+
+
 def sync_pools(st: state.State) -> None:
     """Bring running pools in line with the state without remounting."""
-    wanted = [d.mountpoint for d in st.by_role("data")]
+    pools = units.wanted_pools(st)
     for pool in (units.STORAGE_POOL, units.USER_POOL):
         unit = units.unit_name(pool)
-        if not wanted:
+        if pool not in pools:
             if is_mounted(pool):
                 systemctl("stop", unit)
             continue
+        wanted = units.pool_branches(st, pool)
         if not is_mounted(pool):
             prepare_mountpoint(pool)
             systemctl("enable", "--now", unit)
@@ -122,10 +148,11 @@ def sync_pools(st: state.State) -> None:
         live = pool_branches_live(pool)
         for branch in wanted:
             if branch not in live:
-                pool_add_branch(pool, branch)
+                pool_add_branch(pool, branch, first=branch == units.CACHE_SHARES)
         for branch in live:
             if branch not in wanted:
                 pool_remove_branch(pool, branch)
+        pool_set_option(pool, "category.create", units.create_policy(st, pool))
 
 
 # --- commands ---------------------------------------------------------------
@@ -165,7 +192,9 @@ def cmd_add(args) -> int:
         dev = next((d for d in found if d.uuid == args.uuid), None)
         if dev is None:
             raise DiskError(f"no filesystem with UUID {args.uuid}")
-        if args.role in ("data", "parity") and dev.status != "candidate":
+        if args.role == "cache" and st.cache is not None:
+            raise DiskError(f"a cache is already configured ({st.cache.uuid})")
+        if args.role in ("data", "parity", "cache") and dev.status != "candidate":
             raise DiskError(f"{dev.path} cannot be used as {args.role}: {dev.reason}")
         if args.role == "external" and dev.status not in ("candidate", "external-only"):
             raise DiskError(f"{dev.path} cannot be mounted: {dev.reason}")
@@ -181,7 +210,7 @@ def cmd_add(args) -> int:
         disk = state.Disk(
             uuid=args.uuid,
             role=args.role,
-            index=0 if args.role == "external" else st.next_index(args.role),
+            index=0 if args.role in ("external", "cache") else st.next_index(args.role),
             fstype=dev.fstype or "",
             name=name,
             serial=dev.serial,
@@ -205,8 +234,10 @@ def cmd_add(args) -> int:
             raise DiskError(
                 f"mounting {dev.path} failed, see journalctl -u {units.unit_name(disk.mountpoint)}"
             ) from None
+        if args.role == "cache":
+            prepare_cache_shares()
         state.save(st)
-        if args.role == "data":
+        if args.role in ("data", "cache"):
             sync_pools(st)
         print(f"{dev.path} ({dev.fstype}) mounted at {disk.mountpoint} as {args.role}")
     return 0
@@ -218,14 +249,21 @@ def cmd_remove(args) -> int:
         disk = st.find(args.uuid)
         if disk is None:
             raise DiskError(f"UUID {args.uuid} is not managed by Dahlia")
+        if disk.role == "cache" and not args.force and has_files(units.CACHE_SHARES):
+            # Those files would vanish from /mnt/user.
+            raise DiskError(
+                f"{units.CACHE_SHARES} still holds files; run dahlia-mover first or use --force"
+            )
         st.disks.remove(disk)
         # Take the branch out of the running pools before unmounting it.
-        if disk.role == "data":
+        if disk.role in ("data", "cache"):
             sync_pools(st)
         unit = units.unit_name(disk.mountpoint)
-        systemctl("disable", "--now", unit)
         state.save(st)
+        # New pool units first, so nothing depends on the disk any more,
+        # then unmount it (the unit stays loaded while it is mounted).
         write_units(st)
+        systemctl("stop", unit)
         release_mountpoint(disk.mountpoint)
         print(f"{disk.mountpoint} unmounted and removed; data on the disk is untouched")
     return 0
@@ -242,6 +280,8 @@ def cmd_apply(args) -> int:
             systemctl("enable", "--now", units.unit_name(d.mountpoint))
             if not is_mounted(d.mountpoint):
                 missing.append(d.mountpoint)
+            elif d.role == "cache":
+                prepare_cache_shares()
         sync_pools(st)
         if missing:
             raise DiskError(f"not mounted: {', '.join(missing)} (disk missing or failed)")
@@ -276,12 +316,30 @@ def cmd_set_minfreespace(args) -> int:
         # Live pools pick the value up via their control file.
         for pool in (units.STORAGE_POOL, units.USER_POOL):
             if is_mounted(pool):
-                os.setxattr(
-                    os.path.join(pool, CONTROL_FILE),
-                    "user.mergerfs.minfreespace",
-                    args.size.encode(),
-                )
+                pool_set_option(pool, "minfreespace", args.size)
         print(f"minfreespace = {args.size}")
+    return 0
+
+
+INT_OPTIONS = (
+    "mover_min_age_minutes",
+    "snapraid_delete_threshold",
+    "scrub_percent",
+    "scrub_older_than_days",
+)
+
+
+def cmd_set_option(args) -> int:
+    with state.locked():
+        st = state.load()
+        try:
+            value = int(args.value)
+        except ValueError:
+            raise DiskError(f"{args.name} needs a whole number, got {args.value!r}") from None
+        setattr(st.settings, args.name, value)
+        st.settings.validate()
+        state.save(st)
+        print(f"{args.name} = {value}")
     return 0
 
 
@@ -300,6 +358,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     s = sub.add_parser("remove", help="unmount a disk and drop it from Dahlia")
     s.add_argument("uuid")
+    s.add_argument("--force", action="store_true", help="remove a cache that still holds files")
     s.set_defaults(func=cmd_remove)
 
     s = sub.add_parser("apply", help="regenerate units and pools from storage.json")
@@ -312,6 +371,11 @@ def build_parser() -> argparse.ArgumentParser:
     s = sub.add_parser("set-minfreespace", help="free space per disk mergerfs keeps")
     s.add_argument("size")
     s.set_defaults(func=cmd_set_minfreespace)
+
+    s = sub.add_parser("set-option", help="mover and SnapRAID settings")
+    s.add_argument("name", choices=INT_OPTIONS)
+    s.add_argument("value")
+    s.set_defaults(func=cmd_set_option)
     return p
 
 

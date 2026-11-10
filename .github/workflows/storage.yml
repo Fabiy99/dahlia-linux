@@ -23,7 +23,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            apt-utils mergerfs fuse3 xfsprogs btrfs-progs e2fsprogs attr jq
+            apt-utils mergerfs fuse3 xfsprogs btrfs-progs e2fsprogs attr jq snapraid
 
       - name: Drop the runner's /mnt fstab entry
         # The hosted runner lists a resource disk for /mnt in fstab that fails

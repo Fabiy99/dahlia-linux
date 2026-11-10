@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 from .state import State
 
 CONFIG_PATH = "/etc/snapraid.conf"
@@ -16,6 +18,7 @@ EXCLUDES = [
     ".recycle/",
     "/appdata/",
     "/.snapraid.content*",
+    "*.dahlia-mover.tmp",
 ]
 
 PARITY_PREFIXES = ["parity", "2-parity", "3-parity", "4-parity", "5-parity", "6-parity"]
@@ -75,3 +78,18 @@ def render(state: State) -> str:
     lines.append("autosave 500")
     lines.append("")
     return "\n".join(lines)
+
+
+DIFF_LINE = re.compile(r"^\s*(\d+)\s+(equal|added|removed|updated|moved|copied|restored)\s*$")
+
+
+def parse_diff(output: str) -> dict[str, int]:
+    """Counts from the summary at the end of `snapraid diff`."""
+    counts = {}
+    for line in output.splitlines():
+        m = DIFF_LINE.match(line)
+        if m:
+            counts[m.group(2)] = int(m.group(1))
+    if "removed" not in counts:
+        raise SnapraidError("could not read the summary of snapraid diff")
+    return counts

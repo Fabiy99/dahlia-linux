@@ -70,6 +70,7 @@ Zustand liegt in `/etc/dahlia/storage.json`, alles andere wird daraus erzeugt.
 dahlia-disk list                          # Platten und was Dahlia damit tun darf
 dahlia-disk add <UUID> --role data        # vorhandenes ext4/XFS/Btrfs als /mnt/diskN
 dahlia-disk add <UUID> --role parity      # als /mnt/parityN, nie im Pool
+dahlia-disk add <UUID> --role cache       # SSD-Dateisystem als /mnt/cache (ab M3b)
 dahlia-disk add <UUID> --role external    # z. B. NTFS unter /mnt/external/<name>
 dahlia-disk remove <UUID>                 # aushängen, Daten bleiben auf der Platte
 dahlia-disk apply                         # Units und Pools aus storage.json neu erzeugen
@@ -80,6 +81,26 @@ Neue Datenplatten kommen per `user.mergerfs.branches` ohne Remount in die laufen
 Leere Mount-Points sind mit `chattr +i` gesperrt, damit bei fehlender Platte nichts auf
 der System-SSD landet. Die Units hängen mit `Wants=` an `dahlia-storage.target`, eine
 fehlende Platte blockiert also nicht den Boot.
+
+### Cache, Mover, SnapRAID (ab Meilenstein 3b)
+
+Der Cache ist ein Dateisystem (Btrfs, bei zwei SSDs vorher als RAID1 angelegt:
+`mkfs.btrfs -d raid1 -m raid1 <ssd1> <ssd2>`). `dahlia-disk add --role cache` hängt es unter
+`/mnt/cache` ein und setzt `/mnt/cache/shares` als ersten Zweig vor die Datenplatten in
+`/mnt/user`, ebenfalls ohne Remount. `/mnt/user` nutzt dann `category.create=ff`,
+`/mnt/storage` bleibt bei `mfs`.
+
+```sh
+dahlia-mover [--dry-run] [--min-age MIN]       # Cache -> /mnt/storage, Pfad bleibt gleich
+dahlia-snapraid sync [--force]                 # diff, Lösch-Schwelle prüfen, sync
+dahlia-snapraid scrub                          # Teil des Arrays gegen die Parity prüfen
+dahlia-disk set-option snapraid_delete_threshold 50
+```
+
+Der Mover lässt offene, kürzlich geänderte und schon auf den Datenplatten vorhandene
+Dateien sowie Hardlinks auf dem Cache. Er kopiert erst, prüft, benennt um und löscht dann.
+Timer: Mover 03:00, SnapRAID-Sync 04:30, Scrub sonntags 06:00 (8 %, Blöcke älter als
+10 Tage). Mover und SnapRAID teilen sich `/run/dahlia/array.lock`.
 
 ## Rechte und Sicherheit
 

@@ -42,7 +42,9 @@ def test_pools_contain_only_data_disks():
     st = layout()
     rendered = units.render_all(st)
     pool = rendered["mnt-storage.mount"]
-    assert "What=/mnt/disk1:/mnt/disk2" in pool
+    assert "branches=/mnt/disk1:/mnt/disk2," in pool
+    # An absolute What= would make systemd require the first branch's mount.
+    assert "What=dahlia-storage" in pool
     assert "parity" not in pool
     assert "Type=fuse.mergerfs" in pool
     assert "minfreespace=50G" in pool
