@@ -55,6 +55,8 @@ udevadm trigger --action=change "$LOOP"
 udevadm settle
 UUID="$(blkid -s UUID -o value "$LOOP")"
 dahlia-disk add "$UUID" --role data
+# The default keeps 50G free per disk; the test disk is far smaller.
+dahlia-disk set-minfreespace 10M
 findmnt -n /mnt/user >/dev/null || fail "/mnt/user not mounted"
 
 step "local catalog"

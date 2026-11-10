@@ -534,6 +534,12 @@ class Docker:
         return proc.stdout.strip() if proc.returncode == 0 else "missing"
 
 
+def chown(path: Path, uid: int, gid: int) -> None:
+    # Only root can hand files to other users; tests run unprivileged.
+    if os.geteuid() == 0:
+        os.chown(path, uid, gid)
+
+
 def reload_nginx() -> None:
     if not Path("/usr/sbin/nginx").exists():
         return
@@ -579,10 +585,10 @@ class Apps:
                 for d in (self.paths.pool / "appdata", self.paths.pool / "appdata" / t.id, src):
                     if not d.exists():
                         d.mkdir(mode=0o775)
-                        os.chown(d, host.uid, host.gid)
+                        chown(d, host.uid, host.gid)
             elif not src.exists():
                 src.mkdir(mode=0o2775)
-                os.chown(src, 0, host.gid)
+                chown(src, 0, host.gid)
 
     def catalog(self, refresh: bool = False) -> list[dict]:
         templates = refresh_catalog(self.paths) if refresh else cached_catalog(self.paths)
