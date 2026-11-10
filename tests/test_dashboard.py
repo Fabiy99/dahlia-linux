@@ -497,3 +497,14 @@ def test_notify_and_ups_endpoints(env):
                      "password": "", "shutdown_minutes": 5}),
     ]
     assert client.post("/api/notify/test").status_code == 403
+
+
+def test_nginx_ui_is_revalidated_and_keeps_security_headers():
+    conf = (ROOT / "packages/dahlia-dashboard/etc/nginx/sites-available/dahlia").read_text()
+    root = conf[conf.index("location / {"):]
+    root = root[:root.index("}")]
+    assert "Cache-Control no-cache" in root
+    # add_header in a location drops the server-level ones; they must be repeated.
+    for header in ("Content-Security-Policy", "X-Content-Type-Options", "Referrer-Policy",
+                   "Strict-Transport-Security"):
+        assert header in root

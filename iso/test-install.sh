@@ -307,6 +307,10 @@ web "$BASE/api/notify/events" -H 'Content-Type: application/json' \
 web "$BASE/api/ups" -H 'Content-Type: application/json' -d '{"mode": "off"}' \
     | grep -q '"mode":"off"' || dashboard_fail "ups.set failed"
 web "$BASE/api/ups" | grep -q '"status":null' || dashboard_fail "ups.get failed"
+# After an update the browser must fetch the new UI, not a cached copy.
+headers="$(web -s -D - -o /dev/null "$BASE/app.js")"
+grep -qi '^cache-control: no-cache' <<<"$headers" || dashboard_fail "app.js may be cached without revalidation"
+grep -qi '^content-security-policy:' <<<"$headers" || dashboard_fail "app.js lost the CSP header"
 web -o /dev/null -w '%{content_type}' "$BASE/manifest.webmanifest" | grep -q 'application/manifest+json' \
     || dashboard_fail "web app manifest not served as application/manifest+json"
 echo "OK: dashboard setup, login and agent calls work"

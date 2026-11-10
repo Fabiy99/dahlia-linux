@@ -52,7 +52,15 @@ server {
         default_type application/manifest+json;
     }
 
+    # The browser must ask again after every update: revalidate with
+    # Last-Modified/ETag instead of using a heuristic cache lifetime.
+    # add_header here replaces the server-level headers, so repeat them.
     location / {
         try_files $uri $uri/ =404;
+        add_header Cache-Control no-cache always;
+        add_header Content-Security-Policy "default-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'" always;
+        add_header X-Content-Type-Options nosniff always;
+        add_header Referrer-Policy no-referrer always;
+        add_header Strict-Transport-Security "max-age=31536000" always;
     }
 }
