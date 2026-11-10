@@ -312,6 +312,13 @@ def test_job_status_never_ran(ctx):
     assert status["started"] == ""
 
 
+def test_app_job_keeps_result_of_collected_unit(ctx):
+    # Transient app units are gone after they finish; their result stays as
+    # systemd reports it.
+    ctx.runner.answers[("systemctl", "show")] = (0, NEVER_RAN, "")
+    assert run(ctx, "apps.job", {"id": "whoami"})["result"]["result"] == "success"
+
+
 # --- updates ------------------------------------------------------------------
 
 SIMULATION = """\

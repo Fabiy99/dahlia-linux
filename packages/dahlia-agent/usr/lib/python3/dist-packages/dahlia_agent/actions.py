@@ -435,12 +435,10 @@ def unit_state(ctx: Context, unit: str) -> dict:
         key, sep, value = line.partition("=")
         if sep:
             props[key] = value
-    started = props.get("ExecMainStartTimestamp", "")
     return {
         "active": props.get("ActiveState", ""),
         "sub": props.get("SubState", ""),
-        # systemd reports "success" for a unit that never ran.
-        "result": props.get("Result", "") if started else "",
+        "result": props.get("Result", ""),
         "started": props.get("ExecMainStartTimestamp", ""),
         "finished": props.get("ExecMainExitTimestamp", ""),
         "exit_status": int(props["ExecMainStatus"]) if props.get("ExecMainStatus") else None,
@@ -472,7 +470,11 @@ def job_start(ctx: Context, job: str):
 )
 def job_status(ctx: Context, job: str):
     """State and last result of a job."""
-    return {"job": job, **unit_state(ctx, JOBS[job])}
+    state = unit_state(ctx, JOBS[job])
+    # Jobs are static units; systemd reports "success" for one that never ran.
+    if not state["started"]:
+        state["result"] = ""
+    return {"job": job, **state}
 
 
 # --- updates ------------------------------------------------------------------
