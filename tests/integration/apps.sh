@@ -218,6 +218,8 @@ services:
     environment: {MARIADB_ROOT_PASSWORD: "{SECRET_DB}", MARIADB_AUTO_UPGRADE: "1"}
     volumes:
       - {container: /var/lib/mysql, appdata: sql}
+    # InnoDB hangs on FUSE (mergerfs) with native AIO and O_DIRECT.
+    command: [--innodb-use-native-aio=0, --innodb-flush-method=fsync]
 YAML
 }
 # catalog.json: the one-file form the public catalog uses.
