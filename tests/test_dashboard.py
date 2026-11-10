@@ -401,3 +401,14 @@ def test_docker_needs_login(env):
     assert client.get("/api/docker").status_code == 401
     assert client.post("/api/docker/web/stop", headers=CSRF).status_code == 401
     assert agent.calls == []
+
+
+def test_web_app_manifest():
+    manifest = json.loads((WWW / "manifest.webmanifest").read_text())
+    assert manifest["display"] == "standalone" and manifest["start_url"] == "/"
+    for icon in manifest["icons"]:
+        assert (WWW / icon["src"].lstrip("/")).is_file(), icon["src"]
+    html = (WWW / "index.html").read_text()
+    for ref in ("/manifest.webmanifest", "/apple-touch-icon.png", "/favicon.svg"):
+        assert f'href="{ref}"' in html
+        assert (WWW / ref.lstrip("/")).is_file()

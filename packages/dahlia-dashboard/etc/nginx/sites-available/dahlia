@@ -46,6 +46,12 @@ server {
         add_header X-Content-Type-Options nosniff always;
     }
 
+    # Web app manifest for "add to home screen".
+    location = /manifest.webmanifest {
+        types { }
+        default_type application/manifest+json;
+    }
+
     location / {
         try_files $uri $uri/ =404;
     }

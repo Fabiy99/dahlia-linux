@@ -218,7 +218,9 @@ nur für das Web-UI, nicht für SSH oder die Konsole.
 | root-Aktionen | nur über `dahlia-agent`; `dahlia-ui` ist Mitglied der Gruppe `dahlia-agent` |
 
 Aufbau: Seitenleiste mit Servername und Version, Inhalt in Kacheln. Bestätigungen laufen
-über einen eigenen Dialog, Meldungen erscheinen unten rechts.
+über einen eigenen Dialog, Meldungen erscheinen unten rechts. Unter 48rem Breite (Handy)
+wird die Seitenleiste zum Menü, Tabellen werden zu Karten. Ein Web-App-Manifest erlaubt
+„Zum Home-Bildschirm“ auf Handy und Tablet.
 
 | Seite | Inhalt |
 | --- | --- |

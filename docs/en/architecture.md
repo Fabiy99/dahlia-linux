@@ -214,7 +214,9 @@ SSH or the console.
 | Root actions | only through `dahlia-agent`; `dahlia-ui` is a member of the group `dahlia-agent` |
 
 Layout: sidebar with server name and version, content in tiles. Confirmations use an own
-dialog, messages appear at the bottom right.
+dialog, messages appear at the bottom right. Below 48rem width (phones) the sidebar becomes
+a menu and tables turn into cards. A web app manifest allows "add to home screen" on phones
+and tablets.
 
 | Page | Content |
 | --- | --- |

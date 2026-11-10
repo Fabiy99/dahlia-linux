@@ -299,5 +299,6 @@
   "log.unit": "Service",
   "log.unit_hint": "e.g. docker.service, empty = all",
   "log.lines": "Lines",
-  "log.empty": "No entries."
+  "log.empty": "No entries.",
+  "app.title": "{host} · Dahlia, I love you ♥"
 }

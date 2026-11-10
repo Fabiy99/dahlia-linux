@@ -464,7 +464,7 @@ function stopStats() {
 
 function setSidebar(info) {
   document.getElementById("side-hostname").textContent = `${info.hostname}.local`;
-  document.title = `${info.hostname} · Dahlia`;
+  document.title = t("app.title", { host: info.hostname });
   document.getElementById("side-version").textContent = info.version
     ? t("overview.version_value", { version: info.version }) : "";
 }
@@ -946,9 +946,13 @@ function renderContainers() {
     cell(tr, el("code", "", c.image));
     const st = cell(tr, badge(tv("container_state", c.state), CONTAINER_KIND[c.state] ?? ""));
     st.title = c.status;
-    cell(tr, el("small", "ports", c.ports.replaceAll(", ", "\n") || "–"));
-    cell(tr, "–").className = "cpu";
-    cell(tr, "–").className = "mem";
+    cell(tr, el("small", "ports", c.ports.replaceAll(", ", "\n") || "–")).dataset.label = t("docker.ports");
+    const cpu = cell(tr, "–");
+    cpu.className = "cpu";
+    cpu.dataset.label = t("docker.cpu");
+    const mem = cell(tr, "–");
+    mem.className = "mem";
+    mem.dataset.label = t("docker.memory");
     const ops = el("div", "row-ops");
     const act = (op, iconName, key, danger) => iconButton(iconName, key, async () => {
       if (op !== "start" && !await ask(t(`docker.confirm_${op}`, { name: c.name }), key, danger)) return;
