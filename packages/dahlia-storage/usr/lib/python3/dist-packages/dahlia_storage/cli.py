@@ -7,8 +7,10 @@
     dahlia-disk snapraid-config [--write]
     dahlia-disk set-minfreespace SIZE
     dahlia-disk set-option NAME VALUE
+    dahlia-disk format DEVICE --fs xfs|ext4|btrfs [--label LABEL] [--json]
 
-Never formats anything. Disks are mounted with the filesystem they have.
+add mounts a disk with the filesystem it has. Only format writes a new
+filesystem, and only on a whole disk without partitions and filesystem.
 """
 
 from __future__ import annotations
@@ -20,12 +22,21 @@ import os
 import re
 import subprocess
 import sys
+import time
 
 from . import disks, snapraid, state, units
 
 CONTROL_FILE = ".mergerfs"
 BRANCHES_XATTR = "user.mergerfs.branches"
 EXTERNAL_NAME_RE = re.compile(r"[^a-z0-9]+")
+# XFS allows 12 characters, the shortest limit of the three.
+LABEL_RE = re.compile(r"^[A-Za-z0-9_-]{1,12}$")
+MKFS = {
+    "xfs": ["mkfs.xfs", "-f", "-q", "-L"],
+    # No blocks reserved for root: these are data disks.
+    "ext4": ["mkfs.ext4", "-F", "-q", "-m", "0", "-L"],
+    "btrfs": ["mkfs.btrfs", "-f", "-q", "-L"],
+}
 
 
 class DiskError(RuntimeError):
@@ -244,6 +255,46 @@ def cmd_add(args) -> int:
     return 0
 
 
+def wait_for(path: str, seconds: float = 10.0) -> None:
+    deadline = time.monotonic() + seconds
+    while not os.path.exists(path):
+        if time.monotonic() > deadline:
+            raise DiskError(f"{path} did not appear after partitioning")
+        time.sleep(0.2)
+
+
+def cmd_format(args) -> int:
+    if not LABEL_RE.match(args.label):
+        raise DiskError("label: 1 to 12 letters, digits, '-' or '_'")
+    with state.locked():
+        st = state.load()
+        found = disks.classify(
+            disks.run_lsblk(),
+            registered_uuids={d.uuid for d in st.disks},
+            allow_loop=disks.allow_loop_from_env(),
+        )
+        dev = disks.formattable(found, args.device)
+        # One GPT partition over the whole disk, type Linux filesystem.
+        subprocess.run(["wipefs", "--all", "--quiet", dev.path], check=True)
+        subprocess.run(["sfdisk", "--quiet", dev.path], input="label: gpt\n,,L\n",
+                       text=True, check=True)
+        subprocess.run(["udevadm", "settle"], check=False)
+        part = disks.partition_path(dev.path)
+        wait_for(part)
+        subprocess.run([*MKFS[args.fs], args.label, part], check=True)
+        # Let udev pick up the new UUID so /dev/disk/by-uuid/ exists for add.
+        subprocess.run(["udevadm", "trigger", "--action=change", part], check=False)
+        subprocess.run(["udevadm", "settle"], check=False)
+        uuid = disks.blkid_probe(part).get("UUID", "")
+        if not uuid:
+            raise DiskError(f"{part} has no filesystem UUID after mkfs")
+    if args.json:
+        print(json.dumps({"device": dev.path, "partition": part, "fstype": args.fs, "uuid": uuid}))
+    else:
+        print(f"{dev.path}: {args.fs} on {part}, UUID {uuid}")
+    return 0
+
+
 def cmd_remove(args) -> int:
     with state.locked():
         st = state.load()
@@ -356,6 +407,13 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("uuid")
     s.add_argument("--role", choices=state.ROLES, required=True)
     s.set_defaults(func=cmd_add)
+
+    s = sub.add_parser("format", help="partition and format a blank disk")
+    s.add_argument("device")
+    s.add_argument("--fs", choices=disks.FORMAT_FILESYSTEMS, required=True)
+    s.add_argument("--label", default="dahlia")
+    s.add_argument("--json", action="store_true")
+    s.set_defaults(func=cmd_format)
 
     s = sub.add_parser("remove", help="unmount a disk and drop it from Dahlia")
     s.add_argument("uuid")

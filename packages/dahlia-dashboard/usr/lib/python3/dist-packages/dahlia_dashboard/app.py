@@ -109,6 +109,12 @@ class DomainsBody(BaseModel):
     mdns_aliases: bool
 
 
+class DiskFormatBody(BaseModel):
+    device: str
+    filesystem: str
+    confirm: str
+
+
 class DiskRemoveBody(BaseModel):
     uuid: str
     force: bool = False
@@ -326,6 +332,10 @@ def create_app(cfg: Config | None = None) -> FastAPI:
     @app.post("/api/storage/add", dependencies=changing)
     def storage_add(body: DiskAddBody):
         return agent("storage.add", {"uuid": body.uuid, "role": body.role})
+
+    @app.post("/api/storage/format", dependencies=changing)
+    def storage_format(body: DiskFormatBody):
+        return agent("storage.format", body.model_dump())
 
     @app.post("/api/storage/remove", dependencies=changing)
     def storage_remove(body: DiskRemoveBody):

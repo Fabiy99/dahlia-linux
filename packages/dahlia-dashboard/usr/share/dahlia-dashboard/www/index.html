@@ -510,6 +510,25 @@
   </form>
 </dialog>
 
+<dialog id="format-dialog">
+  <form id="format-form" method="dialog">
+    <h2 id="format-title"></h2>
+    <p class="hint" id="format-warning"></p>
+    <label><span data-i18n="storage.format_fs"></span>
+      <select name="filesystem">
+        <option value="xfs" data-i18n="storage.fs_xfs"></option>
+        <option value="ext4" data-i18n="storage.fs_ext4"></option>
+        <option value="btrfs" data-i18n="storage.fs_btrfs"></option>
+      </select>
+    </label>
+    <label><span id="format-confirm-label"></span><input name="confirm" autocomplete="off" required></label>
+    <div class="dialog-actions">
+      <button value="cancel" formnovalidate data-i18n="common.cancel"></button>
+      <button value="ok" class="danger" data-i18n="storage.format_now"></button>
+    </div>
+  </form>
+</dialog>
+
 <dialog id="logs-dialog" class="wide-dialog">
   <div class="dialog-head">
     <h2 id="logs-title"></h2>
@@ -537,6 +556,7 @@
       </select>
       <button class="add" data-i18n="storage.add"></button>
       <button class="remove danger" data-i18n="storage.remove"></button>
+      <button class="format danger" data-i18n="storage.format"></button>
     </div>
   </div>
 </template>

@@ -213,6 +213,26 @@ for m in /mnt/disk1 /mnt/disk2 /mnt/parity1 /mnt/storage /mnt/user; do
 done
 check_data d2 /mnt/user
 
+step "format: only a blank whole disk, one GPT partition, then a candidate"
+# mkfs.xfs needs more than 300 MB.
+truncate -s 512M "$WORK/blank.img"
+blank="$(losetup --find --show --partscan "$WORK/blank.img")"; LOOPS+=("$blank")
+d1_loop="${LOOPS[0]}"
+if dahlia-disk format "$d1_loop" --fs xfs 2>/dev/null; then fail "formatted a disk with data"; fi
+if dahlia-disk format "$blank" --fs xfs --label "much-too-long-label" 2>/dev/null; then
+    fail "accepted a label XFS cannot store"
+fi
+dahlia-disk format "$blank" --fs xfs --label newdisk --json > "$WORK/format.json"
+new_uuid="$(jq -r .uuid "$WORK/format.json")"
+[ "$(jq -r .partition "$WORK/format.json")" = "${blank}p1" ] || fail "unexpected partition"
+[ "$(blkid -p -s TYPE -o value "${blank}p1")" = "xfs" ] || fail "no XFS on ${blank}p1"
+[ "$(blkid -p -s PTTYPE -o value "$blank")" = "gpt" ] || fail "no GPT on $blank"
+status="$(dahlia-disk list --json | jq -r --arg u "$new_uuid" '.[] | select(.uuid == $u) | .status')"
+[ "$status" = "candidate" ] || fail "formatted disk has status '$status', expected candidate"
+if dahlia-disk format "$blank" --fs ext4 2>/dev/null; then fail "formatted the same disk twice"; fi
+if dahlia-disk format "${blank}p1" --fs ext4 2>/dev/null; then fail "formatted a partition"; fi
+check_data d2 /mnt/storage
+
 step "existing data never touched"
 check_data d2 /mnt/storage
 

@@ -77,6 +77,9 @@ HOSTNAME_RE = re.compile(r"^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$")
 UUID_RE = re.compile(r"^[0-9A-Fa-f]{4}([0-9A-Fa-f-]{4,32}[0-9A-Fa-f])?$")
 
 DISK_ROLES = ("data", "parity", "cache", "external")
+FORMAT_FILESYSTEMS = ("xfs", "ext4", "btrfs")
+# Whole disks only; dahlia-disk checks that the disk is blank.
+DEVICE_RE = re.compile(r"^/dev/((sd|vd|xvd)[a-z]{1,2}|nvme[0-9]{1,2}n[0-9]{1,2}|loop[0-9]{1,3})$")
 STORAGE_OPTIONS = (
     "mover_min_age_minutes",
     "snapraid_delete_threshold",
@@ -393,6 +396,23 @@ def storage_add(ctx: Context, uuid: str, role: str):
     """Mount an existing filesystem in a role. Never formats."""
     dahlia_disk(ctx, "add", uuid, "--role", role)
     return {"uuid": uuid, "role": role}
+
+
+@action(
+    "storage.format",
+    mutating=True,
+    params={
+        "device": Param(str, pattern=DEVICE_RE),
+        "filesystem": Param(str, choices=FORMAT_FILESYSTEMS),
+        "confirm": Param(str),
+    },
+)
+def storage_format(ctx: Context, device: str, filesystem: str, confirm: str):
+    """Partition and format a blank disk. confirm must repeat the disk name."""
+    if confirm != device.removeprefix("/dev/"):
+        raise AgentError(INVALID_PARAMS, f"confirm must be '{device.removeprefix('/dev/')}'")
+    out = dahlia_disk(ctx, "format", device, "--fs", filesystem, "--json", timeout=900)
+    return json.loads(out)
 
 
 @action(

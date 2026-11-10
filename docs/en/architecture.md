@@ -85,8 +85,9 @@ weekly `scrub`. Mover and SnapRAID share a lock and never run at the same time.
 
 ### dahlia-disk (from milestone 3)
 
-`dahlia-disk` from the `dahlia-storage` package implements the layout. It never formats
-anything. State lives in `/etc/dahlia/storage.json`; everything else is generated from it.
+`dahlia-disk` from the `dahlia-storage` package implements the layout. `add` never
+formats; only `format` creates a filesystem, and only on a blank disk without partitions.
+State lives in `/etc/dahlia/storage.json`; everything else is generated from it.
 
 ```sh
 dahlia-disk list                          # disks and what Dahlia may do with them
@@ -95,6 +96,7 @@ dahlia-disk add <UUID> --role parity      # as /mnt/parityN, never in a pool
 dahlia-disk add <UUID> --role cache       # SSD filesystem as /mnt/cache (from M3b)
 dahlia-disk add <UUID> --role external    # e.g. NTFS under /mnt/external/<name>
 dahlia-disk remove <UUID>                 # unmount; data stays on the disk
+dahlia-disk format /dev/sdX --fs xfs      # blank disk: GPT, one partition, XFS/ext4/Btrfs
 dahlia-disk apply                         # regenerate units and pools from storage.json
 dahlia-disk snapraid-config [--write]     # generate /etc/snapraid.conf
 ```
@@ -180,6 +182,7 @@ Protocol: one request per connection, one JSON line each way.
 | `storage.add` | `uuid`, `role` (data, parity, cache, external) | `dahlia-disk add` |
 | `storage.remove` | `uuid`, `force` (optional) | `dahlia-disk remove` |
 | `storage.set_option` | `name`, `value` (integer) | `dahlia-disk set-option` |
+| `storage.format` | `device` (whole disk), `filesystem` (`xfs`, `ext4`, `btrfs`), `confirm` (disk name repeated) | `dahlia-disk format`, blank disks only |
 | `job.start` | `job` (mover, snapraid-sync, snapraid-scrub) | starts the unit, returns at once |
 | `job.status` | `job` (plus `update`) | State and last result |
 | `updates.check` | - | `apt-get update`, list of upgrades |

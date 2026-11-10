@@ -18,6 +18,8 @@ LSBLK_COLUMNS = "NAME,PATH,TYPE,SIZE,FSTYPE,UUID,LABEL,MOUNTPOINTS,MODEL,SERIAL,
 POOL_FILESYSTEMS = {"ext4", "xfs", "btrfs"}
 # Filesystems that can only be mounted as external disks outside the pool.
 EXTERNAL_FILESYSTEMS = POOL_FILESYSTEMS | {"ntfs", "exfat"}
+# Filesystems dahlia-disk format creates on a blank disk.
+FORMAT_FILESYSTEMS = ("xfs", "ext4", "btrfs")
 # Signatures that mean "this device belongs to something else".
 FOREIGN_SIGNATURES = {
     "linux_raid_member",
@@ -193,6 +195,23 @@ def _device(node: dict, disk: dict, status: str, reason: str) -> Device:
         status=status,
         reason=reason,
     )
+
+
+def formattable(found: list[Device], device: str) -> Device:
+    """The blank whole disk `device`, or ValueError why it may not be formatted."""
+    dev = next((d for d in found if d.path == device), None)
+    if dev is None:
+        raise ValueError(f"{device} is not a blank disk")
+    if dev.path != dev.disk:
+        raise ValueError(f"{device} is a partition; only whole blank disks are formatted")
+    if dev.status != "empty":
+        raise ValueError(f"{device} cannot be formatted: {dev.reason}")
+    return dev
+
+
+def partition_path(disk: str) -> str:
+    """First partition of a disk: /dev/sdb1, /dev/nvme0n1p1, /dev/loop3p1."""
+    return f"{disk}p1" if disk[-1].isdigit() else f"{disk}1"
 
 
 def allow_loop_from_env() -> bool:
