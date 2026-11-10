@@ -100,6 +100,8 @@ dahlia-disk snapraid-config [--write]     # generate /etc/snapraid.conf
 ```
 
 New data disks join the running pools via `user.mergerfs.branches`, without a remount.
+The pools run with `cache.files=partial`: SQLite in WAL mode and MariaDB need shared
+mmap, which mergerfs does not offer with `cache.files=off` (direct_io).
 Empty mount points are locked with `chattr +i`, so a missing disk never lets data land on
 the system SSD. The units hang off `dahlia-storage.target` with `Wants=`, so a missing disk
 does not block boot.

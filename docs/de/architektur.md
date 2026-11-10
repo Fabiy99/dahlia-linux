@@ -102,6 +102,8 @@ dahlia-disk snapraid-config [--write]     # /etc/snapraid.conf erzeugen
 ```
 
 Neue Datenplatten kommen per `user.mergerfs.branches` ohne Remount in die laufenden Pools.
+Die Pools laufen mit `cache.files=partial`: SQLite im WAL-Modus und MariaDB brauchen
+shared mmap, das mergerfs mit `cache.files=off` (direct_io) nicht bietet.
 Leere Mount-Points sind mit `chattr +i` gesperrt, damit bei fehlender Platte nichts auf
 der System-SSD landet. Die Units hängen mit `Wants=` an `dahlia-storage.target`, eine
 fehlende Platte blockiert also nicht den Boot.

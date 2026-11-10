@@ -153,6 +153,7 @@ def sync_pools(st: state.State) -> None:
             if branch not in wanted:
                 pool_remove_branch(pool, branch)
         pool_set_option(pool, "category.create", units.create_policy(st, pool))
+        pool_set_option(pool, "cache.files", units.CACHE_FILES)
 
 
 # --- commands ---------------------------------------------------------------
