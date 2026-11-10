@@ -202,7 +202,7 @@ abgelehnt, also auch `privileged`, Host-Netzwerk, Geräte und Capabilities.
 
 | Punkt | Umsetzung |
 | --- | --- |
-| Web-Port | Docker veröffentlicht ihn auf `127.0.0.1:20000-29999`, nginx lauscht im LAN auf dem öffentlichen Port der Vorlage (Port-Link `http://<server>:<port>/`) |
+| Web-Port | Docker veröffentlicht ihn auf `127.0.0.1:41000-41999`, nginx lauscht im LAN auf dem öffentlichen Port der Vorlage (Port-Link `http://<server>:<port>/`) |
 | LAN-Ports | nur wenn die Vorlage sie nennt; das Dashboard zeigt sie vor der Installation |
 | Daten | `/mnt/user/appdata/<id>/...` (Besitzer `dahlia-apps`), Freigaben `/mnt/user/<name>`; ohne eingehängtes Array keine Installation |
 | Start | Docker startet nichts selbst (`restart: no`); `dahlia-apps.service` startet die aktivierten Apps nach den Platten |

@@ -83,7 +83,7 @@ wait_job
 [ "$(docker inspect -f '{{.State.Status}}' dahlia-whoami)" = running ] || fail "container not running"
 ports="$(docker port dahlia-whoami)"
 echo "$ports"
-grep -q '^80/tcp -> 127.0.0.1:20000$' <<<"$ports" || fail "web port not on 127.0.0.1:20000"
+grep -q '^80/tcp -> 127.0.0.1:41000$' <<<"$ports" || fail "web port not on 127.0.0.1:41000"
 if grep -q '0.0.0.0' <<<"$ports"; then fail "port published on all interfaces"; fi
 [ -d /mnt/user/appdata/whoami/config ] || fail "appdata missing"
 [ "$(stat -c %U /mnt/user/appdata/whoami/config)" = dahlia-apps ] || fail "appdata owner wrong"
@@ -99,7 +99,7 @@ for _ in $(seq 1 10); do
     sleep 1
 done
 grep -q '^Hostname:' "$WORK/whoami.txt" || fail "app not reachable on $lan_ip:8099"
-if curl -sf --max-time 3 "http://$lan_ip:20000/" >/dev/null; then
+if curl -sf --max-time 3 "http://$lan_ip:41000/" >/dev/null; then
     fail "internal port reachable from the LAN side"
 fi
 

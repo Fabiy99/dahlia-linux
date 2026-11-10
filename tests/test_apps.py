@@ -103,7 +103,7 @@ def test_parse_ok():
         ({"privileged": True}, "unknown fields privileged"),
         ({"network_mode": "host"}, "unknown fields"),
         ({"web": {"port": 80, "public_port": 443}}, "reserved"),
-        ({"web": {"port": 80, "public_port": 22000}}, "reserved"),
+        ({"web": {"port": 80, "public_port": 41500}}, "reserved"),
         ({"web": {"port": 80}}, "missing public_port"),
         ({"volumes": [{"container": "/x", "appdata": "../etc"}]}, "simple directory"),
         ({"volumes": [{"container": "/x", "share": "a/b"}]}, "simple directory"),
@@ -145,10 +145,10 @@ def test_image_with_digest_and_registry():
 
 def test_compose_ports_and_volumes(env):
     t = parse_template(WHOAMI)
-    c = apps.compose(t, 20001, env.paths, env.host)
+    c = apps.compose(t, 41001, env.paths, env.host)
     svc = c["services"]["app"]
     assert c["name"] == "dahlia-whoami"
-    assert svc["ports"] == ["127.0.0.1:20001:80/tcp"]
+    assert svc["ports"] == ["127.0.0.1:41001:80/tcp"]
     assert svc["restart"] == "no"
     assert svc["security_opt"] == ["no-new-privileges:true"]
     assert svc["environment"] == {"TZ": "Europe/Berlin", "PUID": str(os.getuid()), "NAME": "plain"}
@@ -160,7 +160,7 @@ def test_compose_ports_and_volumes(env):
 
 def test_compose_lan_ports(env):
     t = parse_template(tpl(lan_ports=[{"container": 7359, "host": 7359, "protocol": "udp"}]))
-    svc = apps.compose(t, 20001, env.paths, env.host)["services"]["app"]
+    svc = apps.compose(t, 41001, env.paths, env.host)["services"]["app"]
     assert "0.0.0.0:7359:7359/udp" in svc["ports"]
 
 
@@ -169,17 +169,17 @@ def test_compose_lan_ports(env):
 
 def test_install(env):
     result = env.install("whoami")
-    assert result == {"id": "whoami", "host_port": 20000, "enabled": True}
+    assert result == {"id": "whoami", "host_port": 41000, "enabled": True}
     d = env.paths.apps / "whoami"
     assert json.loads((d / "compose.json").read_text())["services"]["app"]["ports"] == [
-        "127.0.0.1:20000:80/tcp"
+        "127.0.0.1:41000:80/tcp"
     ]
     assert env.docker.calls == [("whoami", ("up", "-d", "--pull", "missing", "--remove-orphans"))]
     assert (env.paths.pool / "appdata/whoami/config").is_dir()
     assert (env.paths.pool / "media").is_dir()
     conf = (env.paths.nginx / "dahlia-app-whoami.conf").read_text()
     assert "listen 8099;" in conf
-    assert "proxy_pass http://127.0.0.1:20000;" in conf
+    assert "proxy_pass http://127.0.0.1:41000;" in conf
     assert (env.paths.nginx / "dahlia-apps-map.conf").exists()
     assert env.reloads
     with pytest.raises(AppError, match="already installed"):
@@ -215,12 +215,12 @@ def test_port_conflict_between_apps(env):
     with pytest.raises(AppError, match="port 8099 is used"):
         env.install("other")
     (env.paths.catalog / "other.yaml").write_text(other.replace("8099", "8100"))
-    assert env.install("other")["host_port"] == 20001
+    assert env.install("other")["host_port"] == 41001
 
 
 def test_host_port_skips_busy_ports(env):
-    env.port_check = lambda port, protocol="tcp": port > 20002
-    assert env.install("whoami")["host_port"] == 20003
+    env.port_check = lambda port, protocol="tcp": port > 41002
+    assert env.install("whoami")["host_port"] == 41003
 
 
 def test_start_stop_enabled(env):
@@ -267,7 +267,7 @@ def test_update_uses_catalog_template(env):
     env.update("whoami")
     assert "v1.12.0" in (env.paths.apps / "whoami/app.yaml").read_text()
     assert env.docker.calls == [("whoami", ("pull",)), ("whoami", ("up", "-d", "--remove-orphans"))]
-    assert json.loads((env.paths.apps / "whoami/state.json").read_text())["host_port"] == 20000
+    assert json.loads((env.paths.apps / "whoami/state.json").read_text())["host_port"] == 41000
 
 
 def test_list(env):

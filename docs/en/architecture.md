@@ -200,7 +200,7 @@ the placeholders `{TZ}`, `{PUID}`, `{PGID}`. Everything else is rejected, includ
 
 | Topic | Implementation |
 | --- | --- |
-| Web port | Docker publishes it on `127.0.0.1:20000-29999`, nginx listens in the LAN on the template's public port (port link `http://<server>:<port>/`) |
+| Web port | Docker publishes it on `127.0.0.1:41000-41999`, nginx listens in the LAN on the template's public port (port link `http://<server>:<port>/`) |
 | LAN ports | only if the template lists them; the dashboard shows them before installing |
 | Data | `/mnt/user/appdata/<id>/...` (owner `dahlia-apps`), shares `/mnt/user/<name>`; no install without a mounted array |
 | Start | Docker starts nothing by itself (`restart: no`); `dahlia-apps.service` starts the enabled apps after the disks |

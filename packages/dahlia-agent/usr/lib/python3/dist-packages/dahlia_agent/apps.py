@@ -57,7 +57,8 @@ NGINX_DIR = Path("/etc/nginx/conf.d")
 APPS_USER = "dahlia-apps"
 APPS_GROUP = "dahlia"
 
-HOST_PORTS = range(20000, 30000)
+# Kept out of the ephemeral port pool by sysctl.d/50-dahlia-apps.conf.
+HOST_PORTS = range(41000, 42000)
 # Ports Dahlia itself uses or that would break the system when taken.
 RESERVED_PORTS = {22, 53, 80, 443, 5353, 8080}
 MAX_FILE = 256 * 1024
