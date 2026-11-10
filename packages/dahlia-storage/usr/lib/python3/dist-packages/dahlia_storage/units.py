@@ -104,6 +104,9 @@ def pool_fsname(pool: str) -> str:
     return "dahlia-storage" if pool == STORAGE_POOL else "dahlia-user"
 
 
+CACHE_FILES = "partial"
+
+
 def pool_options(state: State, pool: str) -> str:
     return ",".join(
         [
@@ -112,7 +115,9 @@ def pool_options(state: State, pool: str) -> str:
             # branch would unmount the whole pool.
             f"branches={':'.join(pool_branches(state, pool))}",
             "allow_other",
-            "cache.files=off",
+            # Page cache on, so shared mmap works: SQLite WAL and the
+            # MariaDB tc log fail on direct_io (cache.files=off).
+            f"cache.files={CACHE_FILES}",
             "dropcacheonclose=true",
             f"category.create={create_policy(state, pool)}",
             "moveonenospc=true",

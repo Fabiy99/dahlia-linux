@@ -46,3 +46,8 @@ td.ops { display: flex; flex-wrap: wrap; gap: .3rem; }
 }
 label.check { display: flex; align-items: center; gap: .5rem; }
 .links { display: flex; flex-direction: column; gap: .15rem; }
+.badge { display: inline-block; margin-top: .2rem; padding: .05rem .45rem; border-radius: 999px;
+         font-size: .8rem; background: var(--accent); color: var(--accent-fg); }
+details summary { cursor: pointer; color: var(--muted); font-size: .85rem; }
+code { font-size: .85rem; overflow-wrap: anywhere; }
+#apps-search { min-width: 14rem; }

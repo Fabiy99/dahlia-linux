@@ -100,6 +100,8 @@ dahlia-disk snapraid-config [--write]     # generate /etc/snapraid.conf
 ```
 
 New data disks join the running pools via `user.mergerfs.branches`, without a remount.
+The pools run with `cache.files=partial`: SQLite in WAL mode and MariaDB need shared
+mmap, which mergerfs does not offer with `cache.files=off` (direct_io).
 Empty mount points are locked with `chattr +i`, so a missing disk never lets data land on
 the system SSD. The units hang off `dahlia-storage.target` with `Wants=`, so a missing disk
 does not block boot.
@@ -163,8 +165,8 @@ Protocol: one request per connection, one JSON line each way.
 | `job.status` | `job` (plus `update`) | State and last result |
 | `updates.check` | - | `apt-get update`, list of upgrades |
 | `updates.apply` | - | `apt-get full-upgrade` as unit `dahlia-update` |
-| `apps.catalog` | `refresh` (optional) | App catalog, `refresh` downloads it first |
-| `apps.list` | - | installed apps with container state |
+| `apps.catalog` | `refresh` (optional) | App catalog and its age, `refresh` downloads it first |
+| `apps.list` | - | installed apps with container state, version, available update |
 | `apps.install`, `apps.update` | `id` | in the background as unit `dahlia-app-<id>` |
 | `apps.job` | `id` | state of the last install or update |
 | `apps.start`, `apps.stop` | `id` | start or stop, also for the next boot |
@@ -218,10 +220,18 @@ Apps are Docker containers built from app templates. The catalog lives in the re
 `https://raw.githubusercontent.com/Fabiy99/dahlia-apps/main/`
 (`/etc/dahlia/apps.json`, `file:///` also works for local catalogs).
 
-A template (YAML, `schema: 1`) only knows: an image with a fixed version, a web port with a
-public port, LAN ports, volumes under `appdata` or a share, and environment variables with
-the placeholders `{TZ}`, `{PUID}`, `{PGID}`. Everything else is rejected, including
-`privileged`, host networking, devices and capabilities.
+A template (YAML) describes one app. From `schema: 2` on it is a small stack: the main
+service `app` plus helpers such as a database or Redis. They are installed, updated and
+removed together. Per service there is only: an image with a fixed version, LAN ports,
+volumes under `appdata` or a share, environment variables, `command`, `user` and
+`depends_on`. On top come category, description, notes, website and a login shown in the
+dashboard. Everything else is rejected, including `privileged`, host networking, devices
+and capabilities. `schema: 1` (one container) is still read.
+
+Placeholders in environment, `command` and login: `{TZ}`, `{PUID}`, `{PGID}`,
+`{HOSTNAME}`, `{DOMAIN}` and `{SECRET_<NAME>}`. Secrets are random values (32 hex
+characters), made at install time and kept in `/var/lib/dahlia/apps/<id>/secrets.json`
+(0600); updates keep them. The dashboard shows the login a template names under `login`.
 
 | Topic | Implementation |
 | --- | --- |
@@ -229,12 +239,17 @@ the placeholders `{TZ}`, `{PUID}`, `{PGID}`. Everything else is rejected, includ
 | LAN ports | only if the template lists them; the dashboard shows them before installing |
 | Data | `/mnt/user/appdata/<id>/...` (owner `dahlia-apps`), shares `/mnt/user/<name>`; no install without a mounted array |
 | Start | Docker starts nothing by itself (`restart: no`); `dahlia-apps.service` starts the enabled apps after the disks |
-| Containers | `no-new-privileges`, log driver `local` with 3 x 10 MB |
+| Containers | `no-new-privileges`, log driver `local` with 3 x 10 MB; main service `dahlia-<id>`, helpers `dahlia-<id>-<service>` |
+| Stack | own Docker network per app, services reach each other by service name; helpers publish no ports |
+| Catalog | `catalog.json` (all templates in one file), otherwise `index.json` and `apps/<id>.yaml`; templates with a newer schema are skipped |
+| Updates | `dahlia-apps-catalog.timer` downloads the catalog every 6 hours; when an installed app's template differs, the dashboard shows "Update to <version>" and "Update all". Old images are deleted afterwards |
 
 ```sh
 dahlia-apps catalog --refresh
 dahlia-apps install jellyfin
 dahlia-apps list
+dahlia-apps updates                # apps with a newer template in the catalog
+dahlia-apps update jellyfin
 dahlia-apps remove jellyfin [--delete-data]
 dahlia-apps check app.yaml        # validate a template
 ```

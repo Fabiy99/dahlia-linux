@@ -73,7 +73,8 @@ Details: [docs/de/architektur.md](docs/de/architektur.md)
 3. `dahlia-storage` als CLI, getestet mit Loop-Devices
 4. `dahlia-agent` mit Aktionsliste
 5. Dashboard: Backend, Login, Frontend mit DE/EN
-6. App-Store (eigenes Repo `dahlia-apps`)
+6. App-Store (eigenes Repo `dahlia-apps`), später mit Stacks (App mit Datenbank usw.) und
+   Update-Anzeige
 7. Domains, Reverse-Proxy, Zertifikate
 8. Geführter Installer: Zielplatte auswählen, Servername, Passwort, Netzwerk, Zusammenfassung
    mit Lösch-Warnung. Der unbeaufsichtigte Modus bleibt als eigener Menüeintrag.
@@ -159,7 +160,8 @@ Details: [docs/en/architecture.md](docs/en/architecture.md)
 3. `dahlia-storage` as CLI, tested with loop devices
 4. `dahlia-agent` with action list
 5. Dashboard: backend, login, frontend with DE/EN
-6. App store (separate repository `dahlia-apps`)
+6. App store (separate repository `dahlia-apps`), later with stacks (app with database etc.)
+   and update notices
 7. Domains, reverse proxy, certificates
 8. Guided installer: pick the target disk, server name, password, network, summary with a
    wipe warning. The unattended mode stays as a separate menu entry.

@@ -293,8 +293,12 @@ def create_app(cfg: Config | None = None) -> FastAPI:
     @app.get("/api/apps", dependencies=authed)
     def apps():
         installed = agent("apps.list")["apps"]
-        catalog = agent("apps.catalog", {"refresh": False})["apps"]
-        return {"installed": installed, "catalog": catalog}
+        catalog = agent("apps.catalog", {"refresh": False})
+        return {
+            "installed": installed,
+            "catalog": catalog["apps"],
+            "catalog_refreshed": catalog.get("refreshed"),
+        }
 
     @app.post("/api/apps/catalog/refresh", dependencies=changing)
     def apps_refresh():

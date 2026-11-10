@@ -146,6 +146,8 @@ mountpoint -q /mnt/cache || fail "/mnt/cache not mounted"
     || fail "/mnt/user was remounted"
 [ "$(getfattr --only-values -n user.mergerfs.category.create /mnt/user/.mergerfs)" = "ff" ] \
     || fail "/mnt/user does not fill the cache first"
+[ "$(getfattr --only-values -n user.mergerfs.cache.files /mnt/user/.mergerfs)" = "partial" ] \
+    || fail "/mnt/user runs without page cache (no shared mmap)"
 
 step "new files land on the cache, existing files stay visible"
 head -c 262144 /dev/urandom > /mnt/user/shares/media/cached.bin

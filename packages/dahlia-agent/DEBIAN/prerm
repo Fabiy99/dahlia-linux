@@ -6,10 +6,10 @@ case "$1" in
     remove)
         if [ -d /run/systemd/system ]; then
             systemctl stop dahlia-agent.socket dahlia-agent.service dahlia-mdns.service \
-                dahlia-domains.timer || true
+                dahlia-domains.timer dahlia-apps-catalog.timer || true
         fi
         systemctl disable dahlia-agent.socket dahlia-mdns.service dahlia-domains.timer \
-            >/dev/null 2>&1 || true
+            dahlia-apps-catalog.timer >/dev/null 2>&1 || true
         ;;
     upgrade|deconfigure|failed-upgrade)
         ;;

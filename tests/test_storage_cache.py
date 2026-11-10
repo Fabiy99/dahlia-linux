@@ -125,3 +125,12 @@ def test_sync_blocked_above_delete_threshold():
 def test_sync_skipped_without_changes():
     counts = {"equal": 10, "added": 0, "removed": 0, "updated": 0, "moved": 0, "copied": 0}
     assert snapraid_job.decide(counts, threshold=50, force=False) == "no changes"
+
+
+def test_pools_keep_page_cache_for_shared_mmap():
+    # SQLite WAL and MariaDB need shared mmap, which direct_io breaks.
+    st = layout()
+    for pool in (units.USER_POOL, units.STORAGE_POOL):
+        unit = units.pool_unit(st, pool)
+        assert "cache.files=partial" in unit
+        assert "cache.files=off" not in unit

@@ -6,7 +6,9 @@
 # container (port on 127.0.0.1 only, data under /mnt/user/appdata, nginx
 # port link from the LAN side), https on <app>.<domain> and <app>.local with
 # the local CA, the mDNS alias via Avahi, a domain change, stop, start,
-# update, remove.
+# update, remove. Then a stack (app with PostgreSQL and MariaDB on the
+# array): generated secrets, name resolution between services, an update
+# found through the catalog, data and secrets kept across it.
 #
 # Must run as root on a disposable machine with dahlia-storage, dahlia-agent,
 # docker, nginx, avahi-daemon and avahi-utils installed.
@@ -22,8 +24,13 @@ step() { echo; echo "== $*"; }
 call() { dahlia-agent-call --timeout 120 "$@"; }
 
 diag() {
-    echo "--- dahlia-app-whoami journal"
-    journalctl -u dahlia-app-whoami.service --no-pager | tail -40 || true
+    echo "--- dahlia-app-whoami / dahlia-app-stacktest journal"
+    journalctl -u dahlia-app-whoami.service -u dahlia-app-stacktest.service --no-pager \
+        | tail -60 || true
+    for c in dahlia-stacktest-pg dahlia-stacktest-sql; do
+        echo "--- $c log"
+        docker logs --tail 30 "$c" 2>&1 || true
+    done
     echo "--- dahlia-mdns journal"
     journalctl -u dahlia-mdns.service --no-pager | tail -20 || true
     echo "--- avahi: daemon, publish as root and as dahlia-mdns"
@@ -38,6 +45,8 @@ diag() {
 cleanup() {
     set +e
     dahlia-apps remove whoami --delete-data >/dev/null 2>&1
+    dahlia-apps remove stacktest --delete-data >/dev/null 2>&1
+    [ -f "$WORK/apps.json.orig" ] && cp "$WORK/apps.json.orig" /etc/dahlia/apps.json
     [ -n "$UUID" ] && dahlia-disk remove "$UUID" >/dev/null 2>&1
     [ -n "$LOOP" ] && losetup -d "$LOOP"
     rm -rf "$WORK"
@@ -45,9 +54,9 @@ cleanup() {
 trap cleanup EXIT
 
 wait_job() {
-    local state
-    for _ in $(seq 1 120); do
-        state="$(call apps.job '{"id": "whoami"}')"
+    local id="${1:-whoami}" state
+    for _ in $(seq 1 150); do
+        state="$(call apps.job "{\"id\": \"$id\"}")"
         case "$(jq -r .active <<<"$state")" in
             active|activating) sleep 2 ;;
             *) break ;;
@@ -183,6 +192,119 @@ if docker inspect dahlia-whoami >/dev/null 2>&1; then fail "container still ther
 [ ! -e /etc/nginx/conf.d/dahlia-app-whoami.conf ] || fail "nginx config left over"
 jq -e '.aliases == []' /var/lib/dahlia/mdns-aliases.json >/dev/null || fail "alias left over"
 if curl -sf --max-time 3 "http://$lan_ip:8099/" >/dev/null; then fail "port link still open"; fi
+
+step "stack: app with PostgreSQL and MariaDB"
+stack_template() {
+    cat <<YAML
+schema: 2
+id: stacktest
+name: Stack test
+category: tools
+description: {de: Testapp mit Datenbanken, en: test app with databases}
+web: {port: 80, public_port: 8098}
+login: {user: admin, password: "{SECRET_ADMIN}"}
+services:
+  app:
+    image: traefik/whoami:$1
+    depends_on: [pg, sql]
+    environment: {DB_PASS: "{SECRET_DB}", TZ: "{TZ}"}
+  pg:
+    image: postgres:17.6-alpine
+    environment: {POSTGRES_PASSWORD: "{SECRET_DB}"}
+    volumes:
+      - {container: /var/lib/postgresql/data, appdata: pg}
+  sql:
+    image: mariadb:11.8.3
+    environment: {MARIADB_ROOT_PASSWORD: "{SECRET_DB}", MARIADB_AUTO_UPGRADE: "1"}
+    volumes:
+      - {container: /var/lib/mysql, appdata: sql}
+    # InnoDB hangs on FUSE (mergerfs) with native AIO and O_DIRECT.
+    command: [--innodb-use-native-aio=0, --innodb-flush-method=fsync]
+YAML
+}
+# catalog.json: the one-file form the public catalog uses.
+publish_catalog() {
+    jq -n --rawfile w "$WORK/catalog/apps/whoami.yaml" --rawfile s "$WORK/stack.yaml" \
+        '{format: 1, apps: {whoami: $w, stacktest: $s}}' > "$WORK/catalog/catalog.json"
+    printf '{"catalog": "file://%s/catalog/"}\n' "$WORK" > /etc/dahlia/apps.json
+    dahlia-apps catalog --refresh --quiet
+    cp "$WORK/apps.json.orig" /etc/dahlia/apps.json
+}
+stack_template v1.10.3 > "$WORK/stack.yaml"
+publish_catalog | tee "$WORK/refresh.txt"
+grep -q 'catalog has 2 apps' "$WORK/refresh.txt" || fail "bundle not read"
+call apps.install '{"id": "stacktest"}' >/dev/null
+wait_job stacktest
+for c in dahlia-stacktest dahlia-stacktest-pg dahlia-stacktest-sql; do
+    [ "$(docker inspect -f '{{.State.Status}}' "$c")" = running ] || fail "$c not running"
+    docker inspect -f '{{.HostConfig.SecurityOpt}}' "$c" | grep -q no-new-privileges \
+        || fail "$c: no-new-privileges missing"
+done
+for c in dahlia-stacktest-pg dahlia-stacktest-sql; do
+    [ -z "$(docker port "$c")" ] || fail "$c publishes a port"
+done
+secrets=/var/lib/dahlia/apps/stacktest/secrets.json
+[ "$(stat -c %a "$secrets")" = 600 ] || fail "secrets.json not 0600"
+pw="$(jq -r .SECRET_DB "$secrets")"
+[ "${#pw}" = 32 ] || fail "no generated database password"
+call apps.list | jq -e --arg a "$(jq -r .SECRET_ADMIN "$secrets")" \
+    '.apps[] | select(.id == "stacktest") | .login.password == $a and .update == null' \
+    >/dev/null || fail "login or update state wrong in apps.list"
+
+pg_ok() {
+    docker exec -e PGPASSWORD="$pw" dahlia-stacktest-pg \
+        psql -h 127.0.0.1 -U postgres -tAc "$1" 2>/dev/null
+}
+sql_ok() {
+    docker exec dahlia-stacktest-sql mariadb -uroot -p"$pw" -N -e "$1" 2>/dev/null
+}
+ready=0
+for _ in $(seq 1 60); do
+    if pg_ok 'select 1' | grep -qx 1 && sql_ok 'select 1' | grep -qx 1; then ready=1; break; fi
+    sleep 2
+done
+[ "$ready" = 1 ] || fail "databases not reachable with the generated password"
+[ -f /mnt/user/appdata/stacktest/pg/PG_VERSION ] || fail "PostgreSQL data not on the array"
+[ -d /mnt/user/appdata/stacktest/sql/mysql ] || fail "MariaDB data not on the array"
+pg_ok 'create table keep (x int); insert into keep values (42)' >/dev/null
+sql_ok 'create database keep' >/dev/null
+docker exec dahlia-stacktest-pg getent hosts sql >/dev/null \
+    || fail "services cannot reach each other by name"
+
+step "stack: update found in the catalog"
+stack_template v1.11.0 > "$WORK/stack.yaml"
+publish_catalog >/dev/null
+call apps.list | jq -e '.apps[] | select(.id == "stacktest") | .update.version == "v1.11.0"' \
+    >/dev/null || fail "update not shown"
+call apps.update '{"id": "stacktest"}' >/dev/null
+wait_job stacktest
+[ "$(docker inspect -f '{{.Config.Image}}' dahlia-stacktest)" = traefik/whoami:v1.11.0 ] \
+    || fail "app image not updated"
+[ "$(jq -r .SECRET_DB "$secrets")" = "$pw" ] || fail "secret changed on update"
+call apps.list | jq -e '.apps[] | select(.id == "stacktest") | .update == null' >/dev/null \
+    || fail "update still shown after updating"
+ready=0
+for _ in $(seq 1 30); do
+    if pg_ok 'select x from keep' | grep -qx 42 && sql_ok 'show databases' | grep -qx keep; then
+        ready=1
+        break
+    fi
+    sleep 2
+done
+[ "$ready" = 1 ] || fail "database content lost on update"
+
+step "stack: catalog timer"
+systemctl is-enabled dahlia-apps-catalog.timer | grep -qx enabled || fail "timer not enabled"
+systemctl cat dahlia-apps-catalog.service | grep -q 'catalog --refresh --quiet' \
+    || fail "timer service wrong"
+
+step "stack: remove with data"
+call apps.remove '{"id": "stacktest", "delete_data": true}' >/dev/null
+for c in dahlia-stacktest dahlia-stacktest-pg dahlia-stacktest-sql; do
+    if docker inspect "$c" >/dev/null 2>&1; then fail "$c still there"; fi
+done
+[ ! -e /mnt/user/appdata/stacktest ] || fail "stack data not deleted"
+[ ! -e /var/lib/dahlia/apps/stacktest ] || fail "app directory left over"
 
 echo
 echo "apps integration test passed"

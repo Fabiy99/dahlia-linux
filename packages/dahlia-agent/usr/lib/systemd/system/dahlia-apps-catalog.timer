@@ -1,0 +1,10 @@
+[Unit]
+Description=Download the Dahlia app catalog every 6 hours
+
+[Timer]
+OnBootSec=10min
+OnCalendar=*-*-* 00/6:00:00
+RandomizedDelaySec=30min
+
+[Install]
+WantedBy=timers.target

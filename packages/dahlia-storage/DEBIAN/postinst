@@ -16,6 +16,10 @@ case "$1" in
             systemctl daemon-reload
             # shellcheck disable=SC2086
             systemctl start $timers || true
+            # Upgrades: rewrite units and pool options for existing layouts.
+            if [ -n "${2:-}" ] && [ -f /etc/dahlia/storage.json ]; then
+                dahlia-disk apply >/dev/null || true
+            fi
         fi
         ;;
     abort-upgrade|abort-remove|abort-deconfigure)
