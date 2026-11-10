@@ -29,7 +29,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        firmware: [bios, uefi]
+        include:
+          - {firmware: bios, install: auto}
+          - {firmware: uefi, install: auto}
+          - {firmware: bios, install: guided}
+          - {firmware: uefi, install: guided}
     steps:
       - uses: actions/checkout@v4
 
@@ -38,7 +42,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             xorriso cpio apt-utils gnupg dirmngr \
-            qemu-system-x86 qemu-utils ovmf sshpass
+            qemu-system-x86 qemu-utils ovmf sshpass openssh-client
 
       - name: Enable KVM
         run: |
@@ -55,15 +59,17 @@ jobs:
         run: iso/build-iso.sh
 
       - name: Install and boot test
-        run: iso/test-install.sh ${{ matrix.firmware }} build/dahlia-linux-$(cat VERSION)-amd64.iso
+        run: |
+          iso/test-install.sh ${{ matrix.firmware }} \
+            build/dahlia-linux-$(cat VERSION)-amd64.iso ${{ matrix.install }}
 
       - name: Upload logs
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: logs-${{ matrix.firmware }}
+          name: logs-${{ matrix.firmware }}-${{ matrix.install }}
           path: |
-            build/test-${{ matrix.firmware }}/*.log
+            build/test-${{ matrix.firmware }}-${{ matrix.install }}/*.log
             build/*.sha256
           retention-days: 7
           if-no-files-found: ignore

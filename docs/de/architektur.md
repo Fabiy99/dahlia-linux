@@ -2,24 +2,48 @@
 
 [English version](../en/architecture.md)
 
-Stand: Meilenstein 7. Dieses Dokument beschreibt das Zielbild. Was davon schon gebaut ist,
+Stand: Meilenstein 8. Dieses Dokument beschreibt das Zielbild. Was davon schon gebaut ist,
 steht in der README unter "Meilensteine".
 
-## Installation
+## Installation (geführt ab Meilenstein 8)
 
 Die ISO ist das aktuelle Debian-13-netinst-Image, umgebaut von `iso/build-iso.sh`.
-`iso/preseed.cfg` steckt im Installer-initrd, die Installation läuft ohne Fragen durch.
-Einzige Ausnahme ist die Zielplatte: `iso/pick-disk.sh` nimmt sie automatisch, wenn es
-genau eine Kandidatin gibt (das Installationsmedium zählt nicht). Bei mehreren Platten
-fragt der Installer nach. Ab Meilenstein 8 fragt der Installer immer nach der Zielplatte
-(Modell, Größe, Seriennummer) und zeigt vor dem Löschen eine Zusammenfassung; die
-automatische Auswahl bleibt nur im Menüeintrag für die unbeaufsichtigte Installation. Am Ende installiert `iso/late-command.sh` die Dahlia-Pakete,
-die auf der ISO unter `/dahlia/pool` liegen.
+`iso/preseed.cfg` steckt im Installer-initrd und enthält alles, was beide Modi gemeinsam
+haben. Der Installer ist englisch. Boot-Menü (BIOS und UEFI):
 
-Hostname (`dahlia`), Sprache (Englisch, Tastatur Deutsch) und Zeitzone (Europe/Berlin)
-sind vorbelegt und werden später im Einrichtungsassistenten geändert. Angelegt wird der
-Benutzer `dahlia-admin` (UID 1001, sudo) mit dem Startpasswort `dahlia`, das beim ersten
-Login geändert werden muss. root hat kein Passwort.
+| Eintrag | Modus |
+| --- | --- |
+| Install Dahlia Linux | geführt (Standard) |
+| Install Dahlia Linux (serial console) | geführt, Ausgabe auf ttyS0 |
+| Automatic install (no questions, default password) | unbeaufsichtigt |
+| Automatic install (serial console) | unbeaufsichtigt auf ttyS0 (CI-Test) |
+
+Geführt (`iso/installer/dahlia-guided.cfg`, `guided.sh`): Der Debian-Installer fragt nach
+dem Tastaturlayout und dem Passwort für `dahlia-admin`. Danach fragt `guided.sh`:
+
+1. Systemplatte, mit Gerät, Größe, Modell und Seriennummer. Das Installationsmedium wird
+   nie angeboten.
+2. Servername (ein DNS-Label, Standard `dahlia`)
+3. Zeitzone
+4. Netzwerk des installierten Systems: DHCP oder statisch (Adresse mit Präfix, Gateway,
+   DNS). Der Installer selbst braucht DHCP und Internet.
+5. SSH-Schlüssel für `dahlia-admin` (optional)
+6. Zusammenfassung mit Warnung, dass alle Daten auf der gewählten Platte gelöscht werden.
+   "No" führt zurück zur Plattenauswahl, die Antworten bleiben vorbelegt.
+
+Jede Frage hat "Go Back". `late-command.sh` schreibt die Antworten mit `apply-answers.sh`
+ins Zielsystem (`/etc/hostname`, `/etc/hosts`, `/etc/timezone`,
+`/etc/network/interfaces`, `/etc/resolv.conf`, `~dahlia-admin/.ssh/authorized_keys`),
+bevor die Dahlia-Pakete installiert werden. Das Passwort ist nicht abgelaufen.
+
+Unbeaufsichtigt (`dahlia-auto.cfg`, Kernel-Parameter `dahlia.mode=auto`): keine Fragen.
+Gibt es genau eine Kandidatin, nimmt `pick-disk.sh` sie ohne Rückfrage; bei mehreren fragt
+der Installer. Servername `dahlia`, Tastatur Deutsch, Zeitzone Europe/Berlin, Benutzer
+`dahlia-admin` mit dem Startpasswort `dahlia`, das beim ersten Login geändert werden muss.
+
+In beiden Modi: Benutzer `dahlia-admin` (UID 1001, sudo), root ohne Passwort. Am Ende
+installiert `late-command.sh` die Dahlia-Pakete, die auf der ISO unter `/dahlia/pool`
+liegen.
 
 Root-Dateisystem: Btrfs, der Installer legt das Subvolume `@rootfs` an. `snapper` legt vor
 und nach jedem apt-Lauf einen Snapshot an, `grub-btrfs` macht die Snapshots im Bootmenü

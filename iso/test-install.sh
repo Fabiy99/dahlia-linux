@@ -1,17 +1,31 @@
 #!/bin/bash
-# Unattended install test: install the ISO into an empty QEMU disk, then boot
-# the installed system and wait for the Dahlia login banner on the serial port.
+# Install test: install the ISO into an empty QEMU disk, then boot the
+# installed system and check banner, SSH, dashboard and certificates.
 #
-# Usage: iso/test-install.sh <bios|uefi> <path-to-iso>
-# Needs: qemu-system-x86_64, qemu-img, xorriso, sshpass, /dev/kvm; for uefi also OVMF
-# Logs:  build/test-<mode>/install.log and boot.log
+#   auto    "Automatic install" entry: no questions, initial password "dahlia"
+#   guided  "Install Dahlia Linux" entry with every question answered by a
+#           preseed file (tests guided.sh and apply-answers.sh, not the screens):
+#           static address, SSH key, own server name and time zone
+#
+# Usage: iso/test-install.sh <bios|uefi> <path-to-iso> [auto|guided]
+# Needs: qemu-system-x86_64, qemu-img, xorriso, sshpass, ssh-keygen, /dev/kvm;
+#        for uefi also OVMF
+# Logs:  build/test-<firmware>-<install>/install.log and boot.log
 set -euo pipefail
 
-MODE="${1:?usage: $0 <bios|uefi> <iso>}"
-ISO="${2:?usage: $0 <bios|uefi> <iso>}"
+usage="usage: $0 <bios|uefi> <iso> [auto|guided]"
+MODE="${1:?$usage}"
+ISO="${2:?$usage}"
+INSTALL="${3:-auto}"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 VERSION="$(tr -d '[:space:]' < "$ROOT/VERSION")"
-OUTDIR="$ROOT/build/test-$MODE"
+OUTDIR="$ROOT/build/test-$MODE-$INSTALL"
+
+# Answers of the guided test. QEMU user networking: guest 10.0.2.15,
+# gateway 10.0.2.2, DNS 10.0.2.3.
+GUIDED_HOST=nas-test
+GUIDED_PASS='Dahlia-Test-Pass-9'
+GUIDED_TZ=Europe/Vienna
 
 INSTALL_TIMEOUT=1800
 BOOT_TIMEOUT=600
@@ -46,21 +60,51 @@ case "$MODE" in
 esac
 
 # The default menu entries use the screen only. Remap both boot menus so the
-# serial-console entry is the default and d-i sends its syslog to the host
-# (QEMU user networking maps 10.0.2.2 to the host's 127.0.0.1); everything
-# else is the release ISO.
+# serial-console entry of the tested mode is the default and d-i sends its
+# syslog to the host (QEMU user networking maps 10.0.2.2 to the host's
+# 127.0.0.1); everything else is the release ISO.
 TEST_ISO="$OUTDIR/serial.iso"
 SYSLOG_PORT=5140
-log_opts="priority=critical log_host=10.0.2.2 log_port=$SYSLOG_PORT ---"
-sed -e 's/^set default=0$/set default=1/' -e "s/priority=critical ---/$log_opts/" \
+extra="log_host=10.0.2.2 log_port=$SYSLOG_PORT"
+map_answers=()
+case "$INSTALL" in
+    auto)
+        grub_default=3
+        syslinux_default=dahlia-auto-serial
+        ;;
+    guided)
+        grub_default=1
+        syslinux_default=dahlia-serial
+        extra="$extra preseed/file=/cdrom/dahlia/test-answers.cfg"
+        ssh-keygen -q -t ed25519 -N '' -C dahlia-test -f "$OUTDIR/id_test"
+        {
+            echo "d-i keyboard-configuration/xkb-keymap select us"
+            echo "d-i passwd/user-password password $GUIDED_PASS"
+            echo "d-i passwd/user-password-again password $GUIDED_PASS"
+            echo "d-i dahlia/disk select /dev/vda"
+            echo "d-i dahlia/hostname string $GUIDED_HOST"
+            echo "d-i dahlia/timezone select $GUIDED_TZ"
+            echo "d-i dahlia/network select static"
+            echo "d-i dahlia/address string 10.0.2.15/24"
+            echo "d-i dahlia/gateway string 10.0.2.2"
+            echo "d-i dahlia/dns string 10.0.2.3"
+            echo "d-i dahlia/ssh_key string $(cat "$OUTDIR/id_test.pub")"
+            echo "d-i dahlia/confirm boolean true"
+        } > "$OUTDIR/test-answers.cfg"
+        map_answers=(-map "$OUTDIR/test-answers.cfg" /dahlia/test-answers.cfg)
+        ;;
+    *) echo "unknown install mode: $INSTALL" >&2; exit 2 ;;
+esac
+sed -e "s/^set default=0\$/set default=$grub_default/" -e "/vmlinuz/s| ---| $extra ---|" \
     "$ROOT/iso/grub.cfg" > "$OUTDIR/grub.cfg"
-sed -e 's/^default dahlia$/default dahlia-serial/' -e "s/priority=critical ---/$log_opts/" \
+sed -e "s/^default dahlia\$/default $syslinux_default/" -e "/append/s| ---| $extra ---|" \
     "$ROOT/iso/isolinux.cfg" > "$OUTDIR/isolinux.cfg"
-grep -q '^set default=1$' "$OUTDIR/grub.cfg"
-grep -q '^default dahlia-serial$' "$OUTDIR/isolinux.cfg"
+grep -q "^set default=$grub_default\$" "$OUTDIR/grub.cfg"
+grep -q "^default $syslinux_default\$" "$OUTDIR/isolinux.cfg"
 xorriso -indev "$ISO" -outdev "$TEST_ISO" \
     -map "$OUTDIR/grub.cfg" /boot/grub/grub.cfg \
     -map "$OUTDIR/isolinux.cfg" /isolinux/isolinux.cfg \
+    "${map_answers[@]}" \
     -boot_image any replay 2>"$OUTDIR/xorriso.log"
 
 # Collect the installer syslog: the serial console only shows the dialog
@@ -87,7 +131,7 @@ install_failed() {
     exit 1
 }
 
-echo "== install ($MODE)"
+echo "== install ($MODE, $INSTALL)"
 # d-i reboots at the end; -no-reboot turns that into a clean QEMU exit.
 timeout "$INSTALL_TIMEOUT" qemu-system-x86_64 "${qemu_args[@]}" \
     -cdrom "$TEST_ISO" -boot d -no-reboot \
@@ -135,37 +179,70 @@ if ! grep -q "login:" "$OUTDIR/boot.log" 2>/dev/null; then
     exit 1
 fi
 
-# SSH with the initial password. It is expired on purpose, so a correct
-# password ends in the forced password change; a wrong one in "denied".
-echo "== ssh password login ($MODE)"
-ssh_ok=0
-for _ in $(seq 1 24); do
-    out="$(timeout 30 sshpass -p dahlia ssh -p "$SSH_PORT" \
-        -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-        -o PubkeyAuthentication=no -o ConnectTimeout=10 \
-        dahlia-admin@127.0.0.1 true 2>&1 || true)"
-    printf '%s\n' "$out" >> "$OUTDIR/ssh.log"
-    if grep -qi "password has expired\|change your password" <<<"$out"; then
-        echo "OK: ssh accepts the initial password and forces a change"
-        ssh_ok=1
-        break
-    fi
-    if grep -qi "permission denied" <<<"$out"; then
-        echo "FAIL: ssh rejected the initial password" >&2
-        cat "$OUTDIR/ssh.log" >&2
-        exit 1
-    fi
-    sleep 5
-done
-if [ "$ssh_ok" != 1 ]; then
-    echo "FAIL: no ssh answer on port $SSH_PORT" >&2
-    tail -n 40 "$OUTDIR/ssh.log" >&2
+ssh_opts=(-p "$SSH_PORT" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null
+          -o ConnectTimeout=10)
+ssh_fail() {
+    echo "FAIL: $*" >&2
+    tail -n 40 "$OUTDIR/ssh.log" >&2 || true
     exit 1
+}
+
+if [ "$INSTALL" = auto ]; then
+    HOST=dahlia
+    # SSH with the initial password. It is expired on purpose, so a correct
+    # password ends in the forced password change; a wrong one in "denied".
+    echo "== ssh password login ($MODE)"
+    ssh_ok=0
+    for _ in $(seq 1 24); do
+        out="$(timeout 30 sshpass -p dahlia ssh "${ssh_opts[@]}" -o PubkeyAuthentication=no \
+            dahlia-admin@127.0.0.1 true 2>&1 || true)"
+        printf '%s\n' "$out" >> "$OUTDIR/ssh.log"
+        if grep -qi "password has expired\|change your password" <<<"$out"; then
+            echo "OK: ssh accepts the initial password and forces a change"
+            ssh_ok=1
+            break
+        fi
+        if grep -qi "permission denied" <<<"$out"; then
+            ssh_fail "ssh rejected the initial password"
+        fi
+        sleep 5
+    done
+    [ "$ssh_ok" = 1 ] || ssh_fail "no ssh answer on port $SSH_PORT"
+else
+    HOST="$GUIDED_HOST"
+    # The answers from the preseed file must be in the installed system:
+    # password (not expired), SSH key, server name, time zone, static address.
+    echo "== ssh login with the guided answers ($MODE)"
+    ssh_ok=0
+    for _ in $(seq 1 24); do
+        if out="$(timeout 30 sshpass -p "$GUIDED_PASS" ssh "${ssh_opts[@]}" \
+                -o PubkeyAuthentication=no dahlia-admin@127.0.0.1 hostname 2>&1)"; then
+            ssh_ok=1
+            break
+        fi
+        printf '%s\n' "$out" >> "$OUTDIR/ssh.log"
+        if grep -qi "permission denied" <<<"$out"; then
+            ssh_fail "ssh rejected the guided password"
+        fi
+        sleep 5
+    done
+    [ "$ssh_ok" = 1 ] || ssh_fail "no ssh answer on port $SSH_PORT"
+    [ "$(tail -n1 <<<"$out")" = "$GUIDED_HOST" ] || ssh_fail "host name is '$out'"
+    echo "OK: password login, host name $GUIDED_HOST"
+    facts="$(timeout 30 ssh "${ssh_opts[@]}" -i "$OUTDIR/id_test" -o BatchMode=yes \
+        -o PasswordAuthentication=no dahlia-admin@127.0.0.1 \
+        'cat /etc/timezone; grep -c "inet static" /etc/network/interfaces; cat /etc/resolv.conf' \
+        2>>"$OUTDIR/ssh.log")" || ssh_fail "ssh key login failed"
+    echo "$facts"
+    grep -qx "$GUIDED_TZ" <<<"$facts" || ssh_fail "time zone not $GUIDED_TZ"
+    grep -qx 1 <<<"$facts" || ssh_fail "no static address in /etc/network/interfaces"
+    grep -q '^nameserver 10.0.2.3$' <<<"$facts" || ssh_fail "DNS server not set"
+    echo "OK: SSH key login, time zone, static network"
 fi
 
 # Dashboard: nginx with TLS, setup wizard with the code from the console
 # banner, login, and one call that goes through dahlia-agent.
-echo "== dashboard ($MODE)"
+echo "== dashboard ($MODE, $INSTALL)"
 BASE="https://127.0.0.1:$HTTPS_PORT"
 JAR="$OUTDIR/cookies.txt"
 web() { curl -sk --max-time 30 -b "$JAR" -c "$JAR" -H 'X-Dahlia-Request: 1' "$@"; }
@@ -204,12 +281,12 @@ echo "OK: dashboard setup, login and agent calls work"
 
 # Local CA: the server certificate must verify against the CA the
 # dashboard hands out, under the mDNS name of the host.
-echo "== certificates ($MODE)"
+echo "== certificates ($MODE, $INSTALL)"
 web "$BASE/dahlia-ca.crt" -o "$OUTDIR/dahlia-ca.crt"
 grep -q 'BEGIN CERTIFICATE' "$OUTDIR/dahlia-ca.crt" || dashboard_fail "CA not served"
 curl -sf --max-time 30 --cacert "$OUTDIR/dahlia-ca.crt" \
-    --resolve "dahlia.local:$HTTPS_PORT:127.0.0.1" \
-    "https://dahlia.local:$HTTPS_PORT/api/state" >/dev/null \
+    --resolve "$HOST.local:$HTTPS_PORT:127.0.0.1" \
+    "https://$HOST.local:$HTTPS_PORT/api/state" >/dev/null \
     || dashboard_fail "server certificate does not verify against the local CA"
 domains="$(web "$BASE/api/domains")"
 echo "$domains"

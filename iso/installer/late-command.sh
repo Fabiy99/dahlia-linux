@@ -3,10 +3,28 @@
 # Installs the Dahlia packages shipped on the ISO into the target system.
 set -e
 
+DIR="$(dirname "$0")"
 STAGE=/target/opt/dahlia-install
 APT_TIMEOUT=1200
+# Written by guided.sh; missing in the unattended install.
+ANSWERS=/tmp/dahlia-answers
+KEYFILE=/tmp/dahlia-ssh-key
 
 log() { logger -t dahlia-install "$*"; }
+
+if [ -f "$ANSWERS" ]; then
+    if ! sh "$DIR/apply-answers.sh" /target "$ANSWERS" "$KEYFILE" 2>/tmp/dahlia-apply.err; then
+        log "FAILED: apply-answers: $(cat /tmp/dahlia-apply.err)"
+        exit 1
+    fi
+    # Package scripts (certificate for <name>.local) read the running host
+    # name, which is still the installer's.
+    hostname "$(cat /target/etc/hostname)"
+    if [ -d /target/home/dahlia-admin/.ssh ]; then
+        in-target chown -R dahlia-admin:dahlia-admin /home/dahlia-admin/.ssh
+    fi
+    log "guided answers applied: $(tr '\n' ' ' < "$ANSWERS")"
+fi
 
 mkdir -p "$STAGE"
 cp /cdrom/dahlia/pool/*.deb "$STAGE/"
@@ -38,7 +56,10 @@ fi
 
 umount /target/media/cdrom
 
-# Initial password "dahlia" must be changed on first login.
-in-target chage -d 0 dahlia-admin
+# Unattended install: the initial password "dahlia" must be changed on
+# first login. The guided install asked for the password.
+if [ ! -f "$ANSWERS" ]; then
+    in-target chage -d 0 dahlia-admin
+fi
 
 rm -rf "$STAGE"
