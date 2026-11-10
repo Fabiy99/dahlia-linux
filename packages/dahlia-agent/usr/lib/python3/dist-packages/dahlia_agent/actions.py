@@ -221,6 +221,8 @@ def system_set_hostname(ctx: Context, hostname: str):
     tmp.replace(ctx.hosts_file)
     # Avahi reads the hostname at start only.
     ctx.runner.run(["systemctl", "try-restart", "avahi-daemon.service"])
+    # The certificate names <hostname>.local.
+    ctx.runner.run(["dahlia-domains", "apply"], timeout=120)
     return {"hostname": hostname}
 
 
@@ -514,6 +516,35 @@ def apps_remove(ctx: Context, id: str, delete_data: bool):
         raise AgentError(BUSY, f"{id} is busy")
     args = ["remove", id] + (["--delete-data"] if delete_data else [])
     return dahlia_apps(ctx, *args, timeout=600)
+
+
+# --- domains ------------------------------------------------------------------
+
+LABEL = r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?"
+DOMAIN_RE = re.compile(rf"^{LABEL}(?:\.{LABEL}){{1,5}}$")
+
+
+def dahlia_domains(ctx: Context, *args: str):
+    return json.loads(ctx.runner.run(["dahlia-domains", *args], timeout=120).stdout)
+
+
+@action("domains.get", mutating=False)
+def domains_get(ctx: Context):
+    """Domain, mDNS aliases, DNS records to create and certificate state."""
+    return dahlia_domains(ctx, "show")
+
+
+@action(
+    "domains.set",
+    mutating=True,
+    params={
+        "domain": Param(str, pattern=DOMAIN_RE),
+        "mdns_aliases": Param(bool),
+    },
+)
+def domains_set(ctx: Context, domain: str, mdns_aliases: bool):
+    """Change the app domain and mDNS aliases; renews the certificate."""
+    return dahlia_domains(ctx, "set", "--domain", domain, "--mdns", "on" if mdns_aliases else "off")
 
 
 # --- meta ---------------------------------------------------------------------

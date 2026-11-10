@@ -10,8 +10,9 @@ server {
     listen [::]:443 ssl default_server;
     http2 on;
 
-    ssl_certificate     /etc/dahlia/tls/dashboard.crt;
-    ssl_certificate_key /etc/dahlia/tls/dashboard.key;
+    # Signed by the local Dahlia CA, see dahlia-domains.
+    ssl_certificate     /etc/dahlia/tls/server.crt;
+    ssl_certificate_key /etc/dahlia/tls/server.key;
     ssl_protocols TLSv1.2 TLSv1.3;
 
     root /usr/share/dahlia-dashboard/www;
@@ -34,6 +35,14 @@ server {
         proxy_read_timeout 900s;
         add_header Cache-Control no-store always;
         add_header Content-Security-Policy "default-src 'none'" always;
+        add_header X-Content-Type-Options nosniff always;
+    }
+
+    # The CA certificate (public part only) for import into browsers.
+    location = /dahlia-ca.crt {
+        alias /etc/dahlia/tls/ca.crt;
+        default_type application/x-x509-ca-cert;
+        add_header Content-Disposition 'attachment; filename="dahlia-ca.crt"' always;
         add_header X-Content-Type-Options nosniff always;
     }
 

@@ -44,3 +44,5 @@ td.ops { display: flex; flex-wrap: wrap; gap: .3rem; }
   tr { border-bottom: 1px solid var(--line); padding: .4rem 0; }
   td { border: 0; padding: .15rem 0; }
 }
+label.check { display: flex; align-items: center; gap: .5rem; }
+.links { display: flex; flex-direction: column; gap: .15rem; }

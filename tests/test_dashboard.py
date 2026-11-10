@@ -337,3 +337,24 @@ def test_apps_endpoints(env):
         ("apps.job", {"id": "whoami"}),
     ]
     assert client.post("/api/apps/whoami/exec", headers=CSRF).status_code == 404
+
+
+def test_domains_endpoints(env):
+    client, agent, _ = logged_in(env)
+    agent.calls.clear()
+    assert client.get("/api/domains").json() == {"action": "domains.get"}
+    body = {"domain": "lab.home.arpa", "mdns_aliases": False}
+    assert client.post("/api/domains", json=body, headers=CSRF).status_code == 200
+    assert agent.calls == [("domains.get", {}), ("domains.set", body)]
+    # Without the CSRF header nothing reaches the agent.
+    assert client.post("/api/domains", json=body).status_code == 403
+    assert client.post("/api/domains", json={"domain": "x"}, headers=CSRF).status_code == 422
+    assert len(agent.calls) == 2
+
+
+def test_domains_need_login(env):
+    client, agent, _, _ = env
+    assert client.get("/api/domains").status_code == 401
+    assert client.post("/api/domains", json={"domain": "a.b", "mdns_aliases": True},
+                       headers=CSRF).status_code == 401
+    assert agent.calls == []
