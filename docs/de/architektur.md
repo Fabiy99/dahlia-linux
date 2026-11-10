@@ -2,7 +2,7 @@
 
 [English version](../en/architecture.md)
 
-Stand: Meilenstein 1. Dieses Dokument beschreibt das Zielbild. Was davon schon gebaut ist,
+Stand: Meilenstein 4. Dieses Dokument beschreibt das Zielbild. Was davon schon gebaut ist,
 steht in der README unter "Meilensteine".
 
 ## Installation
@@ -113,6 +113,48 @@ Timer: Mover 03:00, SnapRAID-Sync 04:30, Scrub sonntags 06:00 (8 %, Blöcke ält
   markiert.
 - Die Firewall (nftables) öffnet Ports nur für aktivierte Funktionen und nur fürs lokale
   Subnetz.
+
+### dahlia-agent (ab Meilenstein 4)
+
+Der Agent hört auf `/run/dahlia/agent.sock` (root:dahlia-agent, 0660) und wird von
+`dahlia-agent.socket` beim ersten Aufruf gestartet. Zusätzlich zu den Dateirechten prüft er
+die Gegenstelle per `SO_PEERCRED`: erlaubt sind root und Mitglieder der Gruppe
+`dahlia-agent`. Später ist das der Dashboard-Benutzer `dahlia-ui`.
+
+Protokoll: eine Anfrage pro Verbindung, je eine JSON-Zeile hin und zurück.
+
+```text
+-> {"action": "storage.add", "params": {"uuid": "...", "role": "data"}}
+<- {"ok": true, "result": {...}}
+<- {"ok": false, "error": {"code": "invalid_params", "message": "..."}}
+```
+
+| Aktion | Parameter | Wirkung |
+| --- | --- | --- |
+| `system.info` | - | Hostname, Version, Kernel, Uptime, Last, Speicher |
+| `system.set_hostname` | `hostname` (ein DNS-Label, klein) | `hostnamectl`, `/etc/hosts`, Avahi |
+| `system.reboot`, `system.poweroff` | - | `systemctl --no-block ...` |
+| `storage.list` | - | `dahlia-disk list --json` |
+| `storage.add` | `uuid`, `role` (data, parity, cache, external) | `dahlia-disk add` |
+| `storage.remove` | `uuid`, `force` (optional) | `dahlia-disk remove` |
+| `storage.set_option` | `name`, `value` (Zahl) | `dahlia-disk set-option` |
+| `job.start` | `job` (mover, snapraid-sync, snapraid-scrub) | startet die Unit, kehrt sofort zurück |
+| `job.status` | `job` (dazu `update`) | Zustand und letztes Ergebnis |
+| `updates.check` | - | `apt-get update`, Liste der Upgrades |
+| `updates.apply` | - | `apt-get full-upgrade` als Unit `dahlia-update` |
+| `agent.actions` | - | diese Liste |
+
+Unbekannte Aktionen, unbekannte oder fehlende Parameter und falsche Typen werden abgelehnt,
+bevor ein Befehl läuft. Befehle laufen als Argumentlisten, nie über eine Shell. Ändernde
+Aktionen laufen nacheinander. Jeder Aufruf steht mit UID und Ergebnis im Journal
+(`journalctl -u dahlia-agent`).
+
+Zum Testen auf der Konsole:
+
+```sh
+sudo dahlia-agent-call system.info
+sudo dahlia-agent-call storage.add '{"uuid": "<UUID>", "role": "data"}'
+```
 
 ## Netzwerk und Namen
 

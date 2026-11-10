@@ -1,0 +1,26 @@
+#!/bin/bash
+# dahlia-agent postinst
+set -euo pipefail
+
+case "$1" in
+    configure)
+        if ! getent group dahlia-agent >/dev/null; then
+            groupadd --system dahlia-agent
+        fi
+        systemctl enable dahlia-agent.socket >/dev/null 2>&1 || true
+        if [ -d /run/systemd/system ]; then
+            systemctl daemon-reload
+            # A running agent keeps the old code until restarted.
+            systemctl try-restart dahlia-agent.service || true
+            systemctl start dahlia-agent.socket || true
+        fi
+        ;;
+    abort-upgrade|abort-remove|abort-deconfigure)
+        ;;
+    *)
+        echo "postinst called with unknown argument '$1'" >&2
+        exit 1
+        ;;
+esac
+
+exit 0
