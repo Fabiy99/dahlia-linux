@@ -25,10 +25,13 @@ noch ohne Web-UI und Storage-Funktionen.
 2. VM anlegen: 2 GB RAM, eine Platte ab 20 GB, Netzwerk gebridged. Hyper-V: Generation 2,
    Secure Boot mit der Vorlage "Microsoft UEFI Certificate Authority", fester Arbeitsspeicher
    (kein dynamischer).
-3. Von der ISO booten. Die Installation läuft ohne Fragen durch und startet neu.
-   Für Rechner ohne Bildschirm gibt es den Menüeintrag "serial console" (ttyS0, 115200 Baud).
-4. Anmelden als `dahlia-admin` mit Passwort `dahlia`, danach ein neues Passwort setzen.
-   Per SSH: `ssh dahlia-admin@dahlia.local`.
+3. Von der ISO booten und "Install Dahlia Linux" wählen. Der Installer (englisch) fragt
+   nach Tastatur, Passwort, Systemplatte, Servername, Zeitzone, Netzwerk und optional einem
+   SSH-Schlüssel und zeigt vor dem Löschen eine Zusammenfassung. Für Rechner ohne
+   Bildschirm gibt es die Einträge "serial console" (ttyS0, 115200 Baud), für Tests
+   "Automatic install" ohne Fragen (Startpasswort `dahlia`, muss beim ersten Login
+   geändert werden).
+4. Anmelden als `dahlia-admin`, per SSH: `ssh dahlia-admin@<servername>.local`.
 5. Dashboard: `https://dahlia.local/` im Browser öffnen, die Zertifikatswarnung bestätigen
    und den Einrichtungscode eingeben, der auf dem Bildschirm des Servers und beim SSH-Login steht.
    Damit die Warnung verschwindet: unter "Domains" die lokale CA herunterladen und importieren
@@ -36,7 +39,7 @@ noch ohne Web-UI und Storage-Funktionen.
 6. Updates: im Dashboard unter "Updates" oder `sudo apt update && sudo apt upgrade`
    (siehe [docs/de/apt-repo.md](docs/de/apt-repo.md)).
 
-**Achtung:** Hat der Rechner nur eine Platte, wird sie ohne Rückfrage gelöscht.
+**Achtung:** "Automatic install" löscht eine einzelne Platte ohne Rückfrage.
 
 ### Grundidee
 
@@ -110,10 +113,12 @@ without web UI or storage features yet.
 2. Create a VM: 2 GB RAM, one disk of 20 GB or more, bridged network. Hyper-V: generation 2,
    Secure Boot with the "Microsoft UEFI Certificate Authority" template, static memory
    (not dynamic).
-3. Boot from the ISO. The install runs without questions and reboots.
-   Headless machines use the "serial console" menu entry (ttyS0, 115200 baud).
-4. Log in as `dahlia-admin` with password `dahlia`, then set a new password.
-   Via SSH: `ssh dahlia-admin@dahlia.local`.
+3. Boot from the ISO and pick "Install Dahlia Linux". The installer asks for the
+   keyboard, password, system disk, server name, time zone, network and optionally an SSH
+   key, and shows a summary before wiping the disk. Headless machines use the "serial
+   console" entries (ttyS0, 115200 baud); for tests there is "Automatic install" without
+   questions (initial password `dahlia`, must be changed on first login).
+4. Log in as `dahlia-admin`, via SSH: `ssh dahlia-admin@<server name>.local`.
 5. Dashboard: open `https://dahlia.local/` in a browser, accept the certificate warning and
    enter the setup code shown on the server's screen and on SSH login.
    To get rid of the warning: download and import the local CA under "Domains"
@@ -121,7 +126,7 @@ without web UI or storage features yet.
 6. Updates: in the dashboard under "Updates" or `sudo apt update && sudo apt upgrade`
    (see [docs/en/apt-repo.md](docs/en/apt-repo.md)).
 
-**Warning:** On a machine with a single disk, that disk is wiped without asking.
+**Warning:** "Automatic install" wipes a single disk without asking.
 
 ### Design in short
 

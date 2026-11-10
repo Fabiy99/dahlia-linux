@@ -2,7 +2,7 @@
 # Build the Dahlia installer ISO by remastering the current Debian 13 netinst.
 #
 #   1. download netinst + SHA256SUMS, verify signature and checksum
-#   2. append iso/preseed.cfg to the installer initrd
+#   2. append iso/preseed.cfg and the mode preseeds to the installer initrd
 #   3. replace the BIOS (isolinux) and UEFI (grub) boot menus
 #   4. add the Dahlia packages and installer scripts under /dahlia
 #   5. write a new hybrid ISO with the original boot setup (BIOS + UEFI)
@@ -63,14 +63,18 @@ chmod u+w "$WORK/initrd.gz" "$WORK/md5sum.txt"
 
 gunzip -c "$WORK/initrd.gz" > "$WORK/initrd.cpio"
 cp "$ROOT/iso/preseed.cfg" "$WORK/initrd-add/preseed.cfg"
-(cd "$WORK/initrd-add" && echo preseed.cfg | cpio --quiet -H newc -o -A -F "$WORK/initrd.cpio")
+cp "$ROOT/iso/installer/dahlia-auto.cfg" "$ROOT/iso/installer/dahlia-guided.cfg" "$WORK/initrd-add/"
+(cd "$WORK/initrd-add" && printf '%s\n' preseed.cfg dahlia-auto.cfg dahlia-guided.cfg \
+    | cpio --quiet -H newc -o -A -F "$WORK/initrd.cpio")
 gzip -9 -c "$WORK/initrd.cpio" > "$WORK/initrd-dahlia.gz"
 
 # --- 3./4. payload tree ----------------------------------------------------
 mkdir -p "$WORK/dahlia/pool"
 cp "$BUILD"/pool/*.deb "$WORK/dahlia/pool/"
-install -m 0755 "$ROOT/iso/pick-disk.sh" "$WORK/dahlia/pick-disk.sh"
-install -m 0755 "$ROOT/iso/late-command.sh" "$WORK/dahlia/late-command.sh"
+for f in pick-disk.sh guided.sh apply-answers.sh lib.sh late-command.sh; do
+    install -m 0755 "$ROOT/iso/installer/$f" "$WORK/dahlia/$f"
+done
+install -m 0644 "$ROOT/iso/installer/dahlia.templates" "$WORK/dahlia/dahlia.templates"
 printf 'DAHLIA_VERSION=%s\nDEBIAN_BASE=%s\n' "$VERSION" "$NETINST" > "$WORK/dahlia/release"
 
 # md5sum.txt: drop entries for replaced files, add the new ones, so the

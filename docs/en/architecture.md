@@ -2,24 +2,47 @@
 
 [Deutsche Fassung](../de/architektur.md)
 
-Status: milestone 7. This document describes the target design. What is already built is
+Status: milestone 8. This document describes the target design. What is already built is
 listed in the README under "Milestones".
 
-## Installation
+## Installation (guided from milestone 8)
 
 The ISO is the current Debian 13 netinst image, remastered by `iso/build-iso.sh`.
-`iso/preseed.cfg` is embedded in the installer initrd, so the install runs without
-questions. The one exception is the target disk: `iso/pick-disk.sh` picks it
-automatically when there is exactly one candidate (the install medium does not count).
-With several disks the installer asks. From milestone 8 on, the installer always asks for the
-target disk (model, size, serial) and shows a summary before wiping it; automatic selection
-remains only in the menu entry for unattended installs. At the end, `iso/late-command.sh` installs the
-Dahlia packages shipped on the ISO under `/dahlia/pool`.
+`iso/preseed.cfg` is embedded in the installer initrd and holds everything both modes
+share. The installer is in English. Boot menu (BIOS and UEFI):
 
-Hostname (`dahlia`), language (English, German keyboard) and timezone (Europe/Berlin) are
-preset and changed later in the setup wizard. The installer creates the user
-`dahlia-admin` (UID 1001, sudo) with the initial password `dahlia`, which must be changed
-on first login. root has no password.
+| Entry | Mode |
+| --- | --- |
+| Install Dahlia Linux | guided (default) |
+| Install Dahlia Linux (serial console) | guided, output on ttyS0 |
+| Automatic install (no questions, default password) | unattended |
+| Automatic install (serial console) | unattended on ttyS0 (CI test) |
+
+Guided (`iso/installer/dahlia-guided.cfg`, `guided.sh`): the Debian installer asks for the
+keyboard layout and the password of `dahlia-admin`. Then `guided.sh` asks for:
+
+1. System disk, with device, size, model and serial number. The install medium is never
+   offered.
+2. Server name (one DNS label, default `dahlia`)
+3. Time zone
+4. Network of the installed system: DHCP or static (address with prefix, gateway, DNS).
+   The installer itself needs DHCP and internet access.
+5. SSH public key for `dahlia-admin` (optional)
+6. Summary with a warning that all data on the chosen disk will be deleted. "No" goes back
+   to the disk selection with the answers kept as defaults.
+
+Every question has "Go Back". `late-command.sh` writes the answers into the target with
+`apply-answers.sh` (`/etc/hostname`, `/etc/hosts`, `/etc/timezone`,
+`/etc/network/interfaces`, `/etc/resolv.conf`, `~dahlia-admin/.ssh/authorized_keys`)
+before the Dahlia packages are installed. The password is not expired.
+
+Unattended (`dahlia-auto.cfg`, kernel parameter `dahlia.mode=auto`): no questions. With
+exactly one candidate disk, `pick-disk.sh` uses it without asking; with several the
+installer asks. Server name `dahlia`, German keyboard, time zone Europe/Berlin, user
+`dahlia-admin` with the initial password `dahlia`, which must be changed on first login.
+
+In both modes: user `dahlia-admin` (UID 1001, sudo), root has no password. At the end,
+`late-command.sh` installs the Dahlia packages shipped on the ISO under `/dahlia/pool`.
 
 Root filesystem: Btrfs; the installer creates the subvolume `@rootfs`. `snapper` takes a
 snapshot before and after every apt run; `grub-btrfs` makes the snapshots bootable from

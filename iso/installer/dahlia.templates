@@ -1,0 +1,78 @@
+Template: dahlia/disk
+Type: select
+Choices-C: ${CHOICES_C}
+Choices: ${CHOICES}
+Description: System disk for Dahlia Linux:
+ Dahlia Linux is installed on this disk. Everything on it will be deleted.
+ .
+ Pick an SSD. Data disks for the array are not touched by the installer;
+ add them later in the dashboard.
+
+Template: dahlia/hostname
+Type: string
+Default: dahlia
+Description: Server name:
+ One word: lower case letters, digits and hyphens. The server is reachable
+ as <name>.local in the local network.
+
+Template: dahlia/timezone
+Type: select
+Choices: Europe/Berlin, Europe/Vienna, Europe/Zurich, Europe/Amsterdam, Europe/Brussels, Europe/Paris, Europe/London, Europe/Madrid, Europe/Rome, Europe/Stockholm, Europe/Warsaw, America/New_York, America/Chicago, America/Denver, America/Los_Angeles, Asia/Tokyo, Australia/Sydney, UTC
+Default: Europe/Berlin
+Description: Time zone:
+
+Template: dahlia/network
+Type: select
+Choices-C: dhcp, static
+Choices: Automatic (DHCP), Static address
+Default: dhcp
+Description: Network configuration of the installed system:
+ The installer itself uses DHCP. With a static address, the installed
+ system uses the address entered next from the first boot on.
+
+Template: dahlia/address
+Type: string
+Description: IPv4 address with prefix length:
+ Example: 192.168.1.10/24
+
+Template: dahlia/gateway
+Type: string
+Description: Gateway:
+ Example: 192.168.1.1
+
+Template: dahlia/dns
+Type: string
+Description: DNS server:
+ Example: 192.168.1.1
+
+Template: dahlia/ssh_key
+Type: string
+Description: SSH public key for dahlia-admin (optional):
+ Paste one line from ~/.ssh/id_ed25519.pub or similar to log in without a
+ password. Leave empty to skip; keys can be added later.
+
+Template: dahlia/invalid
+Type: error
+Description: Invalid input
+ ${MESSAGE}
+
+Template: dahlia/no_disk
+Type: error
+Description: No disk found
+ The installer found no disk to install Dahlia Linux on. The install
+ medium itself is never offered.
+
+Template: dahlia/confirm
+Type: boolean
+Default: false
+Description: Delete ${DISK} and install Dahlia Linux?
+ Summary:
+ .
+   Disk:         ${DISK_LABEL}
+   Server name:  ${HOSTNAME}
+   Time zone:    ${TIMEZONE}
+   Network:      ${NETWORK}
+   SSH key:      ${SSH_KEY}
+   Admin user:   dahlia-admin
+ .
+ ALL DATA ON ${DISK} WILL BE DELETED. Choose "No" to change the answers.
