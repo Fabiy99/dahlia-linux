@@ -39,6 +39,7 @@
   <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M9 7V4.5h6V7M6.5 7l1 13h9l1-13M10 11v5.5M14 11v5.5"/></symbol>
   <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 3.5v12M7 10.5l5 5 5-5M4.5 20.5h15"/></symbol>
   <symbol id="i-docker" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="8" rx="1.5"/><rect x="5.5" y="6" width="5" height="5" rx=".8"/><rect x="13.5" y="6" width="5" height="5" rx=".8"/><path d="M7 15h.01M12 15h.01M17 15h.01"/></symbol>
+  <symbol id="i-share" viewBox="0 0 24 24"><path d="M3 7.5A1.5 1.5 0 0 1 4.5 6H9l2 2h8.5A1.5 1.5 0 0 1 21 9.5v8a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 17.5z"/><path d="M12 11.5v5M9.5 14 12 11.5 14.5 14"/></symbol>
   <symbol id="i-log" viewBox="0 0 24 24"><path d="M6 3h9l4 4v14H6z"/><path d="M15 3v4h4M9 11h7M9 14.5h7M9 18h4"/></symbol>
   <symbol id="i-thermo" viewBox="0 0 24 24"><path d="M10 4a2 2 0 0 1 4 0v9.5a4 4 0 1 1-4 0Z"/><path d="M12 10v7"/></symbol>
   <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></symbol>
@@ -55,6 +56,7 @@
     <nav id="nav">
       <button data-view="overview"><svg><use href="#i-overview"/></svg><span data-i18n="nav.overview"></span></button>
       <button data-view="storage"><svg><use href="#i-storage"/></svg><span data-i18n="nav.storage"></span></button>
+      <button data-view="shares"><svg><use href="#i-share"/></svg><span data-i18n="nav.shares"></span></button>
       <button data-view="apps"><svg><use href="#i-apps"/></svg><span data-i18n="nav.apps"></span><span id="nav-apps-badge" class="count" hidden></span></button>
       <button data-view="docker"><svg><use href="#i-docker"/></svg><span data-i18n="nav.docker"></span></button>
       <button data-view="domains"><svg><use href="#i-domains"/></svg><span data-i18n="nav.domains"></span></button>
@@ -165,6 +167,35 @@
             <div id="overview-jobs" class="job-mini-list"></div>
           </article>
         </div>
+      </section>
+
+      <section id="view-shares" hidden>
+        <p id="shares-no-pool" class="notice" data-i18n="shares.no_pool" hidden></p>
+        <article class="card">
+          <div class="section-head">
+            <h2 data-i18n="shares.title"></h2>
+            <button id="share-new" class="primary" data-i18n="shares.new"></button>
+          </div>
+          <p class="hint" id="shares-hint"></p>
+          <table class="shares">
+            <thead><tr>
+              <th data-i18n="shares.name"></th><th data-i18n="shares.security"></th>
+              <th data-i18n="shares.users"></th><th data-i18n="shares.address"></th><th></th>
+            </tr></thead>
+            <tbody id="shares"></tbody>
+          </table>
+        </article>
+        <article class="card">
+          <h2 data-i18n="shares.users_title"></h2>
+          <p class="hint" data-i18n="shares.users_hint"></p>
+          <div id="smb-users" class="smb-users"></div>
+          <form id="smb-user-form" class="inline-form">
+            <label><span data-i18n="field.username"></span><input name="name" autocomplete="off" required></label>
+            <label><span data-i18n="shares.password"></span><input name="password" type="password" autocomplete="new-password" required></label>
+            <label><span data-i18n="field.password_repeat"></span><input name="password2" type="password" autocomplete="new-password" required></label>
+            <button type="submit" data-i18n="shares.user_add"></button>
+          </form>
+        </article>
       </section>
 
       <section id="view-storage" hidden>
@@ -372,6 +403,40 @@
     <div class="dialog-actions">
       <button value="cancel" id="dialog-cancel" data-i18n="common.cancel"></button>
       <button value="ok" id="dialog-ok" class="primary" data-i18n="common.ok"></button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="share-dialog">
+  <form id="share-form" method="dialog">
+    <h2 id="share-dialog-title"></h2>
+    <label><span data-i18n="shares.name"></span><input name="name" autocomplete="off" required></label>
+    <label><span data-i18n="shares.comment"></span><input name="comment" autocomplete="off"></label>
+    <label><span data-i18n="shares.security"></span>
+      <select name="security">
+        <option value="public" data-i18n="security.public"></option>
+        <option value="secure" data-i18n="security.secure"></option>
+        <option value="private" data-i18n="security.private"></option>
+      </select>
+    </label>
+    <p class="hint" id="share-security-hint"></p>
+    <div id="share-users" class="field-group"></div>
+    <label class="check"><input name="time_machine" type="checkbox"><span data-i18n="shares.time_machine"></span></label>
+    <div class="dialog-actions">
+      <button value="cancel" formnovalidate data-i18n="common.cancel"></button>
+      <button value="ok" class="primary" data-i18n="common.save"></button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="smb-password-dialog">
+  <form id="smb-password-form" method="dialog">
+    <h2 id="smb-password-title"></h2>
+    <label><span data-i18n="shares.password"></span><input name="password" type="password" autocomplete="new-password" required></label>
+    <label><span data-i18n="field.password_repeat"></span><input name="password2" type="password" autocomplete="new-password" required></label>
+    <div class="dialog-actions">
+      <button value="cancel" formnovalidate data-i18n="common.cancel"></button>
+      <button value="ok" class="primary" data-i18n="common.save"></button>
     </div>
   </form>
 </dialog>

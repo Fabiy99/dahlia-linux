@@ -131,6 +131,22 @@ class SpindownBody(BaseModel):
     disks: dict[str, int] = {}
 
 
+class ShareBody(BaseModel):
+    comment: str = ""
+    security: str
+    users: dict[str, str] = {}
+    time_machine: bool = False
+
+
+class SmbUserBody(BaseModel):
+    name: str
+    password: str
+
+
+class SmbPasswordBody(BaseModel):
+    password: str
+
+
 class ScheduleBody(BaseModel):
     frequency: str
     time: str = "03:00"
@@ -419,6 +435,32 @@ def create_app(cfg: Config | None = None) -> FastAPI:
     @app.post("/api/settings/schedules/{job}", dependencies=changing)
     def settings_set_schedule(job: str, body: ScheduleBody):
         return agent("settings.set_schedule", {"job": job, **body.model_dump()})
+
+    # --- shares ---------------------------------------------------------------
+
+    @app.get("/api/shares", dependencies=authed)
+    def shares_list():
+        return agent("shares.list")
+
+    @app.post("/api/smb-users", dependencies=changing)
+    def smb_user_add(body: SmbUserBody):
+        return agent("shares.user_add", {"name": body.name, "password": body.password})
+
+    @app.post("/api/smb-users/{name}/password", dependencies=changing)
+    def smb_user_password(name: str, body: SmbPasswordBody):
+        return agent("shares.user_password", {"name": name, "password": body.password})
+
+    @app.post("/api/smb-users/{name}/remove", dependencies=changing)
+    def smb_user_remove(name: str):
+        return agent("shares.user_remove", {"name": name})
+
+    @app.post("/api/shares/{name}", dependencies=changing)
+    def shares_set(name: str, body: ShareBody):
+        return agent("shares.set", {"name": name, **body.model_dump()})
+
+    @app.post("/api/shares/{name}/remove", dependencies=changing)
+    def shares_remove(name: str):
+        return agent("shares.remove", {"name": name})
 
     # --- domains --------------------------------------------------------------
 

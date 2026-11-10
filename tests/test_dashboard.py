@@ -445,3 +445,26 @@ def test_settings_endpoints(env):
                                    "weekday": "sat", "monthday": 1}),
     ]
     assert client.post("/api/settings/network", json={"mode": "dhcp"}).status_code == 403
+
+
+def test_shares_endpoints(env):
+    client, agent, _ = logged_in(env)
+    agent.calls.clear()
+    client.get("/api/shares")
+    client.post("/api/shares/media", json={"security": "private", "users": {"anna": "rw"}},
+                headers=CSRF)
+    client.post("/api/shares/media/remove", headers=CSRF)
+    client.post("/api/smb-users", json={"name": "anna", "password": "geheim123"},
+                headers=CSRF)
+    client.post("/api/smb-users/anna/password", json={"password": "neu12345"}, headers=CSRF)
+    client.post("/api/smb-users/anna/remove", headers=CSRF)
+    assert agent.calls == [
+        ("shares.list", {}),
+        ("shares.set", {"name": "media", "comment": "", "security": "private",
+                        "users": {"anna": "rw"}, "time_machine": False}),
+        ("shares.remove", {"name": "media"}),
+        ("shares.user_add", {"name": "anna", "password": "geheim123"}),
+        ("shares.user_password", {"name": "anna", "password": "neu12345"}),
+        ("shares.user_remove", {"name": "anna"}),
+    ]
+    assert client.post("/api/shares/media/remove").status_code == 403

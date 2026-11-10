@@ -163,6 +163,9 @@ Protocol: one request per connection, one JSON line each way.
 | `settings.confirm_network` | – | confirms the new network settings |
 | `settings.spindown` / `settings.set_spindown` | `default`, `disks` (serial → minutes) | `/etc/dahlia/spindown.json`, `hdparm -S` |
 | `settings.schedules` / `settings.set_schedule` | `job`, `frequency`, `time`, `weekday`, `monthday` | drop-in `OnCalendar=` for the timers |
+| `shares.list` | – | shares, SMB users, whether `/mnt/user` is mounted |
+| `shares.set` / `shares.remove` | `name`, `comment`, `security` (`public`/`secure`/`private`), `users` (name → `rw`/`ro`), `time_machine` | generates `/etc/samba/smb.conf`, checks it with `testparm`, starts `smbd` |
+| `shares.user_add` / `shares.user_password` / `shares.user_remove` | `name`, `password` | `useradd`/`userdel` (groups `dahlia`, `dahlia-smb`), `smbpasswd` via stdin |
 | `docker.list`, `docker.stats`, `docker.disk` | - | all containers, CPU/RAM per container, space used by images, volumes, build cache |
 | `docker.container` | `name`, `op` (`start`, `stop`, `restart`) | `docker <op> -- <name>` |
 | `docker.logs` | `name`, `lines` (10 to 5000) | `docker logs --tail` |
@@ -233,7 +236,21 @@ and tablets.
 | Jobs | start mover, SnapRAID sync and scrub, state |
 | System log | journal filtered by level and service |
 | Updates | check, install |
+| Shares | SMB shares on `/mnt/user`, SMB users |
 | Settings | time and time zone, network (DHCP/static), disk spindown, mover and SnapRAID schedules, dashboard password, server name |
+
+SMB shares (M9c):
+
+- A share is a folder directly under `/mnt/user` (group `dahlia`, mode 2775, like the
+  apps' shares). Without a mounted `/mnt/user` Dahlia does not create a share.
+- `/etc/samba/smb.conf` is generated from `/etc/dahlia/shares.json`; the Debian original
+  stays as `smb.conf.dahlia-orig`. SMB2 or newer, no printers, no NetBIOS (`nmbd` off).
+- Access: public (guests read and write), secure (guests read, selected users write),
+  private (selected users only). Files get the group `dahlia`.
+- SMB users are system accounts without shell and home in the groups `dahlia-smb` and
+  `dahlia`. The password only goes to `smbpasswd` via stdin.
+- Discovery: `wsdd` for Windows, an Avahi file (`_smb._tcp`, `_adisk._tcp` for Time
+  Machine) for macOS. Without a share `smbd` and `wsdd` are off.
 
 Settings (M9b):
 

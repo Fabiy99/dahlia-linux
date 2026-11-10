@@ -166,6 +166,9 @@ Protokoll: eine Anfrage pro Verbindung, je eine JSON-Zeile hin und zurück.
 | `settings.confirm_network` | – | bestätigt die neue Netzwerkeinstellung |
 | `settings.spindown` / `settings.set_spindown` | `default`, `disks` (Seriennummer → Minuten) | `/etc/dahlia/spindown.json`, `hdparm -S` |
 | `settings.schedules` / `settings.set_schedule` | `job`, `frequency`, `time`, `weekday`, `monthday` | Drop-in `OnCalendar=` für die Timer |
+| `shares.list` | – | Freigaben, SMB-Benutzer, ob `/mnt/user` eingehängt ist |
+| `shares.set` / `shares.remove` | `name`, `comment`, `security` (`public`/`secure`/`private`), `users` (Name → `rw`/`ro`), `time_machine` | erzeugt `/etc/samba/smb.conf`, prüft mit `testparm`, startet `smbd` |
+| `shares.user_add` / `shares.user_password` / `shares.user_remove` | `name`, `password` | `useradd`/`userdel` (Gruppen `dahlia`, `dahlia-smb`), `smbpasswd` über stdin |
 | `docker.list`, `docker.stats`, `docker.disk` | - | alle Container, CPU/RAM je Container, Platzbedarf von Images, Volumes, Build-Cache |
 | `docker.container` | `name`, `op` (`start`, `stop`, `restart`) | `docker <op> -- <name>` |
 | `docker.logs` | `name`, `lines` (10 bis 5000) | `docker logs --tail` |
@@ -237,7 +240,21 @@ wird die Seitenleiste zum Menü, Tabellen werden zu Karten. Ein Web-App-Manifest
 | Aufgaben | Mover, SnapRAID-Sync und -Scrub starten, Zustand |
 | System-Log | Journal mit Filter nach Stufe und Dienst |
 | Updates | suchen, installieren |
+| Freigaben | SMB-Freigaben auf `/mnt/user`, SMB-Benutzer |
 | Einstellungen | Zeit und Zeitzone, Netzwerk (DHCP/fest), Platten-Spindown, Zeitpläne für Mover und SnapRAID, Dashboard-Passwort, Servername |
+
+SMB-Freigaben (M9c):
+
+- Eine Freigabe ist ein Ordner direkt unter `/mnt/user` (Gruppe `dahlia`, Modus 2775,
+  wie die Freigaben der Apps). Ohne eingehängtes `/mnt/user` legt Dahlia keine Freigabe an.
+- `/etc/samba/smb.conf` wird aus `/etc/dahlia/shares.json` erzeugt, das Debian-Original
+  bleibt als `smb.conf.dahlia-orig`. Mindestens SMB2, keine Drucker, kein NetBIOS (`nmbd` aus).
+- Zugriff: öffentlich (Gast liest und schreibt), geschützt (Gast liest, ausgewählte Benutzer
+  schreiben), privat (nur ausgewählte Benutzer). Dateien bekommen die Gruppe `dahlia`.
+- SMB-Benutzer sind Systemkonten ohne Shell und Home in den Gruppen `dahlia-smb` und
+  `dahlia`. Das Passwort geht nur über stdin an `smbpasswd`.
+- Finden im Netz: `wsdd` für Windows, eine Avahi-Datei (`_smb._tcp`, bei Time Machine
+  `_adisk._tcp`) für macOS. Ohne Freigabe sind `smbd` und `wsdd` aus.
 
 Einstellungen (M9b):
 
