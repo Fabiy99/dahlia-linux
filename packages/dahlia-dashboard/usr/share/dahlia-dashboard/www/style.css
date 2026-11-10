@@ -339,3 +339,18 @@ form.schedule { max-width: none; gap: .4rem; border-top: 1px solid var(--line); 
 form.schedule:first-child { border-top: 0; padding-top: 0; }
 .schedule-fields { display: flex; flex-wrap: wrap; gap: .5rem; }
 .schedule .hint { margin: 0; }
+
+/* --- shares ------------------------------------------------------------------- */
+.notice:not(div) { display: block; }
+table.shares code { font-size: .8rem; color: var(--muted); }
+table.shares .muted { color: var(--muted); flex-basis: 100%; }
+.smb-users { display: grid; gap: .5rem; margin-bottom: 1rem; }
+.smb-user { display: flex; align-items: center; gap: .7rem; }
+.smb-user .row-ops { margin-left: auto; }
+form.inline-form { max-width: none; grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr)); align-items: end; }
+#share-dialog h2, #smb-password-dialog h2 { font-size: 1.05rem; margin: 0 0 .4rem; }
+@media (max-width: 48rem) {
+  table.shares td[data-label]::before { content: attr(data-label); display: block; color: var(--muted);
+                                        font-size: .7rem; text-transform: uppercase; letter-spacing: .06em; }
+  table.shares .row-ops { justify-content: flex-start; margin-top: .3rem; }
+}

@@ -18,6 +18,10 @@ case "$1" in
             adduser --system --group --no-create-home --home /nonexistent \
                 --shell /usr/sbin/nologin dahlia-mdns
         fi
+        # SMB users managed by the dashboard (see dahlia_agent/smb.py).
+        if ! getent group dahlia-smb >/dev/null; then
+            groupadd --system dahlia-smb
+        fi
         mkdir -p /var/lib/dahlia/apps
         chmod 0755 /var/lib/dahlia
         chmod 0700 /var/lib/dahlia/apps
@@ -33,6 +37,10 @@ case "$1" in
             systemctl try-restart dahlia-agent.service || true
             systemctl start dahlia-agent.socket dahlia-domains.timer dahlia-apps-catalog.timer || true
             systemctl restart dahlia-mdns.service || true
+            # Samba stays off until the first share is created in the dashboard.
+            if [ ! -e /etc/dahlia/shares.json ]; then
+                systemctl disable --now smbd.service nmbd.service >/dev/null 2>&1 || true
+            fi
             # daemon.json (ports on 127.0.0.1 only) applies after a restart.
             # Only while no app is installed: a restart stops containers.
             if [ -z "$(ls -A /var/lib/dahlia/apps)" ]; then

@@ -15,10 +15,12 @@ class FakeRunner:
 
     def __init__(self, answers=None):
         self.calls = []
+        self.inputs = []
         self.answers = answers or {}
 
-    def run(self, cmd, *, timeout=120, check=True, env=None):
+    def run(self, cmd, *, timeout=120, check=True, env=None, input=None):
         self.calls.append(cmd)
+        self.inputs.append(input)
         for prefix, (code, out, err) in self.answers.items():
             if tuple(cmd[: len(prefix)]) == prefix:
                 proc = subprocess.CompletedProcess(cmd, code, out, err)
@@ -424,6 +426,12 @@ def test_action_list_is_fixed():
         "settings.set_time",
         "settings.spindown",
         "settings.time",
+        "shares.list",
+        "shares.remove",
+        "shares.set",
+        "shares.user_add",
+        "shares.user_password",
+        "shares.user_remove",
         "storage.add",
         "storage.list",
         "storage.remove",

@@ -293,6 +293,13 @@ web "$BASE/api/log?lines=20" | grep -q '"lines":\["' || dashboard_fail "system l
 web "$BASE/api/settings/time" | grep -q '"timezones":\["' || dashboard_fail "settings.time failed"
 web "$BASE/api/settings/network" | grep -q '"iface":"' || dashboard_fail "settings.network failed"
 web "$BASE/api/settings/schedules" | grep -q '"mover":{' || dashboard_fail "settings.schedules failed"
+# SMB: useradd and smbpasswd through the agent. No share: there is no data disk.
+web "$BASE/api/smb-users" -H 'Content-Type: application/json' \
+    -d '{"name": "smbtest", "password": "smb-test-pass"}' | grep -q '"name":"smbtest"' \
+    || dashboard_fail "creating an SMB user failed"
+web "$BASE/api/shares" | grep -q '"users":\["smbtest"\]' || dashboard_fail "SMB user not listed"
+web -X POST "$BASE/api/smb-users/smbtest/remove" | grep -q '"name":"smbtest"' \
+    || dashboard_fail "removing the SMB user failed"
 web -o /dev/null -w '%{content_type}' "$BASE/manifest.webmanifest" | grep -q 'application/manifest+json' \
     || dashboard_fail "web app manifest not served as application/manifest+json"
 echo "OK: dashboard setup, login and agent calls work"

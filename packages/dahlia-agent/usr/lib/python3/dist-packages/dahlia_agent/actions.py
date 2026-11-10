@@ -23,16 +23,19 @@ class Runner:
     """Runs system commands. Tests replace it with a fake."""
 
     def run(
-        self, cmd: list[str], *, timeout: int = 120, check: bool = True, env: dict | None = None
+        self, cmd: list[str], *, timeout: int = 120, check: bool = True, env: dict | None = None,
+        input: str | None = None,
     ) -> subprocess.CompletedProcess:
+        # input is for secrets (passwords); they never go on the command line.
+        stdin = {"input": input} if input is not None else {"stdin": subprocess.DEVNULL}
         try:
             proc = subprocess.run(
                 cmd,
                 capture_output=True,
                 text=True,
                 timeout=timeout,
-                stdin=subprocess.DEVNULL,
                 env=env,
+                **stdin,
             )
         except subprocess.TimeoutExpired:
             raise AgentError(FAILED, f"{cmd[0]} did not finish within {timeout}s") from None
@@ -58,6 +61,7 @@ class Context:
     sys: Path = Path("/sys")
     etc: Path = Path("/etc")
     run_dir: Path = Path("/run/dahlia")
+    pool: Path = Path("/mnt/user")
 
 
 # --- parameter checks ---------------------------------------------------------
@@ -700,4 +704,4 @@ def agent_actions(ctx: Context):
 
 
 # Actions in their own modules; importing them registers them.
-from . import containers, hardware, network, settings  # noqa: E402, F401
+from . import containers, hardware, network, settings, smb  # noqa: E402, F401

@@ -254,7 +254,7 @@ function percent(used, size) {
 const TITLES = {
   overview: "nav.overview", storage: "storage.title", apps: "apps.title",
   domains: "nav.domains", jobs: "jobs.title", updates: "updates.title", account: "nav.account",
-  docker: "nav.docker", log: "nav.log",
+  docker: "nav.docker", log: "nav.log", shares: "nav.shares",
   setup: "setup.title", login: "login.title",
 };
 
@@ -291,6 +291,7 @@ const loaders = {
   apps: loadApps,
   domains: loadDomains,
   docker: loadDocker,
+  shares: loadShares,
   log: loadLog,
   jobs: loadJobs,
   updates: () => {},
@@ -1110,6 +1111,170 @@ async function applyUpdates() {
   say(t("updates.started"), "ok");
 }
 
+// --- SMB shares ---------------------------------------------------------------------
+
+const SECURITY_KIND = { public: "warn", secure: "", private: "ok" };
+let sharesData = { shares: [], users: [], pool_mounted: false, running: false };
+let shareEditing = null;
+let hostName = "";
+
+function shareAddress(name) {
+  return `\\\\${hostName}.local\\${name}`;
+}
+
+async function loadShares() {
+  const [data, info] = await Promise.all([api("GET", "shares"), api("GET", "system")]);
+  sharesData = data;
+  hostName = info.hostname;
+  document.getElementById("shares-no-pool").hidden = data.pool_mounted || data.shares.length > 0;
+  document.getElementById("shares-hint").textContent = t("shares.hint", { host: hostName });
+  const tbody = document.getElementById("shares");
+  tbody.replaceChildren();
+  for (const s of data.shares) {
+    const tr = el("tr");
+    const name = el("div", "cname");
+    name.append(el("b", "", s.name));
+    if (s.time_machine) name.append(badge(t("shares.time_machine_badge"), "accent"));
+    if (!s.exists) name.append(badge(t("shares.missing"), "warn"));
+    if (s.comment) name.append(el("small", "muted", s.comment));
+    cell(tr, name);
+    cell(tr, badge(t(`security.${s.security}`), SECURITY_KIND[s.security]));
+    const users = Object.entries(s.users).map(([u, a]) => `${u} (${t(`access.${a}`)})`);
+    cell(tr, users.join(", ") || "–").dataset.label = t("shares.users");
+    cell(tr, el("code", "", shareAddress(s.name))).dataset.label = t("shares.address");
+    const ops = el("div", "row-ops");
+    ops.append(button("shares.edit", () => openShareDialog(s)),
+               button("shares.remove", async () => {
+                 if (!await ask(t("shares.confirm_remove", { name: s.name }), "shares.remove", true)) return;
+                 await api("POST", `shares/${encodeURIComponent(s.name)}/remove`);
+                 say(t("shares.removed", { name: s.name }), "ok");
+                 await loadShares();
+               }, "danger"));
+    cell(tr, ops);
+    tbody.append(tr);
+  }
+  if (!data.shares.length) {
+    const tr = el("tr");
+    cell(tr, t("shares.none")).colSpan = 5;
+    tbody.append(tr);
+  }
+  renderSmbUsers();
+}
+
+function renderSmbUsers() {
+  const box = document.getElementById("smb-users");
+  box.replaceChildren();
+  if (!sharesData.users.length) box.append(el("p", "hint", t("shares.no_users")));
+  for (const u of sharesData.users) {
+    const row = el("div", "smb-user");
+    row.append(avatar(u, u), el("b", "", u));
+    const ops = el("div", "row-ops");
+    ops.append(button("shares.change_password", () => openPasswordDialog(u)),
+               button("shares.user_remove", async () => {
+                 if (!await ask(t("shares.confirm_user_remove", { name: u }), "shares.user_remove", true)) return;
+                 await api("POST", `smb-users/${encodeURIComponent(u)}/remove`);
+                 say(t("shares.user_removed", { name: u }), "ok");
+                 await loadShares();
+               }, "danger"));
+    row.append(ops);
+    box.append(row);
+  }
+}
+
+function renderSecurityHint() {
+  const f = document.getElementById("share-form");
+  const sec = f.elements.security.value;
+  document.getElementById("share-security-hint").textContent = t(`security.${sec}_hint`);
+  // Public shares give everyone write access; per-user rights do not apply.
+  document.getElementById("share-users").hidden = sec === "public";
+}
+
+function openShareDialog(share) {
+  shareEditing = share;
+  const f = document.getElementById("share-form");
+  f.reset();
+  document.getElementById("share-dialog-title").textContent =
+    share ? t("shares.edit_title", { name: share.name }) : t("shares.new");
+  f.elements.name.value = share?.name ?? "";
+  f.elements.name.readOnly = Boolean(share);
+  f.elements.comment.value = share?.comment ?? "";
+  f.elements.security.value = share?.security ?? "private";
+  f.elements.time_machine.checked = share?.time_machine ?? false;
+  const box = document.getElementById("share-users");
+  box.replaceChildren();
+  if (!sharesData.users.length) box.append(el("p", "hint", t("shares.no_users")));
+  for (const u of sharesData.users) {
+    const label = el("label");
+    label.append(el("span", "", u));
+    const sel = el("select");
+    sel.dataset.user = u;
+    fillOptions(sel, ["none", "ro", "rw"], (a) => t(`access.${a}`));
+    sel.value = share?.users[u] ?? (share ? "none" : "rw");
+    label.append(sel);
+    box.append(label);
+  }
+  renderSecurityHint();
+  document.getElementById("share-dialog").showModal();
+}
+
+function openPasswordDialog(user) {
+  const f = document.getElementById("smb-password-form");
+  f.reset();
+  f.dataset.user = user;
+  document.getElementById("smb-password-title").textContent = t("shares.password_title", { name: user });
+  document.getElementById("smb-password-dialog").showModal();
+}
+
+function bindShares() {
+  document.getElementById("share-new").addEventListener("click", () => openShareDialog(null));
+  const form = document.getElementById("share-form");
+  form.elements.security.addEventListener("change", renderSecurityHint);
+  form.addEventListener("submit", (e) => {
+    if (e.submitter?.value === "cancel") return;
+    e.preventDefault();
+    const f = form.elements;
+    const users = {};
+    for (const sel of document.querySelectorAll("#share-users select")) {
+      if (sel.value !== "none") users[sel.dataset.user] = sel.value;
+    }
+    const name = f.name.value.trim();
+    guarded(e.submitter, async () => {
+      await api("POST", `shares/${encodeURIComponent(name)}`, {
+        comment: f.comment.value.trim(), security: f.security.value,
+        users: f.security.value === "public" ? {} : users, time_machine: f.time_machine.checked,
+      });
+      document.getElementById("share-dialog").close();
+      say(t("shares.saved", { name }), "ok");
+      await loadShares();
+    });
+  });
+
+  document.getElementById("smb-user-form").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const f = formData(e.target);
+    if (f.password !== f.password2) { say(t("error.password_mismatch"), "error"); return; }
+    guarded(e.submitter, async () => {
+      await api("POST", "smb-users", { name: f.name.trim(), password: f.password });
+      e.target.reset();
+      say(t("shares.user_added", { name: f.name.trim() }), "ok");
+      await loadShares();
+    });
+  });
+
+  const pwForm = document.getElementById("smb-password-form");
+  pwForm.addEventListener("submit", (e) => {
+    if (e.submitter?.value === "cancel") return;
+    e.preventDefault();
+    const f = formData(pwForm);
+    if (f.password !== f.password2) { say(t("error.password_mismatch"), "error"); return; }
+    guarded(e.submitter, async () => {
+      await api("POST", `smb-users/${encodeURIComponent(pwForm.dataset.user)}/password`, { password: f.password });
+      document.getElementById("smb-password-dialog").close();
+      say(t("shares.password_changed", { name: pwForm.dataset.user }), "ok");
+    });
+  });
+}
+
 // --- account and server name ------------------------------------------------------
 
 async function loadAccount() {
@@ -1456,6 +1621,7 @@ async function start() {
   await loadLang(pickLang());
   bindForms();
   bindButtons();
+  bindShares();
   try {
     const state = await api("GET", "state");
     if (state.setup_required) show("setup");
