@@ -23,7 +23,9 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            apt-utils mergerfs fuse3 xfsprogs btrfs-progs e2fsprogs attr jq snapraid
+            apt-utils mergerfs fuse3 xfsprogs btrfs-progs e2fsprogs attr jq snapraid rsync exfatprogs
+          # Created by dahlia-base on a real system; imported files get this group.
+          sudo groupadd -f dahlia
 
       - name: Drop the runner's /mnt fstab entry
         # The hosted runner lists a resource disk for /mnt in fstab that fails

@@ -78,7 +78,9 @@ UUID_RE = re.compile(r"^[0-9A-Fa-f]{4}([0-9A-Fa-f-]{4,32}[0-9A-Fa-f])?$")
 
 DISK_ROLES = ("data", "parity", "cache", "external")
 FORMAT_FILESYSTEMS = ("xfs", "ext4", "btrfs")
-# Whole disks only; dahlia-disk checks that the disk is blank.
+IMPORT_TARGET_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
+IMPORT_UNIT = "dahlia-import"
+# Whole disks only; dahlia-disk checks that the disk is blank or imported.
 DEVICE_RE = re.compile(r"^/dev/((sd|vd|xvd)[a-z]{1,2}|nvme[0-9]{1,2}n[0-9]{1,2}|loop[0-9]{1,3})$")
 STORAGE_OPTIONS = (
     "mover_min_age_minutes",
@@ -408,11 +410,46 @@ def storage_add(ctx: Context, uuid: str, role: str):
     },
 )
 def storage_format(ctx: Context, device: str, filesystem: str, confirm: str):
-    """Partition and format a blank disk. confirm must repeat the disk name."""
+    """Partition and format a blank or imported disk. confirm repeats the disk name."""
     if confirm != device.removeprefix("/dev/"):
         raise AgentError(INVALID_PARAMS, f"confirm must be '{device.removeprefix('/dev/')}'")
     out = dahlia_disk(ctx, "format", device, "--fs", filesystem, "--json", timeout=900)
     return json.loads(out)
+
+
+@action(
+    "storage.import",
+    mutating=True,
+    params={"uuid": Param(str, pattern=UUID_RE), "target": Param(str, pattern=IMPORT_TARGET_RE)},
+)
+def storage_import(ctx: Context, uuid: str, target: str):
+    """Copy a disk's data to /mnt/user/<target> in the background, then verify it."""
+    state = ctx.runner.run(["systemctl", "is-active", f"{IMPORT_UNIT}.service"], check=False)
+    if state.stdout.strip() in ("active", "activating"):
+        raise AgentError(BUSY, "an import is already running")
+    # A bad source or target fails here, before the background job starts.
+    dahlia_disk(ctx, "import", uuid, "--to", target, "--check", timeout=60)
+    ctx.runner.run(["systemctl", "reset-failed", f"{IMPORT_UNIT}.service"], check=False)
+    ctx.runner.run(["systemd-run", f"--unit={IMPORT_UNIT}", "--collect",
+                    "--property=Nice=10", "--property=IOSchedulingClass=idle",
+                    "dahlia-disk", "import", uuid, "--to", target])
+    return {"uuid": uuid, "target": f"{ctx.pool}/{target}"}
+
+
+@action("storage.import_status", mutating=False)
+def storage_import_status(ctx: Context):
+    """Progress of the last import, or null."""
+    path = ctx.run_dir / "import.json"
+    try:
+        data = json.loads(path.read_text())
+    except (OSError, ValueError):
+        return {"import": None}
+    if data.get("phase") not in ("done", "failed"):
+        unit = ctx.runner.run(["systemctl", "is-active", f"{IMPORT_UNIT}.service"], check=False)
+        if unit.stdout.strip() not in ("active", "activating"):
+            # The job died without writing its end state.
+            data.update(phase="failed", error=data.get("error") or "import stopped")
+    return {"import": data}
 
 
 @action(

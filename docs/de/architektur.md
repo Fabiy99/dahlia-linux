@@ -88,7 +88,8 @@ gleichzeitig.
 ### dahlia-disk (ab Meilenstein 3)
 
 `dahlia-disk` aus dem Paket `dahlia-storage` setzt das Layout um. `add` formatiert nie;
-nur `format` legt ein Dateisystem an, und nur auf einer leeren Platte ohne Partitionen.
+nur `format` legt ein Dateisystem an: auf einer leeren Platte oder auf einer, deren Daten
+`import` nach `/mnt/user` kopiert und geprüft hat.
 Zustand liegt in `/etc/dahlia/storage.json`, alles andere wird daraus erzeugt.
 
 ```sh
@@ -99,6 +100,7 @@ dahlia-disk add <UUID> --role cache       # SSD-Dateisystem als /mnt/cache (ab M
 dahlia-disk add <UUID> --role external    # z. B. NTFS unter /mnt/external/<name>
 dahlia-disk remove <UUID>                 # aushängen, Daten bleiben auf der Platte
 dahlia-disk format /dev/sdX --fs xfs      # leere Platte: GPT, eine Partition, XFS/ext4/Btrfs
+dahlia-disk import <UUID> --to <Name>     # nur lesend einhängen, rsync nach /mnt/user/<Name>, Vergleich
 dahlia-disk apply                         # Units und Pools aus storage.json neu erzeugen
 dahlia-disk snapraid-config [--write]     # /etc/snapraid.conf erzeugen
 ```
@@ -185,7 +187,8 @@ Protokoll: eine Anfrage pro Verbindung, je eine JSON-Zeile hin und zurück.
 | `storage.add` | `uuid`, `role` (data, parity, cache, external) | `dahlia-disk add` |
 | `storage.remove` | `uuid`, `force` (optional) | `dahlia-disk remove` |
 | `storage.set_option` | `name`, `value` (Zahl) | `dahlia-disk set-option` |
-| `storage.format` | `device` (ganze Platte), `filesystem` (`xfs`, `ext4`, `btrfs`), `confirm` (Plattenname wiederholt) | `dahlia-disk format`, nur leere Platten |
+| `storage.format` | `device` (ganze Platte), `filesystem` (`xfs`, `ext4`, `btrfs`), `confirm` (Plattenname wiederholt) | `dahlia-disk format`, nur leere oder übernommene Platten |
+| `storage.import` / `storage.import_status` | `uuid`, `target` (Name unter `/mnt/user`) | `dahlia-disk import` als Unit `dahlia-import`, Fortschritt in `/run/dahlia/import.json` |
 | `job.start` | `job` (mover, snapraid-sync, snapraid-scrub) | startet die Unit, kehrt sofort zurück |
 | `job.status` | `job` (dazu `update`) | Zustand und letztes Ergebnis |
 | `updates.check` | - | `apt-get update`, Liste der Upgrades |

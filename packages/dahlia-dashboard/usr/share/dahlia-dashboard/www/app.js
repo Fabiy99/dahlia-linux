@@ -643,9 +643,13 @@ function diskRow(d, mounts) {
   }
   role.hidden = add.hidden = !canAdd;
   remove.hidden = d.status !== "registered";
+  const importBtn = row.querySelector(".import");
+  importBtn.hidden = !canAdd || d.imported;
+  importBtn.addEventListener("click", () => openImportDialog(d));
+  if (d.imported) row.querySelector(".part-main").append(badge(t("storage.imported"), "ok"));
   const format = row.querySelector(".format");
-  // Only a whole disk without partitions and filesystem.
-  format.hidden = !(d.status === "empty" && d.path === d.disk);
+  // A whole blank disk, or a filesystem whose data was imported (formats its whole disk).
+  format.hidden = !((d.status === "empty" && d.path === d.disk) || d.imported);
   format.addEventListener("click", () => openFormatDialog(d));
 
   add.addEventListener("click", () => guarded(add, async () => {
@@ -673,13 +677,13 @@ function diskRow(d, mounts) {
 
 function openFormatDialog(d) {
   const form = document.getElementById("format-form");
-  const name = d.path.replace("/dev/", "");
+  const name = d.disk.replace("/dev/", "");
   form.reset();
-  form.dataset.device = d.path;
-  document.getElementById("format-title").textContent = t("storage.format_title", { path: d.path });
-  document.getElementById("format-warning").textContent = t("storage.format_warning", {
-    path: d.path, model: d.model || "-", size: formatBytes(d.size),
-  });
+  form.dataset.device = d.disk;
+  document.getElementById("format-title").textContent = t("storage.format_title", { path: d.disk });
+  document.getElementById("format-warning").textContent = t(
+    d.imported ? "storage.format_warning_imported" : "storage.format_warning",
+    { path: d.disk, model: d.model || "-", size: formatBytes(d.size) });
   document.getElementById("format-confirm-label").textContent = t("storage.format_confirm", { name });
   form.elements.confirm.pattern = name;
   document.getElementById("format-dialog").showModal();
@@ -698,6 +702,79 @@ function bindFormat() {
       document.getElementById("format-dialog").close();
       say(t("storage.formatted", { path: device }), "ok");
       await loadStorage();
+    });
+  });
+}
+
+const IMPORT_RUNNING = ["mount", "copy", "verify"];
+let importTimer = null;
+let importWasRunning = false;
+
+function openImportDialog(d) {
+  const form = document.getElementById("import-form");
+  form.reset();
+  form.dataset.uuid = d.uuid;
+  const base = (d.label || d.path.replace("/dev/", "")).toLowerCase().replace(/[^a-z0-9._-]+/g, "-");
+  form.elements.target.value = `import-${base}`.replace(/-+$/, "").slice(0, 64);
+  document.getElementById("import-title").textContent = t("storage.import_title", { path: d.path });
+  document.getElementById("import-text").textContent = t("storage.import_text", {
+    path: d.path, fs: d.fstype, size: formatBytes(d.size),
+  });
+  document.getElementById("import-dialog").showModal();
+}
+
+function renderImport(job) {
+  const box = document.getElementById("import-status");
+  box.replaceChildren();
+  box.hidden = !job;
+  if (!job) return;
+  const running = IMPORT_RUNNING.includes(job.phase);
+  const head = el("b", "", t(`import.${job.phase}`, { path: job.device, target: job.target }));
+  box.append(head);
+  if (running) {
+    const bar = el("div", "bar");
+    const fill = el("span");
+    fill.style.width = `${job.percent || 0}%`;
+    bar.append(fill);
+    box.append(bar, el("small", "hint", t("import.progress", {
+      done: formatBytes(job.bytes || 0), total: formatBytes(job.total || 0), pct: job.percent || 0,
+    })));
+  } else if (job.phase === "failed") {
+    box.append(el("small", "fail", job.error));
+  }
+  box.classList.toggle("bad", job.phase === "failed");
+}
+
+async function pollImport() {
+  clearTimeout(importTimer);
+  const { import: job } = await api("GET", "storage/import");
+  renderImport(job);
+  const running = Boolean(job) && IMPORT_RUNNING.includes(job.phase);
+  if (importWasRunning && !running) {
+    importWasRunning = false;
+    say(t(job?.phase === "done" ? "import.finished" : "import.failed_short"),
+        job?.phase === "done" ? "ok" : "error");
+    await loadStorage();
+    return;
+  }
+  importWasRunning = running;
+  if (running && current === "storage") {
+    importTimer = setTimeout(() => pollImport().catch(sayError), 3000);
+  }
+}
+
+function bindImport() {
+  const form = document.getElementById("import-form");
+  form.addEventListener("submit", (e) => {
+    if (e.submitter?.value === "cancel") return;
+    e.preventDefault();
+    guarded(e.submitter, async () => {
+      await api("POST", "storage/import", {
+        uuid: form.dataset.uuid, target: form.elements.target.value.trim(),
+      });
+      document.getElementById("import-dialog").close();
+      importWasRunning = true;
+      await pollImport();
     });
   });
 }
@@ -745,6 +822,7 @@ async function loadStorage() {
     box.append(card);
   }
   if (!groups.size) box.append(el("p", "empty", t("storage.none")));
+  await pollImport();
 }
 
 // --- apps -----------------------------------------------------------------------
@@ -1807,6 +1885,7 @@ async function start() {
   bindButtons();
   bindShares();
   bindFormat();
+  bindImport();
   bindNotifyUps();
   try {
     const state = await api("GET", "state");

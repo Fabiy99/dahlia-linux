@@ -233,6 +233,33 @@ if dahlia-disk format "$blank" --fs ext4 2>/dev/null; then fail "formatted the s
 if dahlia-disk format "${blank}p1" --fs ext4 2>/dev/null; then fail "formatted a partition"; fi
 check_data d2 /mnt/storage
 
+step "import: copy a disk with data to /mnt/user, verify, then format it"
+truncate -s 512M "$WORK/imp.img"
+imp="$(losetup --find --show --partscan "$WORK/imp.img")"; LOOPS+=("$imp")
+mkfs.ext4 -q -L imp "$imp"
+mkdir -p "$WORK/seed-imp"; mount "$imp" "$WORK/seed-imp"
+mkdir -p "$WORK/seed-imp/photos/2024"
+head -c 2097152 /dev/urandom > "$WORK/seed-imp/photos/2024/a.jpg"
+echo "hello" > "$WORK/seed-imp/notes.txt"
+(cd "$WORK/seed-imp" && sha256sum photos/2024/a.jpg notes.txt) > "$WORK/imp.sha256"
+umount "$WORK/seed-imp"
+udevadm trigger --action=change "$imp"; udevadm settle
+imp_uuid="$(blkid -s UUID -o value "$imp")"
+if dahlia-disk format "$imp" --fs xfs 2>/dev/null; then fail "formatted a disk with data before import"; fi
+if dahlia-disk import "$imp_uuid" --to ../etc 2>/dev/null; then fail "accepted a bad target"; fi
+dahlia-disk import "$imp_uuid" --to import-test --check
+dahlia-disk import "$imp_uuid" --to import-test
+check_data imp /mnt/user/import-test
+[ "$(stat -c %G /mnt/user/import-test/notes.txt)" = "dahlia" ] || fail "imported files not in group dahlia"
+[ "$(jq -r .phase /run/dahlia/import.json)" = "done" ] || fail "import status is not done"
+imported="$(dahlia-disk list --json | jq -r --arg u "$imp_uuid" '.[] | select(.uuid == $u) | .imported')"
+[ "$imported" = "true" ] || fail "list does not mark the disk as imported"
+findmnt -S "$imp" >/dev/null && fail "source still mounted after import"
+if dahlia-disk import "$imp_uuid" --to import-test 2>/dev/null; then fail "imported into an existing target"; fi
+dahlia-disk format "$imp" --fs ext4 --json > "$WORK/format-imp.json"
+[ "$(blkid -p -s TYPE -o value "${imp}p1")" = "ext4" ] || fail "imported disk not formatted"
+check_data imp /mnt/user/import-test
+
 step "existing data never touched"
 check_data d2 /mnt/storage
 
