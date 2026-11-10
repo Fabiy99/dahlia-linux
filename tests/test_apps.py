@@ -44,6 +44,8 @@ class FakeDocker:
     def __init__(self):
         self.calls = []
         self.fail = None
+        self.states = {}
+        self.removed = []
 
     def compose(self, app_dir, *args, timeout=1800):
         self.calls.append((Path(app_dir).name, args))
@@ -51,8 +53,11 @@ class FakeDocker:
             raise AppError(f"docker compose {args[0]}: boom")
         return ""
 
-    def state(self, app_id):
-        return "running"
+    def state(self, container):
+        return self.states.get(container, "running")
+
+    def remove_image(self, image):
+        self.removed.append(image)
 
 
 @pytest.fixture
@@ -105,7 +110,7 @@ def test_parse_ok():
 @pytest.mark.parametrize(
     ("changes", "message"),
     [
-        ({"schema": 2}, "schema"),
+        ({"schema": 3}, "schema"),
         ({"id": "Bad_ID"}, "id"),
         ({"image": "traefik/whoami"}, "image"),
         ({"image": "traefik/whoami:latest"}, "latest"),
@@ -127,7 +132,10 @@ def test_parse_ok():
         ({"environment": {"A B": "x"}}, "key"),
         ({"environment": {"A": "{HOME}"}}, "placeholder"),
         ({"environment": {"A": True}}, "string or number"),
-        ({"lan_ports": [{"container": 1, "host": 53}]}, "reserved"),
+        ({"lan_ports": [{"container": 1, "host": 22}]}, "reserved"),
+        ({"lan_ports": [{"container": 1, "host": 8099}]}, "web port"),
+        ({"lan_ports": [{"container": 1, "host": 7}, {"container": 2, "host": 7}]}, "twice"),
+        ({"web": {"port": 80, "public_port": 53}}, "reserved"),
         ({"lan_ports": [{"container": 1, "host": 7359, "protocol": "sctp"}]}, "tcp or udp"),
     ],
 )
@@ -316,7 +324,8 @@ def test_refresh_catalog_from_file_url(env, tmp_path):
     make_catalog(src, {"whoami": WHOAMI.replace("v1.11.0", "v2.0.0")})
     env.paths.config.write_text(json.dumps({"catalog": f"file://{src}"}))
     listed = env.catalog(refresh=True)
-    assert [a["id"] for a in listed] == ["whoami"]
+    assert [a["id"] for a in listed["apps"]] == ["whoami"]
+    assert listed["refreshed"].endswith("Z")
     assert "v2.0.0" in (env.paths.catalog / "whoami.yaml").read_text()
 
 
@@ -348,3 +357,261 @@ def test_cli_check(tmp_path, capsys):
     assert json.loads(capsys.readouterr().out)["id"] == "whoami"
     f.write_text(WHOAMI + "privileged: true\n")
     assert apps.main(["check", str(f)]) == 1
+
+
+# --- schema 2: stacks ---------------------------------------------------------
+
+STACK = """\
+schema: 2
+id: notes
+name: Notes
+category: productivity
+description: {de: Notizen., en: Notes.}
+website: https://example.org/notes
+notes: {de: Erster Login legt den Admin an., en: The first login creates the admin.}
+web: {port: 3000, public_port: 3010}
+login: {user: admin, password: "{SECRET_ADMIN}"}
+services:
+  db:
+    image: postgres:17.6
+    environment:
+      POSTGRES_PASSWORD: "{SECRET_DB}"
+    volumes:
+      - {container: /var/lib/postgresql/data, appdata: db}
+  app:
+    image: example/notes:2.1.0
+    depends_on: [db, cache]
+    environment:
+      DATABASE_URL: "postgres://notes:{SECRET_DB}@db/notes"
+      ADMIN_PASSWORD: "{SECRET_ADMIN}"
+      BASE: "https://notes.{DOMAIN}"
+      HOST: "{HOSTNAME}"
+    user: "{PUID}:{PGID}"
+    volumes:
+      - {container: /data, appdata: data}
+  cache:
+    image: redis:8.2.1-alpine
+    command: [redis-server, --requirepass, "{SECRET_CACHE}"]
+"""
+
+
+def stack(**changes):
+    import yaml
+
+    data = yaml.safe_load(STACK)
+    for path, v in changes.items():
+        node = data
+        keys = path.split("__")
+        for k in keys[:-1]:
+            node = node[k]
+        if v is None:
+            node.pop(keys[-1], None)
+        else:
+            node[keys[-1]] = v
+    return yaml.safe_dump(data, sort_keys=False)
+
+
+@pytest.fixture
+def stack_env(env):
+    (env.paths.catalog / "notes.yaml").write_text(STACK)
+    return env
+
+
+def test_parse_stack():
+    t = parse_template(STACK, "notes")
+    assert list(t.services) == ["app", "db", "cache"]
+    assert t.image == "example/notes:2.1.0"
+    assert t.version == "2.1.0"
+    assert t.category == "productivity"
+    assert t.secrets == {"SECRET_DB", "SECRET_ADMIN", "SECRET_CACHE"}
+    assert [s["name"] for s in t.summary()["services"]] == ["app", "db", "cache"]
+
+
+def test_schema1_is_a_single_service_stack():
+    t = parse_template(WHOAMI)
+    assert list(t.services) == ["app"]
+    assert t.category == "other"
+    assert t.schema == 1
+
+
+@pytest.mark.parametrize(
+    ("changes", "message"),
+    [
+        ({"services": {"db": {"image": "postgres:17.6"}}}, "service 'app'"),
+        ({"category": "games"}, "category"),
+        ({"category": None}, "missing category"),
+        ({"image": "x:1"}, "unknown fields image"),
+        ({"services__app__privileged": True}, "unknown fields privileged"),
+        ({"services__app__network_mode": "host"}, "unknown fields network_mode"),
+        ({"services__db__cap_add": ["NET_ADMIN"]}, "unknown fields cap_add"),
+        ({"services__db__devices": ["/dev/sda"]}, "unknown fields devices"),
+        ({"services__app__depends_on": ["nope"]}, "unknown service nope"),
+        ({"services__app__depends_on": ["app"]}, "unknown service app"),
+        ({"services__db__depends_on": ["app"]}, "loop"),
+        ({"services__cache__image": "redis:latest"}, "latest"),
+        ({"services__cache__command": "redis-server"}, "list"),
+        ({"services__cache__command": ["a", "{HOME}"]}, "placeholder"),
+        ({"services__app__user": "root; id"}, "user"),
+        ({"services__app__environment": {"A": "{SECRET_lower}"}}, "placeholder"),
+        ({"website": "http://example.org"}, "https"),
+        ({"login": {"user": "a", "token": "b"}}, "unknown fields token"),
+        ({"services__Bad": {"image": "x:1"}}, "service name"),
+    ],
+)
+def test_parse_stack_rejects(changes, message):
+    with pytest.raises(AppError, match=message):
+        parse_template(stack(**changes))
+
+
+def test_parse_stack_max_services():
+    services = {"app": {"image": "x:1"}} | {f"s{i}": {"image": "x:1"} for i in range(8)}
+    with pytest.raises(AppError, match="at most"):
+        parse_template(stack(services=services))
+
+
+def test_compose_stack(stack_env):
+    env = stack_env
+    t = parse_template(STACK)
+    sec = {"SECRET_DB": "d" * 32, "SECRET_ADMIN": "a" * 32, "SECRET_CACHE": "c" * 32}
+    c = apps.compose(t, 41005, env.paths, Host("Europe/Berlin", 1001, 1002, "nas", "lab.home.arpa"),
+                     sec)
+    app, db, cache = (c["services"][n] for n in ("app", "db", "cache"))
+    assert app["container_name"] == "dahlia-notes"
+    assert db["container_name"] == "dahlia-notes-db"
+    assert app["ports"] == ["127.0.0.1:41005:3000/tcp"]
+    assert "ports" not in db and "ports" not in cache
+    assert app["depends_on"] == ["db", "cache"]
+    assert app["user"] == "1001:1002"
+    assert app["environment"]["DATABASE_URL"] == f"postgres://notes:{'d' * 32}@db/notes"
+    assert app["environment"]["BASE"] == "https://notes.lab.home.arpa"
+    assert app["environment"]["HOST"] == "nas"
+    assert db["environment"]["POSTGRES_PASSWORD"] == "d" * 32
+    assert cache["command"] == ["redis-server", "--requirepass", "c" * 32]
+    assert db["volumes"][0]["source"] == str(env.paths.pool / "appdata/notes/db")
+    for svc in c["services"].values():
+        assert svc["restart"] == "no"
+        assert svc["security_opt"] == ["no-new-privileges:true"]
+        assert not any(k in svc for k in ("privileged", "network_mode", "cap_add", "devices"))
+    with pytest.raises(AppError, match="no value"):
+        apps.compose(t, 41005, env.paths, env.host, {})
+
+
+def test_install_stack_keeps_secrets_across_updates(stack_env):
+    env = stack_env
+    env.install("notes")
+    d = env.paths.apps / "notes"
+    sec = json.loads((d / "secrets.json").read_text())
+    assert set(sec) == {"SECRET_DB", "SECRET_ADMIN", "SECRET_CACHE"}
+    assert all(len(v) == 32 for v in sec.values())
+    assert (d / "secrets.json").stat().st_mode & 0o777 == 0o600
+    assert (d / "compose.json").stat().st_mode & 0o777 == 0o600
+    assert (env.paths.pool / "appdata/notes/db").is_dir()
+    # A newer template with one more secret keeps the old ones.
+    newer = STACK.replace("2.1.0", "2.2.0").replace(
+        'HOST: "{HOSTNAME}"', 'HOST: "{HOSTNAME}"\n      KEY: "{SECRET_KEY}"')
+    (env.paths.catalog / "notes.yaml").write_text(newer)
+    env.update("notes")
+    sec2 = json.loads((d / "secrets.json").read_text())
+    assert {k: sec2[k] for k in sec} == sec
+    assert len(sec2["SECRET_KEY"]) == 32
+    compose_env = json.loads((d / "compose.json").read_text())["services"]["app"]["environment"]
+    assert compose_env["KEY"] == sec2["SECRET_KEY"]
+    assert env.docker.removed == ["example/notes:2.1.0"]
+
+
+def test_list_shows_update_and_login(stack_env):
+    env = stack_env
+    env.install("notes")
+    listed = env.list()[0]
+    assert listed["update"] is None
+    assert listed["version"] == "2.1.0"
+    sec = json.loads((env.paths.apps / "notes/secrets.json").read_text())
+    assert listed["login"] == {"user": "admin", "password": sec["SECRET_ADMIN"]}
+    (env.paths.catalog / "notes.yaml").write_text(
+        STACK.replace("2.1.0", "2.2.0").replace("postgres:17.6", "postgres:17.7"))
+    listed = env.list()[0]
+    assert listed["update"] == {
+        "version": "2.2.0",
+        "images": [
+            {"service": "app", "from": "example/notes:2.1.0", "to": "example/notes:2.2.0"},
+            {"service": "db", "from": "postgres:17.6", "to": "postgres:17.7"},
+        ],
+    }
+    assert env.updates()[0]["from"] == "2.1.0"
+    env.update("notes")
+    assert env.list()[0]["update"] is None
+    assert env.updates() == []
+
+
+def test_status_partial(stack_env):
+    env = stack_env
+    env.install("notes")
+    env.docker.states["dahlia-notes-db"] = "exited"
+    assert env.list()[0]["status"] == "partial"
+    env.docker.states["dahlia-notes"] = "exited"
+    assert env.list()[0]["status"] == "exited"
+
+
+def test_remove_stack(stack_env):
+    env = stack_env
+    env.install("notes")
+    env.remove("notes")
+    assert not (env.paths.apps / "notes").exists()
+    assert env.docker.calls[-1] == ("notes", ("down",))
+    assert sorted(env.docker.removed) == sorted(
+        ["example/notes:2.1.0", "postgres:17.6", "redis:8.2.1-alpine"])
+
+
+def test_update_of_stopped_app_does_not_start_it(stack_env):
+    env = stack_env
+    env.install("notes")
+    env.stop("notes")
+    env.docker.calls.clear()
+    env.update("notes")
+    assert ("notes", ("up", "-d", "--remove-orphans")) not in env.docker.calls
+    assert ("notes", ("up", "--no-start", "--remove-orphans")) in env.docker.calls
+
+
+def test_refresh_from_bundle_skips_newer_schema(env, tmp_path):
+    src = tmp_path / "src"
+    src.mkdir()
+    bundle = {"format": 1, "apps": {"notes": STACK, "whoami": WHOAMI,
+                                    "future": "schema: 3\nid: future\n"}}
+    (src / "catalog.json").write_text(json.dumps(bundle))
+    env.paths.config.write_text(json.dumps({"catalog": f"file://{src}/"}))
+    listed = env.catalog(refresh=True)
+    assert [a["id"] for a in listed["apps"]] == ["notes", "whoami"]
+    assert listed["skipped"] == ["future"]
+    assert sorted(f.name for f in env.paths.catalog.iterdir()) == [
+        "meta.json", "notes.yaml", "whoami.yaml"]
+
+
+@pytest.mark.parametrize(
+    "bundle",
+    [
+        "not json",
+        json.dumps({"format": 2, "apps": {}}),
+        json.dumps({"format": 1, "apps": ["whoami"]}),
+        json.dumps({"format": 1, "apps": {"../x": WHOAMI}}),
+    ],
+)
+def test_refresh_rejects_bad_bundle(env, tmp_path, bundle):
+    src = tmp_path / "src"
+    src.mkdir()
+    (src / "catalog.json").write_text(bundle)
+    env.paths.config.write_text(json.dumps({"catalog": f"file://{src}/"}))
+    with pytest.raises(AppError):
+        env.catalog(refresh=True)
+    assert (env.paths.catalog / "whoami.yaml").exists()
+
+
+def test_cli_quiet_refresh(env, tmp_path, monkeypatch, capsys):
+    src = tmp_path / "src"
+    make_catalog(src, {"whoami": WHOAMI.replace("v1.11.0", "v1.12.0")})
+    env.paths.config.write_text(json.dumps({"catalog": f"file://{src}"}))
+    env.install("whoami")
+    monkeypatch.setattr(apps, "Apps", lambda: env)
+    assert apps.main(["catalog", "--refresh", "--quiet"]) == 0
+    out = capsys.readouterr().out
+    assert out.strip() == ("dahlia-apps: catalog has 1 apps, 1 updates available: "
+                           "whoami v1.11.0 -> v1.12.0")

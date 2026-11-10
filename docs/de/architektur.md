@@ -166,8 +166,8 @@ Protokoll: eine Anfrage pro Verbindung, je eine JSON-Zeile hin und zurück.
 | `job.status` | `job` (dazu `update`) | Zustand und letztes Ergebnis |
 | `updates.check` | - | `apt-get update`, Liste der Upgrades |
 | `updates.apply` | - | `apt-get full-upgrade` als Unit `dahlia-update` |
-| `apps.catalog` | `refresh` (optional) | App-Katalog, mit `refresh` vorher herunterladen |
-| `apps.list` | - | installierte Apps mit Container-Zustand |
+| `apps.catalog` | `refresh` (optional) | App-Katalog und sein Stand, mit `refresh` vorher herunterladen |
+| `apps.list` | - | installierte Apps mit Container-Zustand, Version, verfügbarem Update |
 | `apps.install`, `apps.update` | `id` | im Hintergrund als Unit `dahlia-app-<id>` |
 | `apps.job` | `id` | Zustand der letzten Installation bzw. Aktualisierung |
 | `apps.start`, `apps.stop` | `id` | starten bzw. stoppen, gilt auch für den nächsten Boot |
@@ -223,10 +223,19 @@ Apps sind Docker-Container aus App-Vorlagen. Der Katalog liegt im Repo
 `https://raw.githubusercontent.com/Fabiy99/dahlia-apps/main/` geladen
 (`/etc/dahlia/apps.json`, auch `file:///` für eigene Kataloge).
 
-Eine Vorlage (YAML, `schema: 1`) kennt nur: Image mit fester Version, Web-Port mit
-öffentlichem Port, LAN-Ports, Volumes unter `appdata` oder einer Freigabe und
-Umgebungsvariablen mit den Platzhaltern `{TZ}`, `{PUID}`, `{PGID}`. Alles andere wird
-abgelehnt, also auch `privileged`, Host-Netzwerk, Geräte und Capabilities.
+Eine Vorlage (YAML) beschreibt eine App. Ab `schema: 2` ist das ein kleiner Stack: der
+Hauptdienst `app` und Hilfsdienste wie eine Datenbank oder Redis. Sie werden zusammen
+installiert, aktualisiert und entfernt. Je Dienst gibt es nur: Image mit fester Version,
+LAN-Ports, Volumes unter `appdata` oder einer Freigabe, Umgebungsvariablen, `command`,
+`user` und `depends_on`. Dazu kommen Kategorie, Beschreibung, Hinweise, Webseite und
+Zugangsdaten für das Dashboard. Alles andere wird abgelehnt, also auch `privileged`,
+Host-Netzwerk, Geräte und Capabilities. `schema: 1` (ein Container) wird weiter gelesen.
+
+Platzhalter in Umgebung, `command` und Zugangsdaten: `{TZ}`, `{PUID}`, `{PGID}`,
+`{HOSTNAME}`, `{DOMAIN}` und `{SECRET_<NAME>}`. Secrets sind Zufallswerte (32 Hex-Zeichen),
+die bei der Installation entstehen und in `/var/lib/dahlia/apps/<id>/secrets.json` (0600)
+liegen; bei Updates bleiben sie gleich. Das Dashboard zeigt Zugangsdaten an, die die
+Vorlage unter `login` nennt.
 
 | Punkt | Umsetzung |
 | --- | --- |
@@ -234,12 +243,17 @@ abgelehnt, also auch `privileged`, Host-Netzwerk, Geräte und Capabilities.
 | LAN-Ports | nur wenn die Vorlage sie nennt; das Dashboard zeigt sie vor der Installation |
 | Daten | `/mnt/user/appdata/<id>/...` (Besitzer `dahlia-apps`), Freigaben `/mnt/user/<name>`; ohne eingehängtes Array keine Installation |
 | Start | Docker startet nichts selbst (`restart: no`); `dahlia-apps.service` startet die aktivierten Apps nach den Platten |
-| Container | `no-new-privileges`, Log-Treiber `local` mit 3 x 10 MB |
+| Container | `no-new-privileges`, Log-Treiber `local` mit 3 x 10 MB; Hauptdienst `dahlia-<id>`, Hilfsdienste `dahlia-<id>-<dienst>` |
+| Stack | eigenes Docker-Netz je App, Dienste erreichen sich über den Dienstnamen; Hilfsdienste veröffentlichen keine Ports |
+| Katalog | `catalog.json` (alle Vorlagen in einer Datei), sonst `index.json` und `apps/<id>.yaml`; Vorlagen mit neuerem Schema werden übersprungen |
+| Updates | `dahlia-apps-catalog.timer` lädt den Katalog alle 6 Stunden; weicht die Vorlage einer installierten App ab, zeigt das Dashboard "Update auf <Version>" und "Alle aktualisieren". Alte Images werden danach gelöscht |
 
 ```sh
 dahlia-apps catalog --refresh
 dahlia-apps install jellyfin
 dahlia-apps list
+dahlia-apps updates                # Apps mit neuerer Vorlage im Katalog
+dahlia-apps update jellyfin
 dahlia-apps remove jellyfin [--delete-data]
 dahlia-apps check app.yaml        # Vorlage prüfen
 ```

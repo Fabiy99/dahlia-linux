@@ -35,6 +35,9 @@ async function loadLang(code) {
   document.documentElement.lang = code;
   document.getElementById("lang").value = code;
   for (const el of document.querySelectorAll("[data-i18n]")) el.textContent = t(el.dataset.i18n);
+  for (const el of document.querySelectorAll("[data-i18n-placeholder]")) {
+    el.placeholder = t(el.dataset.i18nPlaceholder);
+  }
 }
 
 // --- API ----------------------------------------------------------------------
@@ -283,13 +286,55 @@ function appLinks(app) {
   return list;
 }
 
-async function loadApps() {
-  const data = await api("GET", "apps");
+let catalogApps = [];
+
+function small(text) {
+  const el = document.createElement("div");
+  el.className = "hint";
+  el.textContent = text;
+  return el;
+}
+
+function nameCell(tr, app) {
+  const td = cell(tr, "");
+  const name = document.createElement("strong");
+  name.textContent = app.name;
+  td.append(name);
+  const notes = app.notes && (app.notes[lang] || app.notes.en);
+  if (notes) td.append(small(notes));
+  if (app.login) {
+    const d = document.createElement("details");
+    const s = document.createElement("summary");
+    s.textContent = t("apps.login");
+    const code = document.createElement("code");
+    code.textContent = [app.login.user, app.login.password].filter(Boolean).join(" / ");
+    d.append(s, code);
+    td.append(d);
+  }
+  return td;
+}
+
+function helpers(app) {
+  return app.services.filter((s) => s.name !== "app").map((s) => s.image).join(", ");
+}
+
+async function updateAll(apps) {
+  for (const app of apps) await appJob(app.id, "update", app.name);
+}
+
+function renderInstalled(installed) {
   const inst = document.getElementById("apps-installed");
   inst.replaceChildren();
-  for (const app of data.installed) {
+  for (const app of installed) {
     const tr = document.createElement("tr");
-    cell(tr, app.name);
+    nameCell(tr, app);
+    const ver = cell(tr, app.version);
+    if (app.update) {
+      const badge = document.createElement("div");
+      badge.className = "badge";
+      badge.textContent = t("apps.update_available", { version: app.update.version });
+      ver.append(badge);
+    }
     cell(tr, tv("app_status", app.status));
     cell(tr, appLinks(app));
     const ops = cell(tr, "");
@@ -305,7 +350,9 @@ async function loadApps() {
         await loadApps();
       }));
     }
-    ops.append(button("apps.update", () => appJob(app.id, "update", app.name)));
+    const upd = button("apps.update", () => appJob(app.id, "update", app.name));
+    if (app.update) upd.className = "primary";
+    ops.append(upd);
     ops.append(button("apps.remove", async () => {
       if (!confirm(t("apps.confirm_remove", { name: app.name }))) return;
       const deleteData = confirm(t("apps.confirm_delete_data", { id: app.id }));
@@ -315,37 +362,95 @@ async function loadApps() {
     }, true));
     inst.append(tr);
   }
-  if (!data.installed.length) {
+  if (!installed.length) {
     const tr = document.createElement("tr");
-    cell(tr, t("apps.none_installed")).colSpan = 4;
+    cell(tr, t("apps.none_installed")).colSpan = 5;
     inst.append(tr);
   }
+  const pending = installed.filter((a) => a.update);
+  const all = document.getElementById("apps-update-all");
+  all.hidden = !pending.length;
+  all.textContent = t("apps.update_all", { count: pending.length });
+  all.onclick = () => guarded(all, () => updateAll(pending));
+}
 
+function confirmInstall(app) {
+  const parts = [t("apps.confirm_install", { name: app.name })];
+  const extra = helpers(app);
+  if (extra) parts.push(t("apps.confirm_services", { services: extra }));
+  const lan = app.lan_ports.map((p) => `${p.host}/${p.protocol}`).join(", ");
+  if (lan) parts.push(t("apps.confirm_lan", { ports: lan }));
+  return confirm(parts.join("\n\n"));
+}
+
+function renderCatalog() {
+  const query = document.getElementById("apps-search").value.trim().toLowerCase();
+  const category = document.getElementById("apps-category").value;
   const cat = document.getElementById("apps-catalog");
   cat.replaceChildren();
-  for (const app of data.catalog) {
+  const shown = catalogApps.filter((app) => {
+    if (category && app.category !== category) return false;
+    if (!query) return true;
+    const desc = app.description[lang] || app.description.en || "";
+    return `${app.id} ${app.name} ${desc}`.toLowerCase().includes(query);
+  });
+  for (const app of shown) {
     const tr = document.createElement("tr");
-    cell(tr, app.name);
-    cell(tr, app.description[lang] || app.description.en || "");
-    cell(tr, app.image);
+    const name = cell(tr, "");
+    const strong = document.createElement("strong");
+    strong.textContent = app.name;
+    name.append(strong);
+    if (app.website) name.append(document.createElement("br"), link(app.website));
+    cell(tr, tv("category", app.category));
+    const desc = cell(tr, app.description[lang] || app.description.en || "");
+    const extra = helpers(app);
+    if (extra) desc.append(small(t("apps.with_services", { services: extra })));
+    cell(tr, app.version);
     const ops = cell(tr, "");
     if (app.installed) {
       ops.textContent = t("apps.is_installed");
     } else {
       ops.append(button("apps.install", async () => {
-        const lan = app.lan_ports.map((p) => `${p.host}/${p.protocol}`).join(", ");
-        const key = lan ? "apps.confirm_install_lan" : "apps.confirm_install";
-        if (!confirm(t(key, { name: app.name, ports: lan }))) return;
+        if (!confirmInstall(app)) return;
         await appJob(app.id, "install", app.name);
       }));
     }
     cat.append(tr);
   }
-  if (!data.catalog.length) {
+  if (!shown.length) {
     const tr = document.createElement("tr");
-    cell(tr, t("apps.catalog_empty")).colSpan = 4;
+    const key = catalogApps.length ? "apps.no_match" : "apps.catalog_empty";
+    cell(tr, t(key)).colSpan = 5;
     cat.append(tr);
   }
+}
+
+function fillCategories() {
+  const select = document.getElementById("apps-category");
+  const chosen = select.value;
+  const used = [...new Set(catalogApps.map((a) => a.category))];
+  used.sort((x, y) => tv("category", x).localeCompare(tv("category", y)));
+  const all = document.createElement("option");
+  all.value = "";
+  all.textContent = t("apps.all_categories");
+  select.replaceChildren(all);
+  for (const c of used) {
+    const o = document.createElement("option");
+    o.value = c;
+    o.textContent = tv("category", c);
+    select.append(o);
+  }
+  select.value = used.includes(chosen) ? chosen : "";
+}
+
+async function loadApps() {
+  const data = await api("GET", "apps");
+  renderInstalled(data.installed);
+  catalogApps = data.catalog;
+  fillCategories();
+  const when = data.catalog_refreshed ? new Date(data.catalog_refreshed).toLocaleString(lang) : "-";
+  document.getElementById("apps-refreshed").textContent = t("apps.refreshed", { when });
+  renderCatalog();
 }
 
 // --- domains --------------------------------------------------------------------
@@ -540,6 +645,8 @@ function bindButtons() {
     }));
   }
   document.getElementById("storage-refresh").addEventListener("click", (e) => guarded(e.target, loadStorage));
+  document.getElementById("apps-search").addEventListener("input", renderCatalog);
+  document.getElementById("apps-category").addEventListener("change", renderCatalog);
   const refresh = document.getElementById("apps-refresh");
   refresh.addEventListener("click", () => guarded(refresh, async () => {
     await api("POST", "apps/catalog/refresh");

@@ -83,20 +83,26 @@
   <section id="view-apps" hidden>
     <h1 data-i18n="apps.title"></h1>
     <h2 data-i18n="apps.installed"></h2>
+    <button id="apps-update-all" class="primary" hidden></button>
     <table>
       <thead><tr>
-        <th data-i18n="apps.name"></th><th data-i18n="apps.status"></th>
-        <th data-i18n="apps.address"></th><th></th>
+        <th data-i18n="apps.name"></th><th data-i18n="apps.version"></th>
+        <th data-i18n="apps.status"></th><th data-i18n="apps.address"></th><th></th>
       </tr></thead>
       <tbody id="apps-installed"></tbody>
     </table>
     <h2 data-i18n="apps.catalog"></h2>
     <p class="hint" data-i18n="apps.hint"></p>
-    <button id="apps-refresh" data-i18n="apps.refresh"></button>
+    <p class="hint" id="apps-refreshed"></p>
+    <div class="actions">
+      <input id="apps-search" type="search" data-i18n-placeholder="apps.search">
+      <select id="apps-category"></select>
+      <button id="apps-refresh" data-i18n="apps.refresh"></button>
+    </div>
     <table>
       <thead><tr>
-        <th data-i18n="apps.name"></th><th data-i18n="apps.description"></th>
-        <th data-i18n="apps.image"></th><th></th>
+        <th data-i18n="apps.name"></th><th data-i18n="apps.category"></th>
+        <th data-i18n="apps.description"></th><th data-i18n="apps.version"></th><th></th>
       </tr></thead>
       <tbody id="apps-catalog"></tbody>
     </table>

@@ -443,14 +443,14 @@ def app_unit(app_id: str) -> str:
     params={"refresh": Param(bool, required=False, default=False)},
 )
 def apps_catalog(ctx: Context, refresh: bool):
-    """Templates in the app catalog; refresh downloads it first."""
+    """Templates in the app catalog and its age; refresh downloads it first."""
     args = ["catalog", "--refresh"] if refresh else ["catalog"]
-    return {"apps": dahlia_apps(ctx, *args, timeout=600)}
+    return dahlia_apps(ctx, *args, timeout=600)
 
 
 @action("apps.list", mutating=False)
 def apps_list(ctx: Context):
-    """Installed apps with container status."""
+    """Installed apps with container status and available updates."""
     return {"apps": dahlia_apps(ctx, "list")}
 
 
@@ -480,7 +480,7 @@ def apps_install(ctx: Context, id: str):
 
 @action("apps.update", mutating=True, params={"id": Param(str, pattern=APP_ID_RE)})
 def apps_update(ctx: Context, id: str):
-    """Pull the current image and template of an app in the background."""
+    """Take the catalog's template of an app and pull its images, in the background."""
     return start_app_job(ctx, id, "update")
 
 

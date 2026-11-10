@@ -7,6 +7,7 @@ import pytest
 pytest.importorskip("fastapi")
 pytest.importorskip("httpx")
 
+from dahlia_agent.apps import CATEGORIES  # noqa: E402
 from dahlia_agent.protocol import AgentError  # noqa: E402
 from dahlia_dashboard import auth, setupcode  # noqa: E402
 from dahlia_dashboard.app import Config, create_app  # noqa: E402
@@ -30,7 +31,8 @@ class FakeAgent:
         if action == "system.info":
             return {"hostname": "dahlia", "version": "0.2.0"}
         if action in ("apps.list", "apps.catalog"):
-            return {"apps": [{"id": "whoami", "refresh": params.get("refresh")}]}
+            return {"apps": [{"id": "whoami", "refresh": params.get("refresh")}],
+                    "refreshed": "2026-11-10T12:00:00Z"}
         if action == "job.status":
             return {"job": params["job"], "active": "inactive"}
         return {"action": action}
@@ -289,7 +291,7 @@ def used_keys():
     html = (WWW / "index.html").read_text()
     js = (WWW / "app.js").read_text()
     py = (ROOT / "packages/dahlia-dashboard/usr/lib/python3/dist-packages/dahlia_dashboard/app.py")
-    keys = set(re.findall(r'data-i18n="([^"]+)"', html))
+    keys = set(re.findall(r'data-i18n(?:-placeholder)?="([^"]+)"', html))
     keys |= set(re.findall(r'\bt\("([a-z_.-]+)"', js))
     keys |= set(re.findall(r'\["(overview\.[a-z_]+)",', js))
     keys |= set(re.findall(r'"(error\.[a-z_]+)"', py.read_text()))
@@ -300,6 +302,8 @@ def used_keys():
     keys |= {f"job.{j}" for j in ("mover", "snapraid-sync", "snapraid-scrub", "update")}
     keys |= {f"overview.{a}_started" for a in ("reboot", "poweroff")}
     keys |= {f"apps.{op}_{s}" for op in ("install", "update") for s in ("running", "done")}
+    keys |= {f"category.{c}" for c in CATEGORIES}
+    keys |= {"app_status.partial"}
     return keys
 
 
@@ -323,6 +327,7 @@ def test_apps_endpoints(env):
     agent.calls.clear()
     data = client.get("/api/apps").json()
     assert data["installed"][0]["id"] == "whoami"
+    assert data["catalog_refreshed"] == "2026-11-10T12:00:00Z"
     assert ("apps.catalog", {"refresh": False}) in agent.calls
     client.post("/api/apps/catalog/refresh", headers=CSRF)
     client.post("/api/apps/whoami/install", headers=CSRF)
