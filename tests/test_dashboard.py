@@ -179,7 +179,7 @@ def test_change_password(env):
 
 def test_everything_needs_login(env):
     client, agent, _, _ = env
-    for path in ("system", "storage", "jobs"):
+    for path in ("system", "stats", "storage", "jobs"):
         assert client.get(f"/api/{path}").status_code == 401
     for path in ("system/reboot", "storage/add", "jobs/mover/start", "updates/apply"):
         assert client.post(f"/api/{path}", json={}, headers=CSRF).status_code in (401, 422)
@@ -291,7 +291,7 @@ def used_keys():
     html = (WWW / "index.html").read_text()
     js = (WWW / "app.js").read_text()
     py = (ROOT / "packages/dahlia-dashboard/usr/lib/python3/dist-packages/dahlia_dashboard/app.py")
-    keys = set(re.findall(r'data-i18n(?:-placeholder)?="([^"]+)"', html))
+    keys = set(re.findall(r'data-i18n(?:-placeholder|-title)?="([^"]+)"', html))
     keys |= set(re.findall(r'\bt\("([a-z_.-]+)"', js))
     keys |= set(re.findall(r'\["(overview\.[a-z_]+)",', js))
     keys |= set(re.findall(r'"(error\.[a-z_]+)"', py.read_text()))
@@ -363,3 +363,9 @@ def test_domains_need_login(env):
     assert client.post("/api/domains", json={"domain": "a.b", "mdns_aliases": True},
                        headers=CSRF).status_code == 401
     assert agent.calls == []
+
+
+def test_stats_endpoint(env):
+    client, agent, _ = logged_in(env)
+    assert client.get("/api/stats").json() == {"action": "system.stats"}
+    assert ("system.stats", {}) in agent.calls

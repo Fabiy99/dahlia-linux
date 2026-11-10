@@ -158,6 +158,7 @@ Protokoll: eine Anfrage pro Verbindung, je eine JSON-Zeile hin und zurück.
 | Aktion | Parameter | Wirkung |
 | --- | --- | --- |
 | `system.info` | - | Hostname, Version, Kernel, Uptime, Last, Speicher |
+| `system.stats` | - | CPU-Zähler, Speicher, Swap, Netzwerk, Belegung von `/` und `/mnt/*` |
 | `system.set_hostname` | `hostname` (ein DNS-Label, klein) | `hostnamectl`, `/etc/hosts`, Avahi, neues Zertifikat |
 | `system.reboot`, `system.poweroff` | - | `systemctl --no-block ...` |
 | `storage.list` | - | `dahlia-disk list --json` |
@@ -210,10 +211,22 @@ nur für das Web-UI, nicht für SSH oder die Konsole.
 | Schutz | ändernde Anfragen brauchen den Header `X-Dahlia-Request`; 5 Fehlversuche pro IP in 5 Minuten, dann Sperre |
 | root-Aktionen | nur über `dahlia-agent`; `dahlia-ui` ist Mitglied der Gruppe `dahlia-agent` |
 
-Seiten: Übersicht (Systemdaten, Servername, Neustart, Ausschalten), Platten (hinzufügen
-in einer Rolle, entfernen), Aufgaben (Mover, SnapRAID-Sync und -Scrub starten, Zustand),
-Apps, Domains (Domain, mDNS-Aliase, DNS-Einträge, CA-Download), Updates (suchen,
-installieren), Konto (Passwort ändern).
+Aufbau: Seitenleiste mit Servername und Version, Inhalt in Kacheln. Bestätigungen laufen
+über einen eigenen Dialog, Meldungen erscheinen unten rechts.
+
+| Seite | Inhalt |
+| --- | --- |
+| Übersicht | System (Version, Kernel, CPU, Adresse, Neustart, Ausschalten), CPU- und RAM-Auslastung mit Verlauf, Netzwerk (Durchsatz je Schnittstelle), Belegung von System-SSD, Pools und jeder Platte unter `/mnt`, Apps mit Zustand, Aufgaben mit letztem Ergebnis |
+| Platten | Belegung von `/mnt/user`, `/mnt/storage` und `/mnt/cache`; je physische Platte eine Karte mit Modell, Seriennummer und ihren Dateisystemen (Status, Belegung, hinzufügen in einer Rolle, entfernen) |
+| Apps | installierte Apps als Karten (Zustand, Adressen, Updates, Start/Stopp), Katalog mit Suche und Kategorien |
+| Domains | Domain, mDNS-Aliase, DNS-Einträge, CA-Download |
+| Aufgaben | Mover, SnapRAID-Sync und -Scrub starten, Zustand |
+| Updates | suchen, installieren |
+| Einstellungen | Dashboard-Passwort, Servername |
+
+Die Live-Werte liefert die Agent-Aktion `system.stats` (`/proc`, `statvfs`, `ip -j addr`);
+die Übersicht fragt sie alle 3 Sekunden ab, solange sie offen ist. Die CPU-Auslastung
+rechnet das Frontend aus zwei Messungen.
 
 Passwort vergessen: `sudo rm /var/lib/dahlia-dashboard/users.json` und
 `sudo systemctl restart dahlia-dashboard` öffnen den Einrichtungsassistenten mit neuem Code.
