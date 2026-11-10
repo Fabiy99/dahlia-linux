@@ -103,9 +103,11 @@ class DiskAddBody(BaseModel):
 class AppOpBody(BaseModel):
     delete_data: bool = False
     folders: dict[str, str] = {}
+    location: str = ""
 
 
 class MkdirBody(BaseModel):
+    root: str = "array"
     path: str
 
 
@@ -406,17 +408,20 @@ def create_app(cfg: Config | None = None) -> FastAPI:
         params = {"id": app_id}
         if op == "remove" and body is not None:
             params["delete_data"] = body.delete_data
-        if op == "install" and body is not None and body.folders:
-            params["folders"] = body.folders
+        if op == "install" and body is not None:
+            if body.folders:
+                params["folders"] = body.folders
+            if body.location:
+                params["location"] = body.location
         return agent(f"apps.{op}", params)
 
     @app.get("/api/files", dependencies=authed)
-    def files_browse(path: str = ""):
-        return agent("files.browse", {"path": path})
+    def files_browse(root: str = "array", path: str = ""):
+        return agent("files.browse", {"root": root, "path": path})
 
     @app.post("/api/files/mkdir", dependencies=changing)
     def files_mkdir(body: MkdirBody):
-        return agent("files.mkdir", {"path": body.path})
+        return agent("files.mkdir", {"root": body.root, "path": body.path})
 
     # --- docker and hardware -------------------------------------------------
 

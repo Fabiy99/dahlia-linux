@@ -625,13 +625,21 @@ def test_apps_install_runs_in_background(ctx):
 
 
 def test_apps_install_with_folders(ctx):
-    params = {"id": "jellyfin", "folders": {"media": "Filme und Serien", "photos": "Fotos/2024"}}
+    params = {"id": "jellyfin", "location": "system",
+              "folders": {"media": "array:Filme und Serien", "photos": "system:Fotos/2024"}}
     assert run(ctx, "apps.install", params)["ok"]
-    extra = ["--folder", "media=Filme und Serien", "--folder", "photos=Fotos/2024"]
+    extra = ["--folder", "media=array:Filme und Serien", "--folder", "photos=system:Fotos/2024",
+             "--location", "system"]
     assert ["dahlia-apps", "precheck", "install", "jellyfin", *extra] in ctx.runner.calls
-    assert ctx.runner.calls[-1][-5:] == ["jellyfin", *extra]
-    for bad in ({"media": "../etc"}, {"media": "/etc"}, {"media": "a/../../b"},
-                {"Media!": "x"}, {"media": 5}, {"media": "x\ny"}):
+    assert ctx.runner.calls[-1][-7:] == ["jellyfin", *extra]
+    ctx.runner.calls.clear()
+    assert run(ctx, "apps.install", {"id": "jellyfin"})["ok"]
+    assert ["dahlia-apps", "precheck", "install", "jellyfin"] in ctx.runner.calls
+    reply = run(ctx, "apps.install", {"id": "jellyfin", "location": "usb"})
+    assert err_code(reply) == protocol.INVALID_PARAMS
+    for bad in ({"media": "array:../etc"}, {"media": "/etc"}, {"media": "array:a/../../b"},
+                {"media": "Filme"}, {"media": "usb:Filme"},
+                {"Media!": "array:x"}, {"media": 5}, {"media": "array:x\ny"}):
         ctx.runner.calls.clear()
         reply = run(ctx, "apps.install", {"id": "jellyfin", "folders": bad})
         assert err_code(reply) == protocol.INVALID_PARAMS, bad
@@ -661,6 +669,23 @@ def test_files_browse_and_mkdir(ctx, tmp_path, monkeypatch):
     assert err_code(run(ctx, "files.mkdir", {"path": "a/b"})) == protocol.FAILED
     assert err_code(run(ctx, "files.mkdir", {"path": "appdata/x"})) == protocol.INVALID_PARAMS
     assert err_code(run(ctx, "files.mkdir", {"path": "out/x"})) == protocol.INVALID_PARAMS
+
+
+def test_files_on_system_ssd(ctx, tmp_path, monkeypatch):
+    ctx.pool = tmp_path / "user"
+    ctx.system = tmp_path / "srv"
+    got = run(ctx, "files.browse", {"root": "system"})["result"]
+    assert got["mounted"] is False
+    assert got["locations"] == [
+        {"name": "array", "path": str(ctx.pool), "available": False},
+        {"name": "system", "path": str(ctx.system), "available": False}]
+    ctx.system.mkdir()
+    assert run(ctx, "files.mkdir", {"root": "system", "path": "Medien"})["ok"]
+    got = run(ctx, "files.browse", {"root": "system"})["result"]
+    assert got["dirs"] == ["Medien"] and got["root"] == "system"
+    assert got["locations"][1]["available"] is True
+    assert err_code(run(ctx, "files.mkdir", {"path": "x"})) == protocol.FAILED
+    assert err_code(run(ctx, "files.browse", {"root": "usb"})) == protocol.INVALID_PARAMS
 
 
 def test_apps_install_checks_before_starting_job(ctx):

@@ -1,7 +1,7 @@
 [Unit]
 Description=Dahlia apps: start enabled apps once the disks are mounted
 Requires=docker.service
-After=docker.service dahlia-storage.target network-online.target
+After=docker.service dahlia-storage.target network-online.target srv-dahlia.mount
 Wants=network-online.target
 
 [Service]

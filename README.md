@@ -49,7 +49,8 @@ noch ohne Web-UI und Storage-Funktionen.
   Dahlia-Pakete aus einem eigenen, signierten apt-Repo.
 - Updates, Rollback und Upgrades sind normale apt-Vorgänge. Das Root-Dateisystem liegt auf
   Btrfs, `snapper` legt vor jedem apt-Lauf einen Snapshot an.
-- Apps und Freigaben sehen nur `/mnt/user`. Dort werden Cache-SSD und HDDs per mergerfs
+- Freigaben sehen nur `/mnt/user`. Apps liegen dort oder auf der System-SSD (`/srv/dahlia`),
+  auch ganz ohne Datenplatten. In `/mnt/user` werden Cache-SSD und HDDs per mergerfs
   zusammengeführt. Der Mover schiebt im Hintergrund vom Cache auf die HDDs, die Pfade
   bleiben gleich.
 - Vorhandene Platten mit Daten (ext4, XFS, Btrfs) werden ohne Formatieren eingebunden.
@@ -139,7 +140,8 @@ without web UI or storage features yet.
   Dahlia packages from a dedicated, signed apt repository.
 - Updates, rollback and upgrades are plain apt operations. The root filesystem is Btrfs,
   and `snapper` takes a snapshot before every apt run.
-- Apps and shares only see `/mnt/user`, a mergerfs pool of cache SSD and HDDs. The mover
+- Shares only see `/mnt/user`, a mergerfs pool of cache SSD and HDDs. Apps live there or on
+  the system SSD (`/srv/dahlia`), even with no data disks at all. The mover
   shifts data from cache to HDDs in the background; paths stay the same.
 - Existing disks with data (ext4, XFS, Btrfs) are added without formatting.
   Blank disks can be formatted in the dashboard; other disks (also NTFS/exFAT) have their

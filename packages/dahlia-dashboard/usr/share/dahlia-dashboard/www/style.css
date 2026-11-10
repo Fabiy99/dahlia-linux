@@ -244,7 +244,7 @@ tbody tr:hover td { background: var(--card-2); }
 dialog { border: 1px solid var(--line); border-radius: 12px; padding: 1.4rem; background: var(--card); color: var(--fg);
          width: min(30rem, calc(100vw - 2rem)); box-shadow: 0 20px 60px rgb(0 0 0 / 35%); }
 dialog::backdrop { background: rgb(10 5 15 / 55%); }
-dialog form { max-width: none; }
+dialog form { max-width: none; grid-template-columns: minmax(0, 1fr); }
 #dialog-text { margin: 0 0 .4rem; white-space: pre-line; line-height: 1.5; }
 .dialog-actions { display: flex; justify-content: flex-end; gap: .5rem; }
 
@@ -369,6 +369,12 @@ ul.checks li > button { grid-column: 2; justify-self: start; margin: 0; }
 ul.checks .mark { width: 1.1rem; text-align: center; font-weight: 700; }
 ul.checks li.ok .mark { color: var(--ok); }
 ul.checks li.bad { color: var(--danger); }
+ul.checks li.info .mark { color: var(--info); font-style: italic; font-family: serif; }
+.places { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .5rem; margin: .4rem 0; }
+button.place { display: grid; justify-items: start; min-width: 0; gap: .1rem; text-align: left; padding: .6rem .8rem; }
+button.place .hint { margin: 0; overflow-wrap: anywhere; }
+button.place[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft);
+                                    box-shadow: inset 0 0 0 1px var(--accent); }
 .share-pick { display: grid; grid-template-columns: 1fr auto auto; gap: .4rem .8rem; align-items: center;
               border: 1px solid var(--line); border-radius: 8px; padding: .55rem .75rem; }
 .share-pick .share-label { display: grid; }

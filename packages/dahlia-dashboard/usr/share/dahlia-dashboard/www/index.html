@@ -550,10 +550,12 @@
     <h2 id="install-title"></h2>
     <p class="hint" id="install-desc"></p>
     <ul id="install-checks" class="checks"></ul>
+    <h3 data-i18n="install.location"></h3>
+    <div id="install-location" class="places"></div>
+    <p class="hint" id="install-appdata"></p>
     <h3 data-i18n="install.folders"></h3>
     <p class="hint" data-i18n="install.folders_hint"></p>
     <div id="install-shares" class="field-group"></div>
-    <p class="hint" id="install-appdata"></p>
     <p class="hint" id="install-notes"></p>
     <div class="dialog-actions">
       <button value="cancel" formnovalidate data-i18n="common.cancel"></button>
@@ -565,6 +567,7 @@
 <dialog id="folder-dialog" class="wide-dialog">
   <form id="folder-form" method="dialog">
     <h2 data-i18n="folder.title"></h2>
+    <div id="folder-roots" class="places"></div>
     <nav id="folder-crumbs" class="crumbs"></nav>
     <ul id="folder-list" class="folder-list"></ul>
     <div class="folder-new">

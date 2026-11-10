@@ -918,7 +918,8 @@ function renderInstalled(installed) {
                           app.update ? "primary" : ""));
     const remove = iconButton("trash", "apps.remove", async () => {
       if (!await ask(t("apps.confirm_remove", { name: app.name }), "apps.remove", true)) return;
-      const deleteData = await ask(t("apps.confirm_delete_data", { id: app.id }),
+      const deleteData = await ask(t("apps.confirm_delete_data", {
+        path: `${app.location === "system" ? "/srv/dahlia" : "/mnt/user"}/appdata/${app.id}` }),
                                    "apps.delete_data", true);
       await api("POST", `apps/${app.id}/remove`, { delete_data: deleteData });
       say(t("apps.removed", { name: app.name }), "ok");
@@ -943,27 +944,57 @@ function renderInstalled(installed) {
 
 // --- install dialog and folder picker -------------------------------------------
 
+// Locations for app data and folders: "array" (/mnt/user) and "system" (/srv/dahlia).
+let folderRoot = "array";
 let folderPath = "";
+let locationPaths = { array: "/mnt/user", system: "/srv/dahlia" };
 
 function joinPath(base, name) {
   return base ? `${base}/${name}` : name;
 }
 
-async function showFolder(path) {
-  const data = await api("GET", `files?path=${encodeURIComponent(path)}`);
+function fullPath(root, path) {
+  return path ? `${locationPaths[root]}/${path}` : locationPaths[root];
+}
+
+// Two buttons, one per location; the chosen one is pressed.
+function placeButtons(box, current, available, onPick) {
+  box.replaceChildren();
+  for (const name of ["system", "array"]) {
+    const b = el("button", "place");
+    b.type = "button";
+    b.setAttribute("aria-pressed", String(name === current));
+    b.disabled = !available[name];
+    b.append(el("b", "", tv("location", name)), el("small", "hint", locationPaths[name]));
+    b.addEventListener("click", () => onPick(name));
+    box.append(b);
+  }
+}
+
+async function showFolder(root, path) {
+  const data = await api("GET", `files?root=${root}&path=${encodeURIComponent(path)}`);
+  const available = {};
+  for (const loc of data.locations) {
+    locationPaths[loc.name] = loc.path;
+    // The system SSD folder is created on the first install when missing.
+    available[loc.name] = loc.available || loc.name === "system";
+  }
+  folderRoot = root;
   folderPath = path;
+  placeButtons(document.getElementById("folder-roots"), root, available,
+               (name) => showFolder(name, "").catch(sayError));
   const crumbs = document.getElementById("folder-crumbs");
   crumbs.replaceChildren();
   const parts = path ? path.split("/") : [];
-  const rootBtn = el("button", "link-btn", t("storage.import_prefix"));
+  const rootBtn = el("button", "link-btn", locationPaths[root]);
   rootBtn.type = "button";
-  rootBtn.addEventListener("click", () => showFolder("").catch(sayError));
+  rootBtn.addEventListener("click", () => showFolder(root, "").catch(sayError));
   crumbs.append(rootBtn);
   parts.forEach((part, i) => {
     const b = el("button", "link-btn", part);
     b.type = "button";
     const to = parts.slice(0, i + 1).join("/");
-    b.addEventListener("click", () => showFolder(to).catch(sayError));
+    b.addEventListener("click", () => showFolder(root, to).catch(sayError));
     crumbs.append(el("span", "sep", "/"), b);
   });
   const list = document.getElementById("folder-list");
@@ -977,29 +1008,30 @@ async function showFolder(path) {
     const b = el("button", "folder", name);
     b.type = "button";
     b.prepend(icon("folder"));
-    b.addEventListener("click", () => showFolder(joinPath(path, name)).catch(sayError));
+    b.addEventListener("click", () => showFolder(root, joinPath(path, name)).catch(sayError));
     li.append(b);
     list.append(li);
   }
+  document.getElementById("folder-new").disabled = !data.mounted;
   document.getElementById("folder-ok").disabled = !path;
 }
 
-// Resolves with the chosen folder below /mnt/user, or null.
+// Resolves with the chosen {root, path}, or null.
 async function pickFolder(start) {
   const dlg = document.getElementById("folder-dialog");
   document.getElementById("folder-new-name").value = "";
   // Open the folder that holds the current choice, so siblings are visible.
-  const parent = start.includes("/") ? start.slice(0, start.lastIndexOf("/")) : "";
+  const parent = start.path.includes("/") ? start.path.slice(0, start.path.lastIndexOf("/")) : "";
   try {
-    await showFolder(parent);
+    await showFolder(start.root, parent);
   } catch (_) {
-    await showFolder("");
+    await showFolder(start.root, "");
   }
   dlg.returnValue = "";
   dlg.showModal();
   return new Promise((resolve) => {
-    dlg.addEventListener("close", () => resolve(dlg.returnValue === "ok" ? folderPath : null),
-                         { once: true });
+    dlg.addEventListener("close", () => resolve(
+      dlg.returnValue === "ok" ? { root: folderRoot, path: folderPath } : null), { once: true });
   });
 }
 
@@ -1010,9 +1042,9 @@ function bindFolderPicker() {
     const name = input.value.trim();
     if (!name) return;
     const path = joinPath(folderPath, name);
-    await api("POST", "files/mkdir", { path });
+    await api("POST", "files/mkdir", { root: folderRoot, path });
     input.value = "";
-    await showFolder(path);
+    await showFolder(folderRoot, path);
   });
   btn.addEventListener("click", create);
   input.addEventListener("keydown", (e) => {
@@ -1020,74 +1052,91 @@ function bindFolderPicker() {
   });
 }
 
-function checkItem(ok, text, action) {
-  const li = el("li", ok ? "ok" : "bad");
-  li.append(el("span", "mark", ok ? "✓" : "✗"), el("span", "", text));
+// state: "ok", "bad" or "info".
+function checkItem(state, text, action) {
+  const li = el("li", state);
+  li.append(el("span", "mark", { ok: "✓", bad: "✗", info: "i" }[state]), el("span", "", text));
   if (action) li.append(action);
   return li;
 }
 
-// Shows what the app needs and creates, lets the user pick folders, resolves
-// with {folders} on install or null on cancel.
+// Shows what the app needs and creates, lets the user pick where its data
+// goes and its folders; resolves with {location, folders} or null on cancel.
 async function installDialog(app) {
   const dlg = document.getElementById("install-dialog");
-  const pool = await api("GET", "files?path=");
+  const pool = await api("GET", "files?root=array&path=");
+  for (const loc of pool.locations) locationPaths[loc.name] = loc.path;
   document.getElementById("install-title").textContent = t("install.title", { name: app.name });
   document.getElementById("install-desc").textContent = app.description[lang] || app.description.en || "";
   const checks = document.getElementById("install-checks");
   checks.replaceChildren();
-  let goStorage = null;
-  if (!pool.mounted) {
-    goStorage = el("button", "link-btn", t("install.to_storage"));
+  if (pool.mounted) {
+    checks.append(checkItem("ok", t("install.pool_ok")));
+  } else {
+    const goStorage = el("button", "link-btn", t("install.to_storage"));
     goStorage.type = "button";
     goStorage.addEventListener("click", () => { dlg.close(); open("storage"); });
+    checks.append(checkItem("info", t("install.pool_missing"), goStorage));
   }
-  checks.append(checkItem(pool.mounted, t(pool.mounted ? "install.pool_ok" : "install.pool_missing"), goStorage));
-  if (app.public_port) checks.append(checkItem(true, t("install.web", { port: app.public_port })));
+  if (app.public_port) checks.append(checkItem("ok", t("install.web", { port: app.public_port })));
   const lan = app.lan_ports.map((p) => `${p.host}/${p.protocol}`).join(", ");
-  if (lan) checks.append(checkItem(true, t("apps.confirm_lan", { ports: lan })));
+  if (lan) checks.append(checkItem("ok", t("apps.confirm_lan", { ports: lan })));
   const extra = helpers(app);
-  if (extra) checks.append(checkItem(true, t("apps.confirm_services", { services: extra })));
-  checks.append(checkItem(true, t("install.download")));
+  if (extra) checks.append(checkItem("ok", t("apps.confirm_services", { services: extra })));
+  checks.append(checkItem("ok", t("install.download")));
 
+  let location = pool.mounted ? "array" : "system";
+  // share name -> {root, path} when changed; unchanged shares follow the location.
   const chosen = {};
+  const rows = [];
   const box = document.getElementById("install-shares");
   box.replaceChildren();
   const shares = app.shares || [];
   box.previousElementSibling.hidden = box.previousElementSibling.previousElementSibling.hidden = !shares.length;
   for (const share of shares) {
-    chosen[share.name] = share.name;
     const row = el("div", "share-pick");
     const label = el("div", "share-label");
     label.append(el("b", "", share.containers.join(", ")),
                  el("small", "hint", t(share.readonly ? "install.readonly" : "install.readwrite")));
-    const path = el("code", "", `/mnt/user/${share.name}`);
+    const path = el("code");
+    const current = () => chosen[share.name] || { root: location, path: share.name };
+    const show = () => { const c = current(); path.textContent = fullPath(c.root, c.path); };
     const change = el("button", "", t("install.change"));
     change.type = "button";
-    change.disabled = !pool.mounted;
     change.addEventListener("click", async () => {
-      const picked = await pickFolder(chosen[share.name]);
+      const picked = await pickFolder(current());
       if (picked) {
         chosen[share.name] = picked;
-        path.textContent = `/mnt/user/${picked}`;
+        show();
       }
     });
+    rows.push(show);
     row.append(label, path, change);
     box.append(row);
   }
-  document.getElementById("install-appdata").textContent = t("install.appdata", { id: app.id });
+  const appdata = document.getElementById("install-appdata");
+  const placeBox = document.getElementById("install-location");
+  const setLocation = (name) => {
+    location = name;
+    placeButtons(placeBox, location, { system: true, array: pool.mounted }, setLocation);
+    appdata.textContent = t("install.appdata", { path: fullPath(location, `appdata/${app.id}`) });
+    rows.forEach((show) => show());
+  };
+  setLocation(location);
   const notes = app.notes && (app.notes[lang] || app.notes.en);
   const notesEl = document.getElementById("install-notes");
   notesEl.textContent = notes || "";
   notesEl.hidden = !notes;
-  document.getElementById("install-ok").disabled = !pool.mounted;
   dlg.returnValue = "";
   dlg.showModal();
   return new Promise((resolve) => {
     dlg.addEventListener("close", () => {
       if (dlg.returnValue !== "ok") { resolve(null); return; }
-      const folders = Object.fromEntries(Object.entries(chosen).filter(([k, v]) => k !== v));
-      resolve({ folders });
+      const folders = {};
+      for (const [name, c] of Object.entries(chosen)) {
+        if (c.root !== location || c.path !== name) folders[name] = `${c.root}:${c.path}`;
+      }
+      resolve({ location, folders });
     }, { once: true });
   });
 }
