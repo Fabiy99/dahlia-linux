@@ -156,6 +156,12 @@ Protocol: one request per connection, one JSON line each way.
 | --- | --- | --- |
 | `system.info` | - | Hostname, version, kernel, uptime, load, memory |
 | `system.stats` | - | CPU counters, memory, swap, network, usage of `/` and `/mnt/*` |
+| `system.hardware` | - | mainboard (DMI), CPU temperature (hwmon), SMART per disk with `smartctl -n standby` (does not wake a sleeping disk) |
+| `system.log` | `lines`, `priority`, `unit` (optional) | `journalctl -n … -p …` |
+| `docker.list`, `docker.stats`, `docker.disk` | - | all containers, CPU/RAM per container, space used by images, volumes, build cache |
+| `docker.container` | `name`, `op` (`start`, `stop`, `restart`) | `docker <op> -- <name>` |
+| `docker.logs` | `name`, `lines` (10 to 5000) | `docker logs --tail` |
+| `docker.prune` | - | `docker image prune -a`, `docker builder prune` |
 | `system.set_hostname` | `hostname` (one DNS label, lower case) | `hostnamectl`, `/etc/hosts`, Avahi, new certificate |
 | `system.reboot`, `system.poweroff` | - | `systemctl --no-block ...` |
 | `storage.list` | - | `dahlia-disk list --json` |
@@ -212,11 +218,13 @@ dialog, messages appear at the bottom right.
 
 | Page | Content |
 | --- | --- |
-| Overview | system (version, kernel, CPU, address, reboot, power off), CPU and RAM usage with history, network (throughput per interface), usage of the system SSD, the pools and every disk under `/mnt`, apps with state, jobs with last result |
-| Disks | usage of `/mnt/user`, `/mnt/storage` and `/mnt/cache`; one card per physical disk with model, serial number and its filesystems (status, usage, add in a role, remove) |
+| Overview | system (version, kernel, CPU, address, reboot, power off), CPU and RAM usage with history, network (throughput per interface), usage of the system SSD, the pools and every disk under `/mnt`, disks with temperature and SMART state, apps with state, jobs with last result |
+| Disks | usage of `/mnt/user`, `/mnt/storage` and `/mnt/cache`; one card per physical disk with model, serial number, temperature, SMART state and its filesystems (status, usage, add in a role, remove) |
 | Apps | installed apps as cards (state, addresses, updates, start/stop), catalog with search and categories |
+| Docker | all containers (also foreign ones) with state, ports, CPU/RAM, start/stop/restart, logs; disk usage and cleanup |
 | Domains | domain, mDNS aliases, DNS records, CA download |
 | Jobs | start mover, SnapRAID sync and scrub, state |
+| System log | journal filtered by level and service |
 | Updates | check, install |
 | Settings | dashboard password, server name |
 

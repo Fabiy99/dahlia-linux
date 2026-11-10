@@ -214,6 +214,31 @@ function formatUptime(sec) {
   return t("overview.uptime_value", { d, h, m });
 }
 
+let cpuTemp = null;
+
+function formatTemp(c) {
+  return `${Math.round(c)} °C`;
+}
+
+// Disk temperatures like a NAS shows them: HDDs warm at 45, SSDs at 60.
+function tempKind(c, rotational) {
+  if (c === null || c === undefined) return "";
+  const warn = rotational ? 45 : 60;
+  if (c >= warn + 10) return "crit";
+  if (c >= warn) return "warn";
+  return "ok";
+}
+
+const HEALTH_KIND = { passed: "ok", warning: "warn", failed: "crit", standby: "", unavailable: "",
+                      unknown: "" };
+
+function healthBadge(d) {
+  const b = badge(tv("health", d.health), HEALTH_KIND[d.health] ?? "");
+  const w = Object.entries(d.warnings || {}).map(([k, v]) => `${tv("smart", k)}: ${v}`);
+  if (w.length) b.title = w.join("\n");
+  return b;
+}
+
 function level(pct) {
   if (pct >= 90) return "crit";
   if (pct >= 75) return "warn";
@@ -229,6 +254,7 @@ function percent(used, size) {
 const TITLES = {
   overview: "nav.overview", storage: "storage.title", apps: "apps.title",
   domains: "nav.domains", jobs: "jobs.title", updates: "updates.title", account: "nav.account",
+  docker: "nav.docker", log: "nav.log",
   setup: "setup.title", login: "login.title",
 };
 
@@ -243,6 +269,7 @@ function show(view) {
   current = view;
   if (view === "overview") startStats();
   else stopStats();
+  if (view !== "docker") stopDockerStats();
 }
 
 function setLoggedIn(on) {
@@ -262,6 +289,8 @@ const loaders = {
   storage: loadStorage,
   apps: loadApps,
   domains: loadDomains,
+  docker: loadDocker,
+  log: loadLog,
   jobs: loadJobs,
   updates: () => {},
   account: loadAccount,
@@ -391,6 +420,7 @@ function renderStats(s) {
   fact(cpu, "overview.cores", String(s.cpu.cores));
   fact(cpu, "overview.load", s.load.map((x) => x.toFixed(2)).join(" / "));
   fact(cpu, "overview.uptime", formatUptime(s.uptime_seconds));
+  if (cpuTemp !== null) fact(cpu, "overview.temperature", formatTemp(cpuTemp));
 
   const used = s.memory.total - s.memory.available;
   const memPct = percent(used, s.memory.total);
@@ -434,6 +464,7 @@ function stopStats() {
 
 function setSidebar(info) {
   document.getElementById("side-hostname").textContent = `${info.hostname}.local`;
+  document.title = `${info.hostname} · Dahlia`;
   document.getElementById("side-version").textContent = info.version
     ? t("overview.version_value", { version: info.version }) : "";
 }
@@ -514,6 +545,29 @@ async function loadOverview() {
     updateAppsBadge(data.installed);
   }).catch(sayError);
   api("GET", "jobs").then(renderOverviewJobs).catch(sayError);
+  api("GET", "hardware").then((hw) => {
+    renderOverviewDisks(hw);
+    const board = [hw.board.board_vendor, hw.board.board_name].filter(Boolean).join(" ")
+      || [hw.board.sys_vendor, hw.board.product_name].filter(Boolean).join(" ");
+    if (board) fact(dl, "overview.board", board);
+  }).catch(sayError);
+}
+
+function renderOverviewDisks(hw) {
+  cpuTemp = hw.cpu_temperature;
+  const box = document.getElementById("overview-disks");
+  box.replaceChildren();
+  for (const d of hw.disks) {
+    const item = el("div", "disk-mini");
+    const meta = el("div", "meta");
+    meta.append(el("b", "", d.path.replace(/^\/dev\//, "")),
+                el("small", "", [d.model, formatBytes(d.size)].filter(Boolean).join(" · ")));
+    const temp = el("span", `temp ${tempKind(d.temperature, d.rotational)}`,
+                    d.temperature === null || d.temperature === undefined ? "–" : formatTemp(d.temperature));
+    item.append(meta, temp, healthBadge(d));
+    box.append(item);
+  }
+  if (!hw.disks.length) box.append(el("p", "empty", t("storage.none")));
 }
 
 // --- storage --------------------------------------------------------------------
@@ -613,6 +667,8 @@ function diskRow(d, mounts) {
 
 async function loadStorage() {
   const [data, stats] = await Promise.all([api("GET", "storage"), api("GET", "stats")]);
+  // SMART is slow on many disks; the cards fill in their health when it arrives.
+  const hwReady = api("GET", "hardware").catch(() => null);
   renderPools(stats.filesystems);
   const box = document.getElementById("disks");
   box.replaceChildren();
@@ -636,6 +692,17 @@ async function loadStorage() {
     if (kinds.has("system")) head.append(badge(t("disk_status.system"), "accent"));
     else if (kinds.has("registered")) head.append(badge(t("disk_status.registered"), "ok"));
     else if (kinds.has("candidate")) head.append(badge(t("disk_status.candidate"), "info"));
+    const health = el("span", "disk-health");
+    head.append(health);
+    hwReady.then((hw) => {
+      const h = hw && hw.disks.find((x) => x.path === disk);
+      if (!h) return;
+      if (h.temperature !== null && h.temperature !== undefined) {
+        health.append(el("span", `temp ${tempKind(h.temperature, h.rotational)}`, formatTemp(h.temperature)));
+      }
+      health.append(healthBadge(h));
+      if (h.power_on_hours) health.title = t("storage.power_on", { h: h.power_on_hours });
+    });
     card.append(head);
     for (const d of parts) card.append(diskRow(d, stats.filesystems));
     box.append(card);
@@ -830,6 +897,133 @@ async function loadApps() {
   renderCatalog();
 }
 
+// --- docker ---------------------------------------------------------------------
+
+let dockerTimer = null;
+let dockerContainers = [];
+let logsFor = null;
+
+const CONTAINER_KIND = { running: "ok", restarting: "warn", paused: "warn", exited: "",
+                         created: "", dead: "crit", removing: "warn" };
+
+function stopDockerStats() {
+  if (dockerTimer) clearInterval(dockerTimer);
+  dockerTimer = null;
+}
+
+async function loadDockerStats() {
+  const { stats } = await api("GET", "docker/stats");
+  for (const tr of document.querySelectorAll("#containers tr[data-name]")) {
+    const s = stats[tr.dataset.name];
+    tr.querySelector(".cpu").textContent = s ? `${s.cpu_percent.toFixed(1)} %` : "–";
+    tr.querySelector(".mem").textContent = s ? formatBytes(s.memory) : "–";
+  }
+}
+
+function renderDockerDisk(usage) {
+  const box = document.getElementById("docker-disk");
+  box.replaceChildren();
+  for (const u of usage) {
+    const card = el("article", "card stat");
+    card.append(el("small", "", tv("docker_type", u.type)), el("b", "", formatBytes(u.size)),
+                el("span", "hint", t("docker.usage_detail", {
+                  active: u.active, total: u.total, free: formatBytes(u.reclaimable || 0),
+                })));
+    box.append(card);
+  }
+}
+
+function renderContainers() {
+  const tbody = document.getElementById("containers");
+  tbody.replaceChildren();
+  for (const c of dockerContainers) {
+    const tr = el("tr");
+    tr.dataset.name = c.name;
+    const name = el("div", "cname");
+    name.append(el("span", `dot ${DOT_KIND[CONTAINER_KIND[c.state] ?? ""]}`), el("b", "", c.name));
+    if (c.app) name.append(badge(t("docker.app", { app: c.app }), "accent"));
+    cell(tr, name);
+    cell(tr, el("code", "", c.image));
+    const st = cell(tr, badge(tv("container_state", c.state), CONTAINER_KIND[c.state] ?? ""));
+    st.title = c.status;
+    cell(tr, el("small", "ports", c.ports.replaceAll(", ", "\n") || "–"));
+    cell(tr, "–").className = "cpu";
+    cell(tr, "–").className = "mem";
+    const ops = el("div", "row-ops");
+    const act = (op, iconName, key, danger) => iconButton(iconName, key, async () => {
+      if (op !== "start" && !await ask(t(`docker.confirm_${op}`, { name: c.name }), key, danger)) return;
+      await api("POST", `docker/${encodeURIComponent(c.name)}/${op}`);
+      say(t(`docker.${op}_done`, { name: c.name }), "ok");
+      await loadDocker();
+    }, danger ? "danger" : "");
+    if (c.state === "running") {
+      ops.append(act("restart", "reboot", "docker.restart"), act("stop", "stop", "docker.stop", true));
+    } else {
+      ops.append(act("start", "play", "docker.start"));
+    }
+    ops.append(iconButton("log", "docker.logs", () => openLogs(c.name)));
+    // Icons only in the table, the text goes into the tooltip.
+    for (const b of ops.children) {
+      b.title = b.textContent;
+      b.setAttribute("aria-label", b.title);
+      b.lastChild.remove();
+      b.classList.add("icon-btn");
+    }
+    cell(tr, ops);
+    tbody.append(tr);
+  }
+  if (!dockerContainers.length) {
+    const tr = el("tr");
+    cell(tr, t("docker.none")).colSpan = 7;
+    tbody.append(tr);
+  }
+}
+
+async function loadDocker() {
+  const [list, disk] = await Promise.all([api("GET", "docker"), api("GET", "docker/disk")]);
+  dockerContainers = list.containers;
+  renderDockerDisk(disk.usage);
+  renderContainers();
+  stopDockerStats();
+  await loadDockerStats().catch(() => {});
+  dockerTimer = setInterval(() => loadDockerStats().catch(stopDockerStats), 5000);
+}
+
+async function refreshLogs() {
+  const out = document.getElementById("logs-output");
+  const data = await api("GET", `docker/${encodeURIComponent(logsFor)}/logs?lines=500`);
+  out.textContent = data.lines.join("\n") || t("log.empty");
+  out.scrollTop = out.scrollHeight;
+}
+
+async function openLogs(name) {
+  logsFor = name;
+  document.getElementById("logs-title").textContent = t("docker.logs_of", { name });
+  document.getElementById("logs-output").textContent = t("common.loading");
+  document.getElementById("logs-dialog").showModal();
+  await refreshLogs();
+}
+
+// --- system log -------------------------------------------------------------------
+
+async function loadLog() {
+  const lines = document.getElementById("log-lines").value;
+  const priority = document.getElementById("log-priority").value;
+  const unit = document.getElementById("log-unit").value.trim();
+  const q = new URLSearchParams({ lines, priority, unit });
+  const out = document.getElementById("log-output");
+  out.textContent = t("common.loading");
+  const data = await api("GET", `log?${q}`);
+  out.replaceChildren();
+  for (const line of data.lines) {
+    const row = el("span", /\b(error|failed|fail|critical|panic)\b/i.test(line) ? "err"
+      : /\bwarn(ing)?\b/i.test(line) ? "warn" : "", `${line}\n`);
+    out.append(row);
+  }
+  if (!data.lines.length) out.textContent = t("log.empty");
+  out.scrollTop = out.scrollHeight;
+}
+
 // --- domains --------------------------------------------------------------------
 
 async function loadDomains() {
@@ -1017,6 +1211,31 @@ function bindButtons() {
     await loadApps();
   }));
   document.getElementById("jobs-refresh").addEventListener("click", (e) => guarded(e.currentTarget, loadJobs));
+  document.getElementById("docker-refresh").addEventListener("click", (e) => guarded(e.currentTarget, loadDocker));
+  const prune = document.getElementById("docker-prune");
+  prune.addEventListener("click", () => guarded(prune, async () => {
+    if (!await ask(t("docker.confirm_prune"), "docker.prune", true)) return;
+    const res = await api("POST", "docker/prune");
+    say(t("docker.pruned", { size: formatBytes(res.reclaimed) }), "ok");
+    await loadDocker();
+  }));
+  document.getElementById("logs-close").addEventListener("click", () => {
+    document.getElementById("logs-dialog").close();
+  });
+  const logsRefresh = document.getElementById("logs-refresh");
+  logsRefresh.addEventListener("click", () => guarded(logsRefresh, refreshLogs));
+  const lines = document.getElementById("log-lines");
+  for (const n of [100, 300, 1000, 5000]) {
+    const o = el("option", "", String(n));
+    o.value = String(n);
+    lines.append(o);
+  }
+  lines.value = "300";
+  const logRefresh = document.getElementById("log-refresh");
+  logRefresh.addEventListener("click", () => guarded(logRefresh, loadLog));
+  document.getElementById("log-unit").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") guarded(logRefresh, loadLog);
+  });
   const check = document.getElementById("updates-check");
   check.addEventListener("click", () => guarded(check, checkUpdates));
   const apply = document.getElementById("updates-apply");

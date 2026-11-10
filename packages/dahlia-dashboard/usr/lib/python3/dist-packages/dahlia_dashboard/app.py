@@ -29,6 +29,7 @@ CSRF_HEADER = "x-dahlia-request"
 JOBS = ("mover", "snapraid-sync", "snapraid-scrub", "update")
 STARTABLE_JOBS = ("mover", "snapraid-sync", "snapraid-scrub")
 APP_OPS = ("install", "update", "start", "stop", "remove")
+CONTAINER_OPS = ("start", "stop", "restart")
 
 # Agent error code -> HTTP status.
 AGENT_STATUS = {
@@ -320,6 +321,42 @@ def create_app(cfg: Config | None = None) -> FastAPI:
         if op == "remove" and body is not None:
             params["delete_data"] = body.delete_data
         return agent(f"apps.{op}", params)
+
+    # --- docker and hardware -------------------------------------------------
+
+    @app.get("/api/docker", dependencies=authed)
+    def docker_list():
+        return agent("docker.list")
+
+    @app.get("/api/docker/stats", dependencies=authed)
+    def docker_stats():
+        return agent("docker.stats")
+
+    @app.get("/api/docker/disk", dependencies=authed)
+    def docker_disk():
+        return agent("docker.disk")
+
+    @app.post("/api/docker/prune", dependencies=changing)
+    def docker_prune():
+        return agent("docker.prune")
+
+    @app.get("/api/docker/{name}/logs", dependencies=authed)
+    def docker_logs(name: str, lines: int = 200):
+        return agent("docker.logs", {"name": name, "lines": lines})
+
+    @app.post("/api/docker/{name}/{op}", dependencies=changing)
+    def docker_op(name: str, op: str):
+        if op not in CONTAINER_OPS:
+            raise ApiError(404, "error.not_found")
+        return agent("docker.container", {"name": name, "op": op})
+
+    @app.get("/api/hardware", dependencies=authed)
+    def hardware():
+        return agent("system.hardware")
+
+    @app.get("/api/log", dependencies=authed)
+    def system_log(lines: int = 300, priority: str = "info", unit: str = ""):
+        return agent("system.log", {"lines": lines, "priority": priority, "unit": unit})
 
     # --- domains --------------------------------------------------------------
 

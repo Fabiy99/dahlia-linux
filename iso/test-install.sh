@@ -285,6 +285,10 @@ echo "$stats"
 grep -q '"mountpoint":"/","source":"[^"]*","fstype":"btrfs"' <<<"$stats" \
     || dashboard_fail "system stats lack the root filesystem"
 grep -qE '"cpu":\{"model":[^}]*"cores":[1-9]' <<<"$stats" || dashboard_fail "system stats lack the CPU"
+# Hardware (lsblk and smartctl, a virtio disk has no SMART), Docker and journal.
+web "$BASE/api/hardware" | grep -q '"path":"/dev/vda"' || dashboard_fail "hardware lacks the system disk"
+web "$BASE/api/docker" | grep -q '"containers":' || dashboard_fail "docker list via dahlia-agent failed"
+web "$BASE/api/log?lines=20" | grep -q '"lines":\["' || dashboard_fail "system log via dahlia-agent failed"
 echo "OK: dashboard setup, login and agent calls work"
 
 # Local CA: the server certificate must verify against the CA the

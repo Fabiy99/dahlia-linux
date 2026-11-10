@@ -55,6 +55,7 @@ class Context:
     proc: Path = Path("/proc")
     release_file: Path = Path("/etc/dahlia/release")
     hosts_file: Path = Path("/etc/hosts")
+    sys: Path = Path("/sys")
 
 
 # --- parameter checks ---------------------------------------------------------
@@ -684,3 +685,7 @@ def agent_actions(ctx: Context):
             }
         )
     return out
+
+
+# Actions in their own modules; importing them registers them.
+from . import containers, hardware  # noqa: E402, F401
