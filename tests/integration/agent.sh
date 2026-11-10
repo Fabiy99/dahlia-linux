@@ -14,7 +14,14 @@ DROPIN=/run/systemd/system/dahlia-agent.service.d
 WORK="$(mktemp -d /var/tmp/dahlia-agent-test.XXXXXX)"
 LOOP=""
 
-fail() { echo "FAIL: $*" >&2; exit 1; }
+diag() {
+    echo "--- systemctl list-jobs"
+    systemctl list-jobs --no-pager || true
+    echo "--- processes below dahlia-agent"
+    pid="$(systemctl show -p MainPID --value dahlia-agent.service)"
+    [ "${pid:-0}" != 0 ] && ps -o pid,stat,wchan:32,args --forest -g "$(ps -o sid= -p "$pid")" || true
+}
+fail() { echo "FAIL: $*" >&2; diag >&2; exit 1; }
 step() { echo; echo "== $*"; }
 
 cleanup() {
@@ -94,7 +101,8 @@ udevadm settle
 uuid="$(blkid -s UUID -o value "$LOOP")"
 call storage.list | jq -e --arg u "$uuid" '.disks | map(.uuid) | index($u)' >/dev/null \
     || fail "loop disk not in storage.list"
-call storage.add "{\"uuid\": \"$uuid\", \"role\": \"data\"}" >/dev/null
+call storage.add "{\"uuid\": \"$uuid\", \"role\": \"data\"}" >/dev/null \
+    || fail "storage.add through the agent failed"
 findmnt -n /mnt/disk1 >/dev/null || fail "/mnt/disk1 not mounted after storage.add"
 findmnt -n /mnt/storage >/dev/null || fail "/mnt/storage not mounted after storage.add"
 expect_error failed storage.add "{\"uuid\": \"$uuid\", \"role\": \"data\"}"
