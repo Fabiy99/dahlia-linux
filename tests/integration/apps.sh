@@ -26,6 +26,15 @@ diag() {
     journalctl -u dahlia-app-whoami.service --no-pager | tail -40 || true
     echo "--- dahlia-mdns journal"
     journalctl -u dahlia-mdns.service --no-pager | tail -20 || true
+    echo "--- avahi: daemon, publish as root and as a dynamic user"
+    systemctl is-active avahi-daemon.service || true
+    timeout 3 avahi-publish -a -R diag-root.local 10.9.9.9 || true
+    timeout 10 systemd-run --wait --pipe -p DynamicUser=yes \
+        timeout 3 avahi-publish -a -R diag-dyn.local 10.9.9.8 || true
+    timeout 10 systemd-run --wait --pipe -p DynamicUser=yes -p RestrictAddressFamilies="AF_UNIX AF_NETLINK AF_INET AF_INET6" \
+        -p ProtectSystem=strict -p PrivateDevices=yes -p CapabilityBoundingSet= \
+        timeout 3 avahi-publish -a -R diag-hard.local 10.9.9.7 || true
+    journalctl -u dbus.service -u avahi-daemon.service --no-pager | tail -20 || true
     docker ps -a || true
 }
 
