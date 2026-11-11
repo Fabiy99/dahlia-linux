@@ -33,8 +33,10 @@ from .auth import AuthError, RateLimiter, Session, SessionStore, UserStore
 COOKIE = "dahlia_session"
 CSRF_HEADER = "x-dahlia-request"
 
-JOBS = ("mover", "snapraid-sync", "snapraid-scrub", "update", "backup")
-STARTABLE_JOBS = ("mover", "snapraid-sync", "snapraid-scrub", "backup")
+JOBS = ("mover", "snapraid-sync", "snapraid-scrub", "update", "backup", "smart-short",
+        "smart-long")
+STARTABLE_JOBS = ("mover", "snapraid-sync", "snapraid-scrub", "backup", "smart-short",
+                  "smart-long")
 APP_OPS = ("install", "update", "start", "stop", "remove")
 CONTAINER_OPS = ("start", "stop", "restart")
 
@@ -135,6 +137,20 @@ class DiskImportBody(BaseModel):
 class DiskFormatBody(BaseModel):
     device: str
     filesystem: str
+    confirm: str
+
+
+class SmartTestBody(BaseModel):
+    device: str
+    kind: str
+
+
+class DeviceBody(BaseModel):
+    device: str
+
+
+class BurninStartBody(BaseModel):
+    device: str
     confirm: str
 
 
@@ -435,6 +451,24 @@ def create_app(cfg: Config | None = None) -> FastAPI:
     @app.post("/api/storage/format", dependencies=changing)
     def storage_format(body: DiskFormatBody):
         return agent("storage.format", body.model_dump())
+
+    @app.post("/api/disks/smart-test", dependencies=changing)
+    def disks_smart_test(body: SmartTestBody):
+        return agent("disks.smart_test", body.model_dump())
+
+    @app.get("/api/disks/burnin", dependencies=authed)
+    def disks_burnin():
+        return agent("disks.burnin_status")
+
+    @app.post("/api/disks/burnin/start", dependencies=changing)
+    def disks_burnin_start(body: BurninStartBody):
+        return agent("disks.burnin_start", body.model_dump())
+
+    @app.post("/api/disks/burnin/{op}", dependencies=changing)
+    def disks_burnin_op(op: str, body: DeviceBody):
+        if op not in ("stop", "clear"):
+            raise ApiError(404, "error.not_found")
+        return agent(f"disks.burnin_{op}", body.model_dump())
 
     @app.post("/api/storage/remove", dependencies=changing)
     def storage_remove(body: DiskRemoveBody):

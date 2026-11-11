@@ -254,7 +254,10 @@ Protocol: one request per connection, one JSON line each way.
 | --- | --- | --- |
 | `system.info` | - | Hostname, version, kernel, uptime, load, memory |
 | `system.stats` | - | CPU counters, memory, swap, network, usage of `/` and `/mnt/*` |
-| `system.hardware` | - | mainboard (DMI), CPU temperature (hwmon), SMART per disk with `smartctl -n standby` (does not wake a sleeping disk) |
+| `system.hardware` | - | mainboard (DMI), CPU temperature (hwmon), SMART per disk with `smartctl -n standby` (does not wake a sleeping disk), running and last self-test |
+| `disks.smart_test` | `device`, `kind` (`short`/`long`/`abort`) | `smartctl -t short\|long` or `smartctl -X` |
+| `disks.burnin_start` | `device`, `confirm` (disk name) | disk test as `dahlia-burnin@<name>.service`, blank disks only |
+| `disks.burnin_status`, `disks.burnin_stop`, `disks.burnin_clear` | for `stop`/`clear`: `device` | progress and result, abort, forget the result |
 | `system.log` | `lines`, `priority`, `unit` (optional) | `journalctl -n … -p …` |
 | `system.diagnostics` | – | Diagnostics bundle to `/run/dahlia-dashboard/diagnostics.tar.gz` (0600, dashboard user) |
 | `settings.time` / `settings.set_time` | `timezone`, `ntp` | `timedatectl set-timezone`, `set-ntp` |
@@ -360,7 +363,7 @@ and tablets.
 | Page | Content |
 | --- | --- |
 | Overview | system (version, kernel, CPU, address, reboot, power off), CPU and RAM usage with history, network (throughput per interface), usage of the system SSD, the pools and every disk under `/mnt`, disks with temperature and SMART state, apps with state, jobs with last result |
-| Disks | usage of `/mnt/user`, `/mnt/storage` and `/mnt/cache`; one card per physical disk with model, serial number, temperature, SMART state and its filesystems (status, usage, add in a role, remove) |
+| Disks | usage of `/mnt/user`, `/mnt/storage` and `/mnt/cache`; one card per physical disk with model, serial number, temperature, SMART state, last self-test (start a short/long test), disk test for blank disks and its filesystems (status, usage, add in a role, remove) |
 | Apps | installed apps as cards (state, addresses, updates, start/stop), catalog with search and categories, custom containers |
 | Docker | all containers (also foreign ones) with state, ports, CPU/RAM, start/stop/restart, logs; disk usage and cleanup |
 | Domains | domain, mDNS aliases, DNS records, CA download |
@@ -368,13 +371,27 @@ and tablets.
 | System log | journal filtered by level and service |
 | Updates | check, install |
 | Shares | SMB shares on `/mnt/user`, SMB users |
-| Settings | time and time zone, network (DHCP/static), disk spindown, mover and SnapRAID schedules, notifications, UPS, remote access (WireGuard, Tailscale), dashboard password, server name |
+| Settings | time and time zone, network (DHCP/static), disk spindown, schedules for mover, SnapRAID, backup and SMART self-tests, notifications, UPS, remote access (WireGuard, Tailscale), dashboard password, server name |
+
+SMART self-tests and disk test (M23):
+
+- Self-tests run inside the disk; it stays usable meanwhile. `dahlia-smart-short.timer`
+  (weekly, Saturday 05:00) and `dahlia-smart-long.timer` (off by default, a long test of a
+  large HDD takes a day) start `dahlia-smart-test@short|long.service`, which starts the test on
+  every disk. Times under Settings → Schedules. A short test wakes sleeping disks.
+- Result from the self-test log (ATA and NVMe): running with percent left, last test with
+  kind, result and power-on hours. A failed test is sent as a critical notification.
+- Disk test before use: only for disks without partition and filesystem (status `empty`),
+  `confirm` repeats the name. `/usr/lib/dahlia/disk-burnin.sh` reads SMART, writes four
+  patterns over the whole disk with `badblocks -w` and reads them back, reads SMART again.
+  Passed means: no bad blocks, no SMART counter grew. Files under `/var/lib/dahlia/burnin`.
+  While it runs the disk cannot be formatted.
 
 Notifications and UPS (M9d):
 
 - Channels: email (SMTP with STARTTLS or TLS), ntfy, Gotify. Credentials live in
   `/etc/dahlia/notify.json` (root, 0600); the dashboard only sees whether one is set.
-- `dahlia-notify.timer` checks SMART, disk temperature (from 55 °C HDD, 70 °C SSD) and
+- `dahlia-notify.timer` checks SMART (also a failed self-test), disk temperature (from 55 °C HDD, 70 °C SSD) and
   usage (from 90 %, critical from 97 %) every 10 minutes. Only changes are sent, a fixed
   problem as "Resolved". State in `/var/lib/dahlia/notify-state.json`.
 - Mover, SnapRAID sync/scrub and update have `OnFailure=dahlia-notify-failure@%n`;

@@ -196,6 +196,8 @@ SCHEDULE_TIMERS = {
     "snapraid-sync": "dahlia-snapraid-sync.timer",
     "snapraid-scrub": "dahlia-snapraid-scrub.timer",
     "backup": "dahlia-backup.timer",
+    "smart-short": "dahlia-smart-short.timer",
+    "smart-long": "dahlia-smart-long.timer",
 }
 FREQUENCIES = ("off", "hourly", "daily", "weekly", "monthly")
 WEEKDAYS = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
@@ -206,6 +208,9 @@ DEFAULT_SCHEDULES = {
     "snapraid-sync": {"frequency": "daily", "time": "04:30", "weekday": "sun", "monthday": 1},
     "snapraid-scrub": {"frequency": "weekly", "time": "06:00", "weekday": "sun", "monthday": 1},
     "backup": {"frequency": "daily", "time": "02:00", "weekday": "sun", "monthday": 1},
+    "smart-short": {"frequency": "weekly", "time": "05:00", "weekday": "sat", "monthday": 1},
+    # Off by default: a long test of a large HDD takes a day and keeps it spinning.
+    "smart-long": {"frequency": "off", "time": "05:00", "weekday": "sat", "monthday": 15},
 }
 
 

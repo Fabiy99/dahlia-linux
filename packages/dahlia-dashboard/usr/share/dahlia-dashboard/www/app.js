@@ -737,6 +737,96 @@ function diskRow(d, mounts) {
   return row;
 }
 
+// SMART self-test of one disk: last result and buttons to start or abort.
+function smartTestRow(disk, h) {
+  const row = el("div", "disk-tests");
+  const st = h.self_test || {};
+  let text = t("smart.test_none");
+  if (st.running) {
+    text = st.remaining !== null && st.remaining !== undefined
+      ? t("smart.test_running", { n: st.remaining }) : t("smart.test_running_unknown");
+  } else if (st.last) {
+    text = t("smart.test_last", { kind: tv("smart_kind", st.last.kind), h: st.last.hours ?? "?" });
+  }
+  const label = el("span", "", text);
+  row.append(label);
+  if (!st.running && st.last) {
+    row.append(badge(tv("smart_result", st.last.result),
+                     { passed: "ok", failed: "crit", aborted: "warn" }[st.last.result] || ""));
+  }
+  const ops = el("div", "row-ops");
+  const run = (kind) => async () => {
+    await api("POST", "disks/smart-test", { device: disk, kind });
+    say(t(kind === "abort" ? "smart.test_aborted" : "smart.test_started",
+          { path: disk, kind: tv("smart_kind", kind) }), "ok");
+    await loadStorage();
+  };
+  if (st.running) ops.append(button("smart.test_abort", run("abort")));
+  else ops.append(button("smart.test_short", run("short")), button("smart.test_long", run("long")));
+  row.append(ops);
+  return row;
+}
+
+let burninTimer = null;
+
+function burninRow(disk, test) {
+  const row = el("div", "disk-tests");
+  const kind = { running: "info", passed: "ok", failed: "crit", stopped: "warn" }[test.result] || "";
+  row.append(badge(tv("burnin_result", test.result), kind));
+  const parts = [];
+  if (test.result === "running") parts.push(t("burnin.progress", { pass: test.pass, percent: test.percent.toFixed(1) }));
+  if (test.result !== "running" || test.bad_blocks) parts.push(t("burnin.bad_blocks", { n: test.bad_blocks }));
+  const grown = Object.entries(test.smart_new || {}).map(([k, v]) => `${tv("smart", k)}: ${v}`);
+  if (grown.length) parts.push(t("burnin.smart_new", { list: grown.join(", ") }));
+  row.append(el("span", "", parts.join(" · ")));
+  const ops = el("div", "row-ops");
+  if (test.result === "running") {
+    ops.append(button("burnin.stop", async () => {
+      if (!await ask(t("burnin.stop_confirm", { path: disk }), "burnin.stop", true)) return;
+      await api("POST", "disks/burnin/stop", { device: disk });
+      await loadStorage();
+    }, "danger"));
+    // Long-running: refresh the storage page while it is open.
+    clearTimeout(burninTimer);
+    burninTimer = setTimeout(() => { if (current === "storage") loadStorage().catch(sayError); }, 30000);
+  } else {
+    ops.append(button("burnin.clear", async () => {
+      await api("POST", "disks/burnin/clear", { device: disk });
+      await loadStorage();
+    }));
+  }
+  row.append(ops);
+  return row;
+}
+
+function openBurninDialog(d) {
+  const form = document.getElementById("burnin-form");
+  const name = d.disk.replace("/dev/", "");
+  form.reset();
+  form.dataset.device = d.disk;
+  document.getElementById("burnin-title").textContent = t("burnin.title", { path: d.disk });
+  document.getElementById("burnin-warning").textContent = t("burnin.warning",
+    { path: d.disk, model: d.model || "-", size: formatBytes(d.size) });
+  document.getElementById("burnin-confirm-label").textContent = t("storage.format_confirm", { name });
+  form.elements.confirm.pattern = name;
+  document.getElementById("burnin-dialog").showModal();
+}
+
+function bindBurnin() {
+  const form = document.getElementById("burnin-form");
+  form.addEventListener("submit", (e) => {
+    if (e.submitter?.value === "cancel") return;
+    e.preventDefault();
+    const device = form.dataset.device;
+    guarded(e.submitter, async () => {
+      await api("POST", "disks/burnin/start", { device, confirm: form.elements.confirm.value.trim() });
+      document.getElementById("burnin-dialog").close();
+      say(t("burnin.started", { path: device }), "ok");
+      await loadStorage();
+    });
+  });
+}
+
 function openFormatDialog(d) {
   const form = document.getElementById("format-form");
   const name = d.disk.replace("/dev/", "");
@@ -893,6 +983,7 @@ async function loadStorage() {
   const [data, stats] = await Promise.all([api("GET", "storage"), api("GET", "stats")]);
   // SMART is slow on many disks; the cards fill in their health when it arrives.
   const hwReady = api("GET", "hardware").catch(() => null);
+  const burnin = await api("GET", "disks/burnin").catch(() => ({ tests: [] }));
   renderPools(stats.filesystems);
   const box = document.getElementById("disks");
   box.replaceChildren();
@@ -926,8 +1017,19 @@ async function loadStorage() {
       }
       health.append(healthBadge(h));
       if (h.power_on_hours) health.title = t("storage.power_on", { h: h.power_on_hours });
+      if (!["unavailable", "unknown"].includes(h.health)) head.after(smartTestRow(disk, h));
     });
     card.append(head);
+    const test = burnin.tests.find((x) => x.device === disk);
+    const blank = !first.removable && parts.every((p) => p.kind === "disk" && p.status === "empty");
+    if (test) card.append(burninRow(disk, test));
+    else if (blank && !disk.startsWith("/dev/loop")) {
+      const row = el("div", "disk-tests");
+      const ops = el("div", "row-ops");
+      ops.append(button("burnin.start", () => openBurninDialog(first), "danger"));
+      row.append(el("span", "hint", t("burnin.offer")), ops);
+      card.append(row);
+    }
     for (const d of parts) card.append(diskRow(d, stats.filesystems));
     box.append(card);
   }
@@ -1866,7 +1968,7 @@ function bindParity() {
 
 // --- jobs -----------------------------------------------------------------------
 
-const STARTABLE = ["mover", "snapraid-sync", "snapraid-scrub", "backup"];
+const STARTABLE = ["mover", "snapraid-sync", "snapraid-scrub", "backup", "smart-short", "smart-long"];
 
 async function loadJobs() {
   const jobs = await api("GET", "jobs");
@@ -2548,7 +2650,7 @@ async function loadAccount() {
 
 // --- settings: time, network, spindown, schedules ---------------------------------
 
-const SCHEDULE_JOBS = ["mover", "snapraid-sync", "snapraid-scrub", "backup"];
+const SCHEDULE_JOBS = ["mover", "snapraid-sync", "snapraid-scrub", "backup", "smart-short", "smart-long"];
 const FREQUENCIES = ["off", "hourly", "daily", "weekly", "monthly"];
 const WEEKDAYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
 let netTimer = null;
@@ -3252,6 +3354,7 @@ async function start() {
   bindButtons();
   bindShares();
   bindFormat();
+  bindBurnin();
   bindImport();
   bindFolderPicker();
   bindNotifyUps();

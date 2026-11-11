@@ -205,6 +205,9 @@ img.avatar { object-fit: contain; padding: .2rem; background: #fff; border: 1px 
 .part { display: grid; grid-template-columns: minmax(16rem, 1.3fr) minmax(10rem, 1fr) auto; gap: .5rem 1.2rem;
         align-items: center; padding: .7rem 1.1rem; border-bottom: 1px solid var(--line); }
 .part:last-child { border-bottom: 0; }
+.disk-tests { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem .8rem; padding: .55rem 1.1rem;
+              border-bottom: 1px solid var(--line); font-size: .86rem; }
+.disk-tests .row-ops { margin-left: auto; }
 .part-main { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem .9rem; font-size: .9rem; }
 .part-main .path { font-weight: 600; font-family: ui-monospace, monospace; font-size: .86rem; }
 .part-main .fs, .part-main .size { color: var(--muted); }

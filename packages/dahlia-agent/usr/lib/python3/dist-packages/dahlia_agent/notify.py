@@ -167,6 +167,12 @@ def current_problems(ctx: Context) -> dict[str, tuple[str, str, str, str]]:
             problems[f"smart:{d['path']}"] = (
                 "smart", level, f"SMART {s['health']}: {name}",
                 f"SMART reports {s['health']} for {name}. {detail}".strip())
+        last = (s.get("self_test") or {}).get("last") or {}
+        if last.get("result") == "failed":
+            problems[f"selftest:{d['path']}"] = (
+                "smart", "critical", f"SMART self-test failed: {name}",
+                f"The last {last.get('kind', '')} self-test of {name} failed "
+                f"at {last.get('hours')} power-on hours.")
         temp = s.get("temperature")
         limit = TEMP_LIMIT["hdd" if d["rotational"] else "ssd"]
         if temp is not None and temp >= limit:
@@ -224,6 +230,8 @@ JOB_NAMES = {
     "dahlia-rollback.service": "Rollback",
     "dahlia-update.service": "System update",
     "dahlia-tailscale-install.service": "Tailscale install",
+    "dahlia-smart-test@short.service": "SMART short self-test",
+    "dahlia-smart-test@long.service": "SMART long self-test",
 }
 
 

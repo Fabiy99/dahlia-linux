@@ -218,7 +218,8 @@ def test_actions_go_to_agent(env):
 def test_job_list_and_unknown_job(env):
     client, agent, _ = logged_in(env)
     jobs = client.get("/api/jobs").json()
-    assert set(jobs) == {"mover", "snapraid-sync", "snapraid-scrub", "update", "backup"}
+    assert set(jobs) == {"mover", "snapraid-sync", "snapraid-scrub", "update", "backup",
+                         "smart-short", "smart-long"}
     r = client.post("/api/jobs/update/start", headers=CSRF)
     assert r.status_code == 404
 
@@ -741,3 +742,27 @@ def test_vpn_endpoints(env):
         ("vpn.tailscale_logout", {}),
     ]
     assert client.post("/api/vpn/tailscale/install").status_code == 403
+
+
+def test_disk_tests_routes(env):
+    client, agent, _ = logged_in(env)
+    agent.calls.clear()
+    assert client.post("/api/disks/smart-test", json={"device": "/dev/sda", "kind": "long"},
+                       headers=CSRF).status_code == 200
+    client.get("/api/disks/burnin")
+    client.post("/api/disks/burnin/start", json={"device": "/dev/sdb", "confirm": "sdb"},
+                headers=CSRF)
+    client.post("/api/disks/burnin/stop", json={"device": "/dev/sdb"}, headers=CSRF)
+    client.post("/api/disks/burnin/clear", json={"device": "/dev/sdb"}, headers=CSRF)
+    assert client.post("/api/disks/burnin/format", json={"device": "/dev/sdb"},
+                       headers=CSRF).status_code == 404
+    assert client.post("/api/disks/smart-test", json={"device": "/dev/sda", "kind": "long"}
+                       ).status_code == 403
+    assert agent.calls == [
+        ("disks.smart_test", {"device": "/dev/sda", "kind": "long"}),
+        ("disks.burnin_status", {}),
+        ("disks.burnin_start", {"device": "/dev/sdb", "confirm": "sdb"}),
+        ("disks.burnin_stop", {"device": "/dev/sdb"}),
+        ("disks.burnin_clear", {"device": "/dev/sdb"}),
+    ]
+    assert client.post("/api/jobs/smart-short/start", headers=CSRF).status_code == 200
