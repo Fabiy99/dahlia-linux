@@ -442,3 +442,7 @@ code.pubkey { display: block; font-size: .78rem; overflow-wrap: anywhere; backgr
 .update-list li::before { content: "○"; display: inline-block; width: 1.2rem; color: var(--muted); }
 .update-list li.downloaded::before, .update-list li.unpacked::before { content: "◐"; color: var(--info); }
 .update-list li.done::before { content: "✓"; color: var(--ok); }
+
+/* Automatic updates */
+#auto-last { margin-top: 1rem; }
+#auto-notice .actions { margin-top: .5rem; }

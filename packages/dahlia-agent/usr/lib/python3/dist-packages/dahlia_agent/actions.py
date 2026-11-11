@@ -67,6 +67,7 @@ class Context:
     var: Path = Path("/var/lib/dahlia")
     log_dir: Path = Path("/var/log")
     dashboard_run: Path = Path("/run/dahlia-dashboard")
+    reboot_flag: Path = Path("/run/reboot-required")
     hostname: Callable[[], str] = socket.gethostname
     clock: Callable[[], float] = time.time
     # Notification senders by channel; tests replace them, None = the real ones.
@@ -1045,5 +1046,6 @@ from . import (  # noqa: E402, F401
     notify,
     settings,
     smb,
+    unattended,
     ups,
 )

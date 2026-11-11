@@ -550,6 +550,17 @@ def test_diagnostics_needs_login(env):
     assert client.post("/api/diagnostics", headers=CSRF).status_code == 401
 
 
+def test_auto_updates_endpoints(env):
+    client, agent, _ = logged_in(env)
+    agent.calls.clear()
+    assert client.get("/api/updates/auto").json() == {"action": "updates.auto"}
+    body = {"enabled": True, "reboot": True, "reboot_time": "03:30"}
+    assert client.post("/api/updates/auto", json=body, headers=CSRF).status_code == 200
+    assert client.post("/api/updates/auto", json=body).status_code == 403
+    assert client.post("/api/updates/auto", json={"enabled": True}, headers=CSRF).status_code == 422
+    assert agent.calls == [("updates.auto", {}), ("updates.set_auto", body)]
+
+
 def test_parity_endpoints(env):
     client, agent, _ = logged_in(env)
     agent.calls.clear()
