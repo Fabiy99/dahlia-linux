@@ -113,6 +113,7 @@ Nach 1.0 (1.x):
 33. Mehrere und nur-lesende Dashboard-Konten
 34. Dateimanager
 35. Verschlüsselung (LUKS)
+36. Eigener Name für das Admin-Konto: der Installer fragt ihn ab (statt fest `dahlia-admin`), das Dashboard-Konto und das Terminal nutzen denselben Namen
 
 Später: USB-Creator für Windows, Installationsanleitung.
 
@@ -235,6 +236,7 @@ After 1.0 (1.x):
 33. Multiple and read-only dashboard accounts
 34. File manager
 35. Encryption (LUKS)
+36. Own name for the admin account: the installer asks for it (instead of a fixed `dahlia-admin`), the dashboard account and the terminal use the same name
 
 Later: USB creator for Windows, installation guide.
 
