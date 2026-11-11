@@ -1,3 +1,4 @@
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -701,7 +702,67 @@ def test_refresh_from_bundle_skips_newer_schema(env, tmp_path):
     assert [a["id"] for a in listed["apps"]] == ["notes", "whoami"]
     assert listed["skipped"] == ["future"]
     assert sorted(f.name for f in env.paths.catalog.iterdir()) == [
-        "meta.json", "notes.yaml", "whoami.yaml"]
+        "icons", "meta.json", "notes.yaml", "whoami.yaml"]
+
+
+SVG = b'<svg xmlns="http://www.w3.org/2000/svg"><circle r="1"/></svg>'
+PNG = b"\x89PNG\r\n\x1a\n" + b"\0" * 20
+
+
+def icon_catalog(src, icons):
+    """catalog.json with whoami and notes plus the given icon files (name -> bytes)."""
+    (src / "icons").mkdir(parents=True, exist_ok=True)
+    listed = {}
+    for name, data in icons.items():
+        (src / "icons" / name).write_bytes(data)
+        listed[name.split(".")[0]] = {"file": f"icons/{name}",
+                                      "sha256": hashlib.sha256(data).hexdigest()}
+    (src / "catalog.json").write_text(json.dumps(
+        {"format": 1, "apps": {"notes": STACK, "whoami": WHOAMI}, "icons": listed}))
+
+
+def test_refresh_catalog_icons(env, tmp_path):
+    src = tmp_path / "src"
+    icon_catalog(src, {"whoami.svg": SVG, "notes.png": PNG})
+    env.paths.config.write_text(json.dumps({"catalog": f"file://{src}/"}))
+    listed = {a["id"]: a for a in env.catalog(refresh=True)["apps"]}
+    sha = hashlib.sha256(SVG).hexdigest()
+    assert listed["whoami"]["icon"] == f"whoami.svg?v={sha[:12]}"
+    assert listed["notes"]["icon"].startswith("notes.png?v=")
+    assert (env.paths.catalog / "icons/whoami.svg").read_bytes() == SVG
+
+    # Unchanged icons come from the cache, not from the source.
+    fetched = []
+
+    def icon_fetcher(url, limit):
+        fetched.append(url)
+        return apps.fetch_bytes(url, limit)
+
+    icon_catalog(src, {"whoami.svg": SVG, "notes.png": PNG + b"x"})
+    apps.refresh_catalog(env.paths, icon_fetcher=icon_fetcher)
+    assert fetched == [f"file://{src}/icons/notes.png"]
+
+
+def test_refresh_catalog_drops_bad_icons(env, tmp_path):
+    src = tmp_path / "src"
+    icon_catalog(src, {"whoami.svg": SVG, "notes.png": b"<svg/>"})
+    data = json.loads((src / "catalog.json").read_text())
+    data["icons"]["whoami"]["sha256"] = "0" * 64  # does not match the file
+    data["icons"]["future"] = {"file": "icons/future.svg", "sha256": "0" * 64}
+    data["icons"]["evil"] = {"file": "../../etc/passwd", "sha256": "0" * 64}
+    (src / "catalog.json").write_text(json.dumps(data))
+    env.paths.config.write_text(json.dumps({"catalog": f"file://{src}/"}))
+    listed = env.catalog(refresh=True)["apps"]
+    assert all(a["icon"] is None for a in listed)
+    assert list((env.paths.catalog / "icons").iterdir()) == []
+
+
+def test_refresh_catalog_without_icons_key(env, tmp_path):
+    src = tmp_path / "src"
+    src.mkdir()
+    (src / "catalog.json").write_text(json.dumps({"format": 1, "apps": {"whoami": WHOAMI}}))
+    env.paths.config.write_text(json.dumps({"catalog": f"file://{src}/"}))
+    assert env.catalog(refresh=True)["apps"][0]["icon"] is None
 
 
 @pytest.mark.parametrize(
