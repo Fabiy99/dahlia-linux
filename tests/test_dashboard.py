@@ -561,6 +561,26 @@ def test_auto_updates_endpoints(env):
     assert agent.calls == [("updates.auto", {}), ("updates.set_auto", body)]
 
 
+def test_snapshot_endpoints(env):
+    client, agent, _ = logged_in(env)
+    agent.calls.clear()
+    assert client.get("/api/snapshots").json() == {"action": "snapshots.list"}
+    client.post("/api/snapshots", json={"description": "manual"}, headers=CSRF)
+    client.post("/api/snapshots/5/delete", headers=CSRF)
+    client.post("/api/snapshots/4/rollback", headers=CSRF)
+    name = "@rootfs.pre-rollback-20261111-211354"
+    client.post("/api/snapshots/old-root/delete", json={"name": name}, headers=CSRF)
+    assert agent.calls == [
+        ("snapshots.list", {}),
+        ("snapshots.create", {"description": "manual"}),
+        ("snapshots.delete", {"number": 5}),
+        ("snapshots.rollback", {"number": 4}),
+        ("snapshots.delete_old_root", {"name": name}),
+    ]
+    assert client.post("/api/snapshots/4/rollback").status_code == 403
+    assert client.post("/api/snapshots/x/rollback", headers=CSRF).status_code == 422
+
+
 def test_parity_endpoints(env):
     client, agent, _ = logged_in(env)
     agent.calls.clear()

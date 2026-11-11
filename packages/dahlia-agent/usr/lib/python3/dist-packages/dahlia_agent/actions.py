@@ -1046,6 +1046,7 @@ from . import (  # noqa: E402, F401
     notify,
     settings,
     smb,
+    snapshots,
     unattended,
     ups,
 )
