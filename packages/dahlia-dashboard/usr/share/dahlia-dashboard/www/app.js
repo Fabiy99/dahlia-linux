@@ -2674,6 +2674,25 @@ function bindButtons() {
     lines.append(o);
   }
   lines.value = "300";
+  const diag = document.getElementById("diag-create");
+  diag.addEventListener("click", () => guarded(diag, async () => {
+    const status = document.getElementById("diag-status");
+    status.textContent = t("diag.working");
+    try {
+      const res = await api("POST", "diagnostics");
+      status.textContent = t("diag.ready", { size: formatBytes(res.size) });
+    } catch (err) {
+      status.textContent = "";
+      throw err;
+    }
+    // A plain link: the browser downloads with the session cookie, no blob URL needed.
+    const a = el("a");
+    a.href = "/api/diagnostics";
+    a.download = "";
+    document.body.append(a);
+    a.click();
+    a.remove();
+  }));
   const logRefresh = document.getElementById("log-refresh");
   logRefresh.addEventListener("click", () => guarded(logRefresh, loadLog));
   document.getElementById("log-unit").addEventListener("keydown", (e) => {

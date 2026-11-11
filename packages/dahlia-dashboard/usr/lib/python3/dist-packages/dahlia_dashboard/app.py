@@ -11,7 +11,9 @@ from the agent or the system, shown as additional information.
 import asyncio
 import contextlib
 import json
+import re
 import threading
+import time
 import urllib.parse
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -20,8 +22,9 @@ from typing import Annotated
 
 from fastapi import Depends, FastAPI, Request, Response, WebSocket, WebSocketDisconnect
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
+from starlette.background import BackgroundTask
 from starlette.exceptions import HTTPException
 
 from . import setupcode
@@ -528,6 +531,21 @@ def create_app(cfg: Config | None = None) -> FastAPI:
     @app.get("/api/hardware", dependencies=authed)
     def hardware():
         return agent("system.hardware")
+
+    @app.post("/api/diagnostics", dependencies=changing)
+    def diagnostics_create():
+        return agent("system.diagnostics")
+
+    @app.get("/api/diagnostics", dependencies=authed)
+    def diagnostics_download():
+        # The agent puts the bundle into our runtime directory; it is handed out once.
+        path = cfg.run_dir / "diagnostics.tar.gz"
+        if not path.is_file():
+            raise ApiError(404, "error.not_found")
+        host = re.sub(r"[^a-z0-9-]", "", agent("system.info").get("hostname", "").lower())
+        name = f"dahlia-diagnostics-{host or 'server'}-{time.strftime('%Y%m%d-%H%M')}.tar.gz"
+        return FileResponse(path, media_type="application/gzip", filename=name,
+                            background=BackgroundTask(path.unlink, missing_ok=True))
 
     @app.get("/api/log", dependencies=authed)
     def system_log(lines: int = 300, priority: str = "info", unit: str = ""):

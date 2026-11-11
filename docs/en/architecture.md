@@ -213,6 +213,7 @@ Protocol: one request per connection, one JSON line each way.
 | `system.stats` | - | CPU counters, memory, swap, network, usage of `/` and `/mnt/*` |
 | `system.hardware` | - | mainboard (DMI), CPU temperature (hwmon), SMART per disk with `smartctl -n standby` (does not wake a sleeping disk) |
 | `system.log` | `lines`, `priority`, `unit` (optional) | `journalctl -n … -p …` |
+| `system.diagnostics` | – | Diagnostics bundle to `/run/dahlia-dashboard/diagnostics.tar.gz` (0600, dashboard user) |
 | `settings.time` / `settings.set_time` | `timezone`, `ntp` | `timedatectl set-timezone`, `set-ntp` |
 | `settings.network` / `settings.set_network` | `mode` (`dhcp`/`static`), `address` (CIDR), `gateway`, `dns` | `/etc/network/interfaces`, applied by `dahlia-network` with rollback |
 | `settings.confirm_network` | – | confirms the new network settings |
@@ -518,6 +519,18 @@ dahlia-domains show
 dahlia-domains set --domain lab.home.arpa --mdns off
 dahlia-domains apply              # check certificate and proxy, renew only when needed
 ```
+
+## Diagnostics bundle (from milestone 16)
+
+For bug reports: System log > "Download diagnostics bundle". The agent collects versions
+(`dpkg-query`, `uname`, `/etc/os-release`), services and timers, the journal of the current
+boot (warnings, `dahlia*`, kernel) and errors of the previous one, disks (`lsblk`,
+`findmnt`, `df`, `dahlia-disk list`, parity status, `/etc/snapraid.conf`), network (`ip`,
+`nft list ruleset`, `ss -tulpn`), Docker (`ps`, `info`, `system df`), the tails of the apt
+and unattended-upgrades logs and each app's `state.json` and `app.yaml`. Left out: the
+apps' `compose.json` and `secrets.json`, `/etc/dahlia/backup.pass`, SSH and TLS keys; in
+JSON settings, keys such as `password`, `token` or `key` are replaced by `***`. The archive
+is placed in the dashboard's runtime directory and deleted after the first download.
 
 ## Updates
 

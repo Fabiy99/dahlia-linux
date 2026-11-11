@@ -66,6 +66,7 @@ class Context:
     system: Path = Path("/srv")
     var: Path = Path("/var/lib/dahlia")
     log_dir: Path = Path("/var/log")
+    dashboard_run: Path = Path("/run/dahlia-dashboard")
     reboot_flag: Path = Path("/run/reboot-required")
     hostname: Callable[[], str] = socket.gethostname
     clock: Callable[[], float] = time.time
@@ -1039,6 +1040,7 @@ def agent_actions(ctx: Context):
 from . import (  # noqa: E402, F401
     backup,
     containers,
+    diagnostics,
     hardware,
     network,
     notify,

@@ -529,6 +529,27 @@ def test_nginx_ui_is_revalidated_and_keeps_security_headers():
         assert header in root
 
 
+def test_diagnostics_download_once(env):
+    client, agent, cfg = logged_in(env)
+    assert client.post("/api/diagnostics", headers=CSRF).json() == {"action": "system.diagnostics"}
+    assert client.post("/api/diagnostics").status_code == 403
+    assert client.get("/api/diagnostics").status_code == 404
+    (cfg.run_dir / "diagnostics.tar.gz").write_bytes(b"\x1f\x8bbundle")
+    r = client.get("/api/diagnostics")
+    assert r.status_code == 200 and r.content == b"\x1f\x8bbundle"
+    assert r.headers["content-type"] == "application/gzip"
+    assert 'filename="dahlia-diagnostics-dahlia-' in r.headers["content-disposition"]
+    assert not (cfg.run_dir / "diagnostics.tar.gz").exists()
+    assert client.get("/api/diagnostics").status_code == 404
+
+
+def test_diagnostics_needs_login(env):
+    client, agent, cfg, _ = env
+    (cfg.run_dir / "diagnostics.tar.gz").write_bytes(b"x")
+    assert client.get("/api/diagnostics").status_code == 401
+    assert client.post("/api/diagnostics", headers=CSRF).status_code == 401
+
+
 def test_auto_updates_endpoints(env):
     client, agent, _ = logged_in(env)
     agent.calls.clear()
