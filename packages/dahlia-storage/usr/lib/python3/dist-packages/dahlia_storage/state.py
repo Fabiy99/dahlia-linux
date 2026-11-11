@@ -155,3 +155,19 @@ def locked(path: str = LOCK_PATH):
 def array_locked():
     """Exclusive lock for long array jobs (mover, SnapRAID sync and scrub)."""
     return locked(ARRAY_LOCK_PATH)
+
+
+@contextmanager
+def array_lock_if_free():
+    """Take the array lock without waiting; yields False if a job holds it."""
+    os.makedirs(os.path.dirname(ARRAY_LOCK_PATH), exist_ok=True)
+    with open(ARRAY_LOCK_PATH, "w") as f:
+        try:
+            fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            yield False
+            return
+        try:
+            yield True
+        finally:
+            fcntl.flock(f, fcntl.LOCK_UN)

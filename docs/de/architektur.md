@@ -127,6 +127,9 @@ Der Cache ist ein Dateisystem (Btrfs, bei zwei SSDs vorher als RAID1 angelegt:
 dahlia-mover [--dry-run] [--min-age MIN]       # Cache -> /mnt/storage, Pfad bleibt gleich
 dahlia-snapraid sync [--force]                 # diff, Lösch-Schwelle prüfen, sync
 dahlia-snapraid scrub                          # Teil des Arrays gegen die Parity prüfen
+dahlia-snapraid fix --disk N                   # Dateien von /mnt/diskN aus der Parity zurückholen, prüfen
+dahlia-snapraid fix --bad                      # vom Scrub gefundene defekte Blöcke reparieren
+dahlia-snapraid status [--json]                # Abdeckung, Scrub-Stand, Fehler, letzte Läufe
 dahlia-disk set-option snapraid_delete_threshold 50
 ```
 
@@ -134,6 +137,20 @@ Der Mover lässt offene, kürzlich geänderte und schon auf den Datenplatten vor
 Dateien sowie Hardlinks auf dem Cache. Er kopiert erst, prüft, benennt um und löscht dann.
 Timer: Mover 03:00, SnapRAID-Sync 04:30, Scrub sonntags 06:00 (8 %, Blöcke älter als
 10 Tage). Mover und SnapRAID teilen sich `/run/dahlia/array.lock`.
+
+Parity im Dashboard (ab Meilenstein 14): Seite "Parity" mit Zustand, Platten, Sync und Scrub
+von Hand, Einstellungen (Lösch-Schwelle, Scrub-Anteil und -Alter) und den Reparaturen.
+Ergebnis und Zähler der letzten Läufe stehen in `/var/lib/dahlia/snapraid.json`;
+`snapraid status` läuft nur, wenn sich die Content-Datei geändert hat. Hat ein Sync wegen
+der Lösch-Schwelle angehalten, kann er nach Rückfrage mit `--force` laufen. Findet ein Scrub
+defekte Blöcke, endet er mit Fehler (Benachrichtigung) und `fix --bad` repariert sie.
+
+Ausgefallene Datenplatte ersetzen: die alte Platte unter Platten entfernen, die neue
+formatieren und als Datenplatte hinzufügen. Sie bekommt die kleinste freie Nummer, also die
+der alten. Danach `fix --disk N`: `snapraid -d dN fix` (Protokoll in
+`/var/log/dahlia/snapraid-fix.log`) und `snapraid -d dN -a check`. Wiederhergestellt wird
+der Stand des letzten Syncs. Bis dahin verweigert SnapRAID den Sync, weil dN fehlt bzw. leer
+ist. Erzwungener Sync und Reparaturen laufen als Unit `dahlia-parity.service`.
 
 ## Rechte und Sicherheit
 
@@ -228,6 +245,9 @@ Protokoll: eine Anfrage pro Verbindung, je eine JSON-Zeile hin und zurück.
 | `storage.import` / `storage.import_status` | `uuid`, `target` (Name unter `/mnt/user`) | `dahlia-disk import` als Unit `dahlia-import`, Fortschritt in `/run/dahlia/import.json` |
 | `job.start` | `job` (mover, snapraid-sync, snapraid-scrub, backup) | startet die Unit, kehrt sofort zurück |
 | `job.status` | `job` (dazu `update`) | Zustand und letztes Ergebnis |
+| `parity.get` | – | `dahlia-snapraid status --json` und Zustand von Sync, Scrub, Mover und Reparatur |
+| `parity.sync` | `force` (optional) | Sync starten; mit `force` ohne Lösch-Schwelle als `dahlia-parity.service` |
+| `parity.fix` | `what` (`bad` oder `diskN`) | `dahlia-snapraid fix --bad` bzw. `--disk N` als `dahlia-parity.service` |
 | `updates.check` | - | `apt-get update`, Liste der Upgrades |
 | `updates.apply` | - | `apt-get full-upgrade` über die Unit `dahlia-update.service`; die geplanten Pakete (Simulation) in `/run/dahlia/update.json` |
 | `updates.progress` | - | Zustand, Prozent, je Paket wartet/geladen/eingerichtet/fertig aus der apt-Ausgabe im Journal dieses Laufs; das Dashboard zeigt es auf der Update-Seite |

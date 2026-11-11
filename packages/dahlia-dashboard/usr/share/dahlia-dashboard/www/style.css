@@ -412,6 +412,12 @@ form.inline-form { max-width: none; grid-template-columns: repeat(auto-fit, minm
   table.shares .row-ops { justify-content: flex-start; margin-top: .3rem; }
 }
 
+/* Parity */
+ol.steps { margin: 0 0 1rem; padding-left: 1.3rem; display: grid; gap: .35rem; color: var(--muted); font-size: .92rem; }
+#parity-disks small.muted { color: var(--muted); font-size: .82rem; }
+#parity-notice .actions { margin: .5rem 0 .8rem; }
+#parity-notice p + p { margin-top: .5rem; }
+
 /* backup */
 code.pubkey { display: block; font-size: .78rem; overflow-wrap: anywhere; background: var(--card-2);
               border: 1px solid var(--line); border-radius: 6px; padding: .5rem; user-select: all; }
