@@ -1589,7 +1589,7 @@ async function loadAccount() {
   setSidebar(info);
   document.querySelector("#hostname-form [name=hostname]").value = info.hostname;
   // Each card loads on its own; one failing part does not hide the others.
-  await Promise.all([loadTime(), loadNetwork(), loadSpindown(), loadSchedules(),
+  await Promise.all([loadTime(), loadNetwork(), loadSpindown(), loadFirewall(), loadSchedules(),
                loadNotify(), loadUps()]
     .map((p) => p.catch(sayError)));
 }
@@ -1683,6 +1683,24 @@ async function loadSpindown() {
     label.append(sel);
     box.append(label);
   }
+}
+
+async function loadFirewall() {
+  const data = await api("GET", "settings/firewall");
+  const f = document.getElementById("firewall-form");
+  f.elements.enabled.checked = data.enabled;
+  f.dataset.enabled = String(data.enabled);
+  f.elements.networks.value = data.networks.join(", ");
+  document.getElementById("firewall-local").textContent = t("settings.firewall_local", {
+    networks: [...data.local, ...data.subnets].join(", "),
+  });
+  const ports = data.ports.map((p) => {
+    const name = p.service.startsWith("app:") ? p.service.slice(4) : t(`firewall.${p.service}`);
+    return `${p.port}/${p.protocol} ${name}`;
+  });
+  document.getElementById("firewall-ports").textContent = data.enabled
+    ? t("settings.firewall_ports", { ports: ports.join(", ") })
+    : t("settings.firewall_off");
 }
 
 function scheduleRow(job, s) {
@@ -1989,6 +2007,19 @@ function bindForms() {
         say(t("settings.spindown_saved"), "ok");
       }
       await loadSpindown();
+    });
+  });
+
+  document.getElementById("firewall-form").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const f = e.target.elements;
+    const networks = f.networks.value.split(/[\s,]+/).filter(Boolean);
+    guarded(e.submitter, async () => {
+      const turningOff = !f.enabled.checked && e.target.dataset.enabled === "true";
+      if (turningOff && !await ask(t("settings.firewall_disable_confirm"), "settings.firewall_disable", true)) return;
+      await api("POST", "settings/firewall", { enabled: f.enabled.checked, networks });
+      say(t("settings.firewall_saved"), "ok");
+      await loadFirewall();
     });
   });
 
