@@ -276,6 +276,7 @@ Protocol: one request per connection, one JSON line each way.
 | `apps.catalog` | `refresh` (optional) | App catalog and its age, `refresh` downloads it first |
 | `apps.list` | - | installed apps with container state, version, available update |
 | `apps.install`, `apps.update` | `id`, for `install` `location` (optional, `/mnt/user` or `/srv`) and `folders` (optional, share -> folder below `/mnt/user` or `/srv`) | in the background as unit `dahlia-app-<id>`; folders are kept on updates |
+| `apps.custom_install`, `apps.custom_update` | `id`, `spec` (form, see Apps), for `install` `location` | custom container; the agent writes `spec` to `/run/dahlia/apps-custom/<id>.json`, `dahlia-apps` checks every field |
 | `apps.job` | `id` | state of the last install or update |
 | `apps.start`, `apps.stop` | `id` | start or stop, also for the next boot |
 | `apps.remove` | `id`, `delete_data` (optional) | remove the container, data only on request |
@@ -330,7 +331,7 @@ and tablets.
 | --- | --- |
 | Overview | system (version, kernel, CPU, address, reboot, power off), CPU and RAM usage with history, network (throughput per interface), usage of the system SSD, the pools and every disk under `/mnt`, disks with temperature and SMART state, apps with state, jobs with last result |
 | Disks | usage of `/mnt/user`, `/mnt/storage` and `/mnt/cache`; one card per physical disk with model, serial number, temperature, SMART state and its filesystems (status, usage, add in a role, remove) |
-| Apps | installed apps as cards (state, addresses, updates, start/stop), catalog with search and categories |
+| Apps | installed apps as cards (state, addresses, updates, start/stop), catalog with search and categories, custom containers |
 | Docker | all containers (also foreign ones) with state, ports, CPU/RAM, start/stop/restart, logs; disk usage and cleanup |
 | Addresses | mDNS aliases on/off, CA download and certificates |
 | Jobs | start mover, SnapRAID sync and scrub, state |
@@ -454,7 +455,21 @@ dahlia-apps updates                # apps with a newer template in the catalog
 dahlia-apps update jellyfin
 dahlia-apps remove jellyfin [--delete-data]
 dahlia-apps check app.yaml        # validate a template
+dahlia-apps install kuma --spec kuma.json [--location /srv]   # custom container
+dahlia-apps update kuma [--spec kuma.json]
 ```
+
+Custom containers (from milestone 19): for an image that is not in the catalog, Apps has
+"Custom container". The form asks for ID, name, image with a fixed version, optionally web
+port and network port, more LAN ports, folders (app data below `<location>/appdata/<id>/` or
+a folder from the folder dialog), environment variables with the placeholders above and GPU.
+`dahlia-apps` builds a template with only the service `app` from it and checks it like any
+catalog template, so there is no `privileged`, no host network and no free devices here
+either. Folders become the shares `folder1`, `folder2` and so on. The form is kept in
+`/var/lib/dahlia/apps/<id>/custom.json` (0600), `state.json` has `"custom": true`. Custom
+containers never take a template from the catalog, even if an app with the same ID shows up
+there later; an ID from the catalog is refused at install. "Edit" changes the form and
+reinstalls (data and secrets stay), "Update" pulls the image again.
 
 ## Backup (from milestone 13)
 

@@ -580,6 +580,8 @@ def test_action_list_is_fixed():
     assert sorted(actions.ACTIONS) == [
         "agent.actions",
         "apps.catalog",
+        "apps.custom_install",
+        "apps.custom_update",
         "apps.install",
         "apps.job",
         "apps.list",
@@ -785,6 +787,25 @@ def test_apps_install_with_folders(ctx):
         reply = run(ctx, "apps.install", {"id": "jellyfin", "folders": bad})
         assert err_code(reply) == protocol.INVALID_PARAMS, bad
         assert ctx.runner.calls == []
+
+
+def test_apps_custom_install_and_update(ctx):
+    spec = {"name": "Uptime Kuma", "image": "louislam/uptime-kuma:1.23.16"}
+    assert run(ctx, "apps.custom_install", {"id": "kuma", "spec": spec, "location": "/srv"})["ok"]
+    f = ctx.run_dir / "apps-custom" / "kuma.json"
+    assert json.loads(f.read_text()) == spec and f.stat().st_mode & 0o777 == 0o600
+    extra = ["--spec", str(f), "--location", "/srv"]
+    assert ["dahlia-apps", "precheck", "install", "kuma", *extra] in ctx.runner.calls
+    assert ctx.runner.calls[-1][-7:] == ["/usr/sbin/dahlia-apps", "install", "kuma", *extra]
+    assert run(ctx, "apps.custom_update", {"id": "kuma", "spec": spec})["ok"]
+    assert ctx.runner.calls[-1][-4:] == ["update", "kuma", "--spec", str(f)]
+    for params in ({"id": "Kuma!", "spec": spec}, {"id": "kuma", "spec": "x"},
+                   {"id": "kuma", "spec": {"name": "x" * 70000}},
+                   {"id": "kuma", "spec": spec, "location": "/etc"}):
+        ctx.runner.calls.clear()
+        reply = run(ctx, "apps.custom_install", params)
+        assert err_code(reply) == protocol.INVALID_PARAMS, params
+        assert not any(c[0] == "systemd-run" for c in ctx.runner.calls)
 
 
 def test_files_browse_and_mkdir(ctx, tmp_path, monkeypatch):

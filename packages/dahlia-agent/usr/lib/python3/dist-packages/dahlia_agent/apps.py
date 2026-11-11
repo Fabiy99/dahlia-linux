@@ -63,6 +63,11 @@ Updates: the catalog is downloaded again by dahlia-apps-catalog.timer.
 An installed app has an update when its template differs from the
 catalog's; tags are pinned, so a new version is a new template.
 
+Custom containers: an image the user fills in on a form (custom_template)
+becomes a template with only the main service and is checked the same way.
+state.json marks it "custom"; it never takes a template from the catalog,
+an update pulls its images again or applies the changed form.
+
 Layout:
     /etc/dahlia/apps.json                    catalog URL
     /var/lib/dahlia/apps-catalog/            last downloaded catalog, meta.json
@@ -71,6 +76,7 @@ Layout:
     /var/lib/dahlia/apps/<id>/compose.json   generated, used by docker compose
     /var/lib/dahlia/apps/<id>/state.json     host port, enabled flag, location, folders
     /var/lib/dahlia/apps/<id>/secrets.json   generated secrets (0600)
+    /var/lib/dahlia/apps/<id>/custom.json    form of a custom container (0600)
 """
 
 import argparse
@@ -499,6 +505,81 @@ def parse_template(text: str, expected_id: str | None = None) -> Template:
     return t
 
 
+# --- custom containers --------------------------------------------------------
+
+CUSTOM_FIELDS = {"name", "image", "web_port", "public_port", "lan_ports", "volumes",
+                 "environment", "gpu"}
+MAX_CUSTOM_ITEMS = 32
+
+
+def custom_template(app_id: str, spec: dict) -> tuple[str, dict[str, str]]:
+    """Template text and folders for a container the user filled in.
+
+    spec (the form in the apps view):
+        {"name": "Uptime Kuma", "image": "louislam/uptime-kuma:1.23.16",
+         "web_port": 3001, "public_port": 8030,           # optional, both or neither
+         "lan_ports": [{"container": 53, "host": 53, "protocol": "udp"}],
+         "volumes": [{"container": "/app/data", "appdata": "data"},
+                     {"container": "/media", "folder": "/mnt/user/Filme", "readonly": true}],
+         "environment": {"TZ": "{TZ}"}, "gpu": false}
+
+    A folder becomes share folderN, pointed at the folder. The result is
+    checked by parse_template like any catalog template, so a custom
+    container gets no more than a template could ask for.
+    """
+    spec = _fields(spec, CUSTOM_FIELDS, {"name", "image"}, "custom")
+    svc: dict = {"image": spec["image"]}
+    lan = spec.get("lan_ports") or []
+    vols = spec.get("volumes") or []
+    env = spec.get("environment") or {}
+    if not isinstance(lan, list) or not isinstance(vols, list) or not isinstance(env, dict):
+        raise AppError("custom: lan_ports and volumes must be lists, environment a mapping")
+    if max(len(lan), len(vols), len(env)) > MAX_CUSTOM_ITEMS:
+        raise AppError(f"custom: at most {MAX_CUSTOM_ITEMS} ports, volumes and variables")
+    if lan:
+        svc["lan_ports"] = lan
+    folders: dict[str, str] = {}
+    volumes = []
+    for i, v in enumerate(vols):
+        w = f"custom.volumes[{i}]"
+        _fields(v, {"container", "appdata", "folder", "readonly"}, {"container"}, w)
+        if ("appdata" in v) == ("folder" in v):
+            raise AppError(f"{w} needs exactly one of appdata or folder")
+        vol = {k: v[k] for k in ("container", "appdata", "readonly") if k in v}
+        if "folder" in v:
+            if not isinstance(v["folder"], str):
+                raise AppError(f"{w}.folder must be a path")
+            share = f"folder{len(folders) + 1}"
+            folders[share] = v["folder"]
+            vol["share"] = share
+        volumes.append(vol)
+    if volumes:
+        svc["volumes"] = volumes
+    if env:
+        svc["environment"] = env
+    gpu = spec.get("gpu", False)
+    if not isinstance(gpu, bool):
+        raise AppError("custom.gpu must be true or false")
+    if gpu:
+        svc["gpu"] = True
+    data: dict = {
+        "schema": GPU_SCHEMA if gpu else 2,
+        "id": app_id,
+        "name": spec["name"],
+        "category": "other",
+        "description": {"de": str(spec["image"])[:500], "en": str(spec["image"])[:500]},
+        "services": {MAIN: svc},
+    }
+    web, public = spec.get("web_port"), spec.get("public_port")
+    if (web is None) != (public is None):
+        raise AppError("custom: web_port and public_port go together")
+    if web is not None:
+        data["web"] = {"port": web, "public_port": public}
+    text = yaml.safe_dump(data, sort_keys=False, allow_unicode=True)
+    parse_template(text, app_id)
+    return text, folders
+
+
 # --- system facts -------------------------------------------------------------
 
 
@@ -718,7 +799,7 @@ def write_file(path: Path, text: str, mode: int = 0o644) -> None:
     tmp.replace(path)
 
 
-APP_FILES = ("compose.json", "app.yaml", "state.json", "secrets.json")
+APP_FILES = ("compose.json", "app.yaml", "state.json", "secrets.json", "custom.json")
 
 
 def installed(paths: Paths) -> list[str]:
@@ -1140,13 +1221,19 @@ class Apps:
         }
 
     def _install_template(self, app_id: str, folders: dict[str, str] | None = None,
-                          location: str | None = None) -> tuple[Template, str, str, dict]:
+                          location: str | None = None,
+                          spec: dict | None = None) -> tuple[Template, str, str, dict]:
         if (self.paths.app_dir(app_id) / "state.json").exists():
             raise AppError(f"{app_id} is already installed")
         src = self.paths.catalog / f"{app_id}.yaml"
-        if not src.is_file():
+        if spec is not None:
+            if src.is_file():
+                raise AppError(f"{app_id} is a catalog app, choose another id")
+            text, folders = custom_template(app_id, spec)
+        elif not src.is_file():
             raise AppError(f"{app_id} is not in the catalog")
-        text = src.read_text()
+        else:
+            text = src.read_text()
         t = parse_template(text, app_id)
         self._check_public_ports(t)
         location = location or self.default_location()
@@ -1155,23 +1242,23 @@ class Apps:
         return t, text, location, folders
 
     def precheck(self, op: str, app_id: str, folders: dict[str, str] | None = None,
-                 location: str | None = None) -> dict:
+                 location: str | None = None, spec: dict | None = None) -> dict:
         """Checks an install or update job would fail on, so the caller gets
         the reason right away instead of a failed background job."""
         if op == "install":
-            self._install_template(app_id, folders, location)
+            self._install_template(app_id, folders, location, spec)
         elif op == "update":
-            t, state = load_installed(self.paths, app_id)
-            loc, kept = self._placement(t, state)
+            _, t, loc, kept = self._update_template(app_id, spec)
             self._require(locations_used(t, kept, loc, self.paths))
         else:
             raise AppError(f"no precheck for {op}")
         return {"id": app_id, "ok": True}
 
     def install(self, app_id: str, folders: dict[str, str] | None = None,
-                location: str | None = None) -> dict:
-        """Install from the cached catalog and start the app with all its services."""
-        t, text, location, folders = self._install_template(app_id, folders, location)
+                location: str | None = None, spec: dict | None = None) -> dict:
+        """Install from the cached catalog, or a custom container from spec,
+        and start the app with all its services."""
+        t, text, location, folders = self._install_template(app_id, folders, location, spec)
         d = self.paths.app_dir(app_id)
         taken_host, _ = used_ports(self.paths)
         host_port = pick_host_port(taken_host, self.port_check) if t.web_port else None
@@ -1180,6 +1267,9 @@ class Apps:
         state = {"host_port": host_port, "enabled": True, "location": location}
         if folders:
             state["folders"] = folders
+        if spec is not None:
+            state["custom"] = True
+            write_file(d / "custom.json", json.dumps(spec), mode=0o600)
         write_file(d / "state.json", json.dumps(state))
         try:
             self.docker.compose(d, "up", "-d", "--pull", "missing", "--remove-orphans")
@@ -1194,14 +1284,42 @@ class Apps:
         self._apply_proxies()
         return {"id": app_id, **state}
 
-    def update(self, app_id: str) -> dict:
-        """Take the catalog's current template and pull the images."""
+    def _update_template(self, app_id: str,
+                         spec: dict | None) -> tuple[str, Template, str, dict[str, str]]:
+        """Template text, template, location and folders an update installs.
+
+        Catalog apps take the catalog's template. A custom container keeps
+        its own unless a changed spec is given; its folders then come from
+        the spec.
+        """
         t_old, state = load_installed(self.paths, app_id)
+        d = self.paths.app_dir(app_id)
+        if state.get("custom"):
+            if spec is None:
+                text = (d / "app.yaml").read_text()
+                t = parse_template(text, app_id)
+                location, folders = self._placement(t, state)
+                return text, t, location, folders
+            text, wanted = custom_template(app_id, spec)
+            t = parse_template(text, app_id)
+            location = self._placement(t_old, state)[0]
+            return text, t, location, check_folders(t, wanted, self.paths, location)
+        if spec is not None:
+            raise AppError(f"{app_id} is a catalog app, it cannot be edited")
         src = self.paths.catalog / f"{app_id}.yaml"
         if not src.is_file():
-            src = self.paths.app_dir(app_id) / "app.yaml"
+            src = d / "app.yaml"
         text = src.read_text()
         t = parse_template(text, app_id)
+        # Folders of shares the new template no longer has are dropped.
+        location, folders = self._placement(t, state)
+        return text, t, location, folders
+
+    def update(self, app_id: str, spec: dict | None = None) -> dict:
+        """Take the catalog's current template (or the changed custom
+        container) and pull the images."""
+        t_old, state = load_installed(self.paths, app_id)
+        text, t, location, folders = self._update_template(app_id, spec)
         if t.public_port != t_old.public_port or [vars(p) for p in t.lan_ports] != [
             vars(p) for p in t_old.lan_ports
         ]:
@@ -1209,14 +1327,20 @@ class Apps:
         host_port = state.get("host_port")
         if t.web_port and not host_port:
             host_port = pick_host_port(used_ports(self.paths, skip=app_id)[0], self.port_check)
-        # Folders of shares the new template no longer has are dropped.
-        location, folders = self._placement(t, state)
+        if not t.web_port:
+            host_port = None
         self._require(locations_used(t, folders, location, self.paths))
         self._prepare_dirs(t, folders, location)
         d = self.paths.app_dir(app_id)
         self._write_app(t, text, host_port, new_secrets(t, self._secrets(app_id)), folders,
                         location)
         state = {**state, "host_port": host_port}
+        if state.get("custom"):
+            state.pop("folders", None)
+            if folders:
+                state["folders"] = folders
+            if spec is not None:
+                write_file(d / "custom.json", json.dumps(spec), mode=0o600)
         write_file(d / "state.json", json.dumps(state))
         self.docker.compose(d, "pull")
         if state.get("enabled", True):
@@ -1280,14 +1404,17 @@ class Apps:
                 sec = self._secrets(app_id)
                 with contextlib.suppress(AppError):
                     login = {k: fill(v, self._host(), sec) for k, v in t.login.items()}
+            custom = bool(state.get("custom"))
             out.append({
                 **t.summary(),
+                "custom": read_json(self.paths.app_dir(app_id) / "custom.json")
+                if custom else None,
                 "enabled": state.get("enabled", True),
                 "location": self._placement(t, state)[0],
                 "status": self.status(t),
                 "urls": domains.app_urls(app_id, t.public_port, settings, host)
                 if t.public_port else None,
-                "update": update_info(t, cached_template(self.paths, app_id)),
+                "update": None if custom else update_info(t, cached_template(self.paths, app_id)),
                 "login": login or None,
                 "icon": icons.get(app_id),
             })
@@ -1297,7 +1424,9 @@ class Apps:
         """Installed apps whose catalog template is newer."""
         out = []
         for app_id in installed(self.paths):
-            t, _ = load_installed(self.paths, app_id)
+            t, state = load_installed(self.paths, app_id)
+            if state.get("custom"):
+                continue
             info = update_info(t, cached_template(self.paths, app_id))
             if info:
                 out.append({"id": app_id, "name": t.name, "from": t.version, **info})
@@ -1345,6 +1474,18 @@ def parse_folders(items: list[str]) -> dict[str, str]:
     return out
 
 
+def read_spec(path: str | None) -> dict | None:
+    if path is None:
+        return None
+    try:
+        data = json.loads(Path(path).read_text()[:MAX_FILE])
+    except (OSError, ValueError) as e:
+        raise AppError(f"cannot read {path}: {e}") from None
+    if not isinstance(data, dict):
+        raise AppError(f"{path} must hold a JSON object")
+    return data
+
+
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="dahlia-apps", description="Manage Dahlia apps.")
     sub = p.add_subparsers(dest="command", required=True)
@@ -1354,19 +1495,25 @@ def main(argv: list[str] | None = None) -> int:
                    help="print one summary line instead of the catalog (timer)")
     sub.add_parser("list", help="installed apps")
     sub.add_parser("updates", help="installed apps with a newer template in the catalog")
-    for name in ("update", "start", "stop"):
+    for name in ("start", "stop"):
         sub.add_parser(name).add_argument("id")
     folder_help = "use PATH (below /mnt/user or /srv) for SHARE instead of <location>/SHARE"
     location_help = "/mnt/user or /srv for app data; default /mnt/user if mounted"
+    spec_help = "custom container: JSON file with the form fields (see custom_template)"
+    s = sub.add_parser("update")
+    s.add_argument("id")
+    s.add_argument("--spec", help=spec_help)
     s = sub.add_parser("install")
     s.add_argument("id")
     s.add_argument("--folder", action="append", default=[], metavar="SHARE=PATH", help=folder_help)
     s.add_argument("--location", help=location_help)
+    s.add_argument("--spec", help=spec_help)
     s = sub.add_parser("precheck", help="fail early if install/update cannot work")
     s.add_argument("op", choices=("install", "update"))
     s.add_argument("id")
     s.add_argument("--folder", action="append", default=[], metavar="SHARE=PATH", help=folder_help)
     s.add_argument("--location", help=location_help)
+    s.add_argument("--spec", help=spec_help)
     s = sub.add_parser("remove")
     s.add_argument("id")
     s.add_argument("--delete-data", action="store_true",
@@ -1392,9 +1539,13 @@ def main(argv: list[str] | None = None) -> int:
         elif args.command == "updates":
             result = apps.updates()
         elif args.command == "precheck":
-            result = apps.precheck(args.op, args.id, parse_folders(args.folder), args.location)
+            result = apps.precheck(args.op, args.id, parse_folders(args.folder), args.location,
+                                   read_spec(args.spec))
         elif args.command == "install":
-            result = apps.install(args.id, parse_folders(args.folder), args.location)
+            result = apps.install(args.id, parse_folders(args.folder), args.location,
+                                  read_spec(args.spec))
+        elif args.command == "update":
+            result = apps.update(args.id, read_spec(args.spec))
         elif args.command == "remove":
             result = apps.remove(args.id, delete_data=args.delete_data)
         elif args.command == "start-enabled":
