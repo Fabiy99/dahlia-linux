@@ -113,6 +113,19 @@ def test_shares_and_apps_open_ports(fw):
     assert ports[(8099, "tcp")] == "app:whoami" and ports[(7359, "udp")] == "app:whoami"
 
 
+def test_nfs_port_only_for_exported_shares(fw):
+    (fw.etc / "dahlia").mkdir(parents=True)
+    path = fw.etc / "dahlia/shares.json"
+    path.write_text(json.dumps({"shares": [{"name": "media", "security": "public"}]}))
+    assert 2049 not in {p.port for p in firewall.open_ports(fw.etc, fw.apps_dir)}
+    path.write_text(json.dumps({"shares": [
+        {"name": "media", "security": "private", "nfs": True}]}))
+    assert 2049 not in {p.port for p in firewall.open_ports(fw.etc, fw.apps_dir)}
+    path.write_text(json.dumps({"shares": [{"name": "media", "security": "secure", "nfs": True}]}))
+    ports = {(p.port, p.protocol): p.service for p in firewall.open_ports(fw.etc, fw.apps_dir)}
+    assert ports[(2049, "tcp")] == "nfs" and (2049, "udp") not in ports
+
+
 def test_empty_share_list_keeps_smb_closed(fw):
     (fw.etc / "dahlia").mkdir(parents=True)
     (fw.etc / "dahlia/shares.json").write_text(json.dumps({"shares": []}))

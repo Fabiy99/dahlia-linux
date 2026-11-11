@@ -2371,6 +2371,10 @@ function shareAddress(name) {
   return `\\\\${hostName}.local\\${name}`;
 }
 
+function nfsAddress(name) {
+  return `${hostName}.local:/mnt/user/${name}`;
+}
+
 async function loadShares() {
   const [data, info] = await Promise.all([api("GET", "shares"), api("GET", "system")]);
   sharesData = data;
@@ -2384,13 +2388,17 @@ async function loadShares() {
     const name = el("div", "cname");
     name.append(el("b", "", s.name));
     if (s.time_machine) name.append(badge(t("shares.time_machine_badge"), "accent"));
+    if (s.nfs) name.append(badge(t("shares.nfs_badge"), "accent"));
     if (!s.exists) name.append(badge(t("shares.missing"), "warn"));
     if (s.comment) name.append(el("small", "muted", s.comment));
     cell(tr, name);
     cell(tr, badge(t(`security.${s.security}`), SECURITY_KIND[s.security]));
     const users = Object.entries(s.users).map(([u, a]) => `${u} (${t(`access.${a}`)})`);
     cell(tr, users.join(", ") || "–").dataset.label = t("shares.users");
-    cell(tr, el("code", "", shareAddress(s.name))).dataset.label = t("shares.address");
+    const addr = el("div", "cname");
+    addr.append(el("code", "", shareAddress(s.name)));
+    if (s.nfs) addr.append(el("code", "", nfsAddress(s.name)));
+    cell(tr, addr).dataset.label = t("shares.address");
     const ops = el("div", "row-ops");
     ops.append(button("shares.edit", () => openShareDialog(s)),
                button("shares.remove", async () => {
@@ -2436,6 +2444,12 @@ function renderSecurityHint() {
   document.getElementById("share-security-hint").textContent = t(`security.${sec}_hint`);
   // Public shares give everyone write access; per-user rights do not apply.
   document.getElementById("share-users").hidden = sec === "public";
+  // NFS has no login: only public (read-write) and secure (read-only) shares.
+  document.getElementById("share-nfs").hidden = sec === "private";
+  const nfsHint = document.getElementById("share-nfs-hint");
+  nfsHint.hidden = sec === "private" || !f.elements.nfs.checked;
+  nfsHint.textContent = t(`shares.nfs_hint_${sec === "public" ? "rw" : "ro"}`);
+  document.getElementById("share-tm-size").hidden = !f.elements.time_machine.checked;
 }
 
 function openShareDialog(share) {
@@ -2449,6 +2463,8 @@ function openShareDialog(share) {
   f.elements.comment.value = share?.comment ?? "";
   f.elements.security.value = share?.security ?? "private";
   f.elements.time_machine.checked = share?.time_machine ?? false;
+  f.elements.time_machine_size.value = share?.time_machine_size || "";
+  f.elements.nfs.checked = share?.nfs ?? false;
   const box = document.getElementById("share-users");
   box.replaceChildren();
   if (!sharesData.users.length) box.append(el("p", "hint", t("shares.no_users")));
@@ -2477,7 +2493,9 @@ function openPasswordDialog(user) {
 function bindShares() {
   document.getElementById("share-new").addEventListener("click", () => openShareDialog(null));
   const form = document.getElementById("share-form");
-  form.elements.security.addEventListener("change", renderSecurityHint);
+  for (const name of ["security", "nfs", "time_machine"]) {
+    form.elements[name].addEventListener("change", renderSecurityHint);
+  }
   form.addEventListener("submit", (e) => {
     if (e.submitter?.value === "cancel") return;
     e.preventDefault();
@@ -2491,6 +2509,8 @@ function bindShares() {
       await api("POST", `shares/${encodeURIComponent(name)}`, {
         comment: f.comment.value.trim(), security: f.security.value,
         users: f.security.value === "public" ? {} : users, time_machine: f.time_machine.checked,
+        time_machine_size: f.time_machine.checked ? Number(f.time_machine_size.value) || 0 : 0,
+        nfs: f.security.value !== "private" && f.nfs.checked,
       });
       document.getElementById("share-dialog").close();
       say(t("shares.saved", { name }), "ok");
