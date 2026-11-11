@@ -300,7 +300,7 @@ const loaders = {
   shares: loadShares,
   log: loadLog,
   jobs: loadJobs,
-  updates: () => {},
+  updates: loadAutoUpdates,
   account: loadAccount,
 };
 
@@ -1392,6 +1392,81 @@ async function loadJobs() {
   }
 }
 
+// --- automatic security updates -------------------------------------------------
+
+async function loadAutoUpdates() {
+  const d = await api("GET", "updates/auto");
+  const f = document.getElementById("auto-form");
+  if (!f.elements.reboot_time.options.length) {
+    const times = [];
+    for (let h = 0; h < 24; h++) for (const m of ["00", "30"]) times.push(`${String(h).padStart(2, "0")}:${m}`);
+    fillOptions(f.elements.reboot_time, times, (v) => v);
+  }
+  f.elements.enabled.checked = d.enabled;
+  f.elements.reboot.checked = d.reboot;
+  if (![...f.elements.reboot_time.options].some((o) => o.value === d.reboot_time)) {
+    const o = el("option", "", d.reboot_time);
+    o.value = d.reboot_time;
+    f.elements.reboot_time.append(o);
+  }
+  f.elements.reboot_time.value = d.reboot_time;
+  f.elements.reboot.disabled = !d.enabled;
+  f.elements.reboot_time.disabled = !d.enabled || !d.reboot;
+
+  const notice = document.getElementById("auto-notice");
+  notice.replaceChildren();
+  if (d.reboot_required) {
+    const text = d.reboot_required.length
+      ? t("auto.reboot_needed_pkgs", { list: d.reboot_required.join(", ") })
+      : t("auto.reboot_needed");
+    const row = el("div", "actions");
+    row.append(button("overview.reboot", async () => {
+      if (!await ask(t("overview.confirm_reboot"), "overview.reboot", true)) return;
+      await api("POST", "system/reboot");
+      say(t("overview.reboot_started"), "ok");
+    }));
+    notice.append(el("p", "", text), row);
+  }
+  notice.hidden = !notice.childElementCount;
+
+  const dl = document.getElementById("auto-last");
+  dl.replaceChildren();
+  const last = d.last;
+  if (!last) {
+    fact(dl, "auto.last", t("auto.never"));
+    return;
+  }
+  const when = new Date(last.time.replace(" ", "T")).toLocaleString(lang);
+  const kind = { installed: "ok", failed: "crit", running: "info" }[last.result] || "";
+  const res = el("span");
+  res.append(badge(tv("auto.result", last.result), kind), document.createTextNode(` ${when}`));
+  fact(dl, "auto.last", res);
+  if (last.packages.length) fact(dl, "auto.packages", last.packages.join(", "));
+  if (last.errors.length) fact(dl, "auto.errors", last.errors.join(" "));
+}
+
+function bindAutoUpdates() {
+  const f = document.getElementById("auto-form");
+  const sync = () => {
+    f.elements.reboot.disabled = !f.elements.enabled.checked;
+    f.elements.reboot_time.disabled = !f.elements.enabled.checked || !f.elements.reboot.checked;
+  };
+  f.elements.enabled.addEventListener("change", sync);
+  f.elements.reboot.addEventListener("change", sync);
+  f.addEventListener("submit", (e) => {
+    e.preventDefault();
+    guarded(f.querySelector("button"), async () => {
+      await api("POST", "updates/auto", {
+        enabled: f.elements.enabled.checked,
+        reboot: f.elements.reboot.checked,
+        reboot_time: f.elements.reboot_time.value,
+      });
+      say(t("auto.saved"), "ok");
+      await loadAutoUpdates();
+    });
+  });
+}
+
 // --- updates --------------------------------------------------------------------
 
 async function checkUpdates() {
@@ -2082,6 +2157,7 @@ async function start() {
   bindImport();
   bindFolderPicker();
   bindNotifyUps();
+  bindAutoUpdates();
   try {
     const state = await api("GET", "state");
     if (state.setup_required) show("setup");

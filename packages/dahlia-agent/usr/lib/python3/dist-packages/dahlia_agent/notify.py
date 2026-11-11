@@ -21,7 +21,7 @@ from .protocol import FAILED, INVALID_PARAMS, AgentError
 from .settings import read_json, write_file
 
 CHANNELS = ("email", "ntfy", "gotify")
-EVENTS = ("smart", "temperature", "usage", "jobs", "ups")
+EVENTS = ("smart", "temperature", "usage", "jobs", "ups", "updates")
 LEVELS = ("info", "warning", "critical")
 HISTORY_MAX = 100
 # Disk temperature (°C) that counts as a problem; SSDs run warmer.
@@ -182,6 +182,15 @@ def current_problems(ctx: Context) -> dict[str, tuple[str, str, str, str]]:
                 "usage", "critical" if pct >= 97 else "warning",
                 f"{fs['mountpoint']} {pct} % full",
                 f"{fs['mountpoint']} is {pct} % full ({fs['free'] // 1024**3} GiB free).")
+    from . import unattended
+
+    pkgs = unattended.reboot_required(ctx)
+    # With the automatic reboot on, unattended-upgrades restarts the server itself.
+    if pkgs is not None and not (unattended.enabled(ctx) and unattended.load(ctx)["reboot"]):
+        which = f" ({', '.join(pkgs)})" if pkgs else ""
+        problems["reboot:required"] = (
+            "updates", "info", "Restart needed",
+            f"Installed updates{which} take effect after a restart of the server.")
     return problems
 
 
@@ -195,6 +204,8 @@ def check(ctx: Context) -> list[str]:
             send(ctx, level, title, message, event)
             sent.append(key)
     for key in old:
+        if key == "reboot:required":
+            continue  # the restart itself is the resolution, nothing to report
         if key not in now:
             event = {"smart": "smart", "temp": "temperature", "usage": "usage"}.get(
                 key.split(":", 1)[0], "smart")

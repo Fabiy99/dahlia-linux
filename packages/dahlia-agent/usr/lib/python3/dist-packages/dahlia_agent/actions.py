@@ -65,6 +65,8 @@ class Context:
     pool: Path = Path("/mnt/user")
     system: Path = Path("/srv")
     var: Path = Path("/var/lib/dahlia")
+    log_dir: Path = Path("/var/log")
+    reboot_flag: Path = Path("/run/reboot-required")
     hostname: Callable[[], str] = socket.gethostname
     clock: Callable[[], float] = time.time
     # Notification senders by channel; tests replace them, None = the real ones.
@@ -883,4 +885,13 @@ def agent_actions(ctx: Context):
 
 
 # Actions in their own modules; importing them registers them.
-from . import containers, hardware, network, notify, settings, smb, ups  # noqa: E402, F401
+from . import (  # noqa: E402, F401
+    containers,
+    hardware,
+    network,
+    notify,
+    settings,
+    smb,
+    unattended,
+    ups,
+)

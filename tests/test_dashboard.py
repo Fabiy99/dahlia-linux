@@ -520,3 +520,14 @@ def test_nginx_ui_is_revalidated_and_keeps_security_headers():
     for header in ("Content-Security-Policy", "X-Content-Type-Options", "Referrer-Policy",
                    "Strict-Transport-Security"):
         assert header in root
+
+
+def test_auto_updates_endpoints(env):
+    client, agent, _ = logged_in(env)
+    agent.calls.clear()
+    assert client.get("/api/updates/auto").json() == {"action": "updates.auto"}
+    body = {"enabled": True, "reboot": True, "reboot_time": "03:30"}
+    assert client.post("/api/updates/auto", json=body, headers=CSRF).status_code == 200
+    assert client.post("/api/updates/auto", json=body).status_code == 403
+    assert client.post("/api/updates/auto", json={"enabled": True}, headers=CSRF).status_code == 422
+    assert agent.calls == [("updates.auto", {}), ("updates.set_auto", body)]

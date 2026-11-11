@@ -324,6 +324,19 @@
             <tbody id="updates"></tbody>
           </table>
         </article>
+        <article class="card">
+          <h2 data-i18n="auto.title"></h2>
+          <div id="auto-notice" class="notice" hidden></div>
+          <form id="auto-form">
+            <label class="check"><input name="enabled" type="checkbox"><span data-i18n="auto.enabled"></span></label>
+            <p class="hint" data-i18n="auto.hint"></p>
+            <label class="check"><input name="reboot" type="checkbox"><span data-i18n="auto.reboot"></span></label>
+            <label><span data-i18n="auto.reboot_time"></span><select name="reboot_time"></select></label>
+            <p class="hint" data-i18n="auto.reboot_hint"></p>
+            <div class="actions"><button type="submit" data-i18n="common.save"></button></div>
+          </form>
+          <dl id="auto-last" class="facts"></dl>
+        </article>
       </section>
 
       <section id="view-account" hidden>

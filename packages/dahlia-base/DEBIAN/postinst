@@ -38,10 +38,23 @@ setup_snapper() {
         TIMELINE_CREATE=no
 }
 
+setup_auto_upgrades() {
+    # Security updates on by default. The file is Debian's standard switch;
+    # the dashboard (updates.set_auto) rewrites it. An existing one is kept.
+    local f=/etc/apt/apt.conf.d/20auto-upgrades
+    [ -e "$f" ] && return 0
+    cat > "$f" <<'EOF'
+// Written by Dahlia (dashboard: Updates). Package lists stay fresh either way.
+APT::Periodic::Update-Package-Lists "1";
+APT::Periodic::Unattended-Upgrade "1";
+EOF
+}
+
 case "$1" in
     configure)
         setup_group
         setup_snapper
+        setup_auto_upgrades
         ;;
     abort-upgrade|abort-remove|abort-deconfigure)
         ;;

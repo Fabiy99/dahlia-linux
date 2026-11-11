@@ -183,6 +183,12 @@ class UpsBody(BaseModel):
     shutdown_minutes: int = 0
 
 
+class AutoUpdatesBody(BaseModel):
+    enabled: bool
+    reboot: bool
+    reboot_time: str
+
+
 class ScheduleBody(BaseModel):
     frequency: str
     time: str = "03:00"
@@ -380,6 +386,14 @@ def create_app(cfg: Config | None = None) -> FastAPI:
     @app.post("/api/updates/apply", dependencies=changing)
     def updates_apply():
         return agent("updates.apply")
+
+    @app.get("/api/updates/auto", dependencies=authed)
+    def updates_auto():
+        return agent("updates.auto")
+
+    @app.post("/api/updates/auto", dependencies=changing)
+    def updates_set_auto(body: AutoUpdatesBody):
+        return agent("updates.set_auto", body.model_dump())
 
     # --- apps -----------------------------------------------------------------
 
