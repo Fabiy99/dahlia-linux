@@ -228,6 +228,20 @@ class ShareBody(BaseModel):
     nfs: bool = False
 
 
+class RemoteBody(BaseModel):
+    type: str
+    host: str
+    share: str
+    username: str = ""
+    # None keeps the saved password.
+    password: str | None = None
+    readonly: bool = False
+
+
+class RemoveBody(BaseModel):
+    force: bool = False
+
+
 class SmbUserBody(BaseModel):
     name: str
     password: str
@@ -862,6 +876,18 @@ def create_app(cfg: Config | None = None) -> FastAPI:
     @app.post("/api/shares/{name}", dependencies=changing)
     def shares_set(name: str, body: ShareBody):
         return agent("shares.set", {"name": name, **body.model_dump()})
+
+    @app.get("/api/remotes", dependencies=authed)
+    def remotes_list():
+        return agent("remotes.list")
+
+    @app.post("/api/remotes/{name}", dependencies=changing)
+    def remotes_set(name: str, body: RemoteBody):
+        return agent("remotes.set", {"name": name, **body.model_dump(exclude_none=True)})
+
+    @app.post("/api/remotes/{name}/remove", dependencies=changing)
+    def remotes_remove(name: str, body: RemoveBody):
+        return agent("remotes.remove", {"name": name, "force": body.force})
 
     @app.post("/api/shares/{name}/remove", dependencies=changing)
     def shares_remove(name: str):

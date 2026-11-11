@@ -83,6 +83,7 @@ Einmal-Code geschützt, der auf tty1 und in `/etc/motd` steht (ab Meilenstein 5)
 | `/mnt/storage` | mergerfs über alle Datenplatten (Ziel des Movers) |
 | `/mnt/user` | mergerfs über `/mnt/cache/shares` und alle Datenplatten, Cache zuerst |
 | `/mnt/external` | USB- und NTFS-Platten, außerhalb von Pool und SnapRAID |
+| `/mnt/remotes/<Name>` | SMB- und NFS-Freigaben anderer Geräte (M24), nur für App- und Backup-Ordner |
 
 SMB-Freigaben nutzen nur `/mnt/user`. Apps liegen auf `/mnt/user` oder, wenn man es bei der
 Installation wählt oder kein Array da ist, auf der System-SSD unter `/srv` (siehe Apps). Neue Dateien landen auf dem Cache
@@ -316,7 +317,10 @@ Protokoll: eine Anfrage pro Verbindung, je eine JSON-Zeile hin und zurück.
 | `apps.job` | `id` | Zustand der letzten Installation bzw. Aktualisierung |
 | `apps.start`, `apps.stop` | `id` | starten bzw. stoppen, gilt auch für den nächsten Boot |
 | `apps.remove` | `id`, `delete_data` (optional) | Container entfernen, Daten nur auf Wunsch |
-| `files.browse` | `root` (`array` oder `system`), `path` (relativ dazu) | Unterordner für die Ordnerauswahl, ohne versteckte Ordner und Symlinks, höchstens 500; dazu, welche Speicherorte nutzbar sind |
+| `remotes.list` | – | eingebundene Freigaben anderer Geräte mit Zustand (`mounted`, `idle`, `error`, `off`), ohne Passwort |
+| `remotes.set` | `name`, `type` (`smb`/`nfs`), `host`, `share`, `username`, `password` (weggelassen = bisheriges), `readonly` | Probe-Einhängen, dann `/etc/dahlia/remotes.json`, Zugangsdaten `/etc/dahlia/remotes/<Name>.cred` (0600), `.mount`- und `.automount`-Unit |
+| `remotes.remove` | `name`, `force` | Units und Zugangsdaten löschen; ohne `force` nicht, solange eine App einen Ordner darauf nutzt |
+| `files.browse` | `root` (`/mnt/user`, `/srv` oder `/mnt/remotes`), `path` (relativ dazu) | Unterordner für die Ordnerauswahl, ohne versteckte Ordner und Symlinks, höchstens 500; dazu, welche Speicherorte nutzbar sind |
 | `files.mkdir` | `root`, `path` | neuen Ordner anlegen (Gruppe `dahlia`, 2775), nicht unter `appdata` |
 | `domains.get` | - | mDNS-Aliase, Namen in den Zertifikaten, Zertifikate |
 | `domains.set` | `mdns_aliases` | `dahlia-domains set`, App-Zertifikat und Proxy neu |
@@ -439,6 +443,25 @@ NFS-Freigaben (M21):
   schon mit `inodecalc=path-hash` und `noforget`.
 - `nfs-server` läuft nur, solange eine Freigabe über NFS geht.
 - Einhängen unter Linux: `mount -t nfs4 dahlia.local:/mnt/user/<Name> /mnt/ziel`.
+
+Freigaben anderer Geräte (M24):
+
+- Unter Freigaben → *Freigaben anderer Geräte* lassen sich SMB-Freigaben (NAS, Windows) und
+  NFS-Exporte einbinden. Sie liegen unter `/mnt/remotes/<Name>` und erscheinen in der
+  Ordnerauswahl als eigener Speicherort, etwa für die Medienordner einer App. App-Daten
+  (`appdata`) liegen nie dort.
+- Vor dem Speichern hängt der Agent die Freigabe einmal probeweise unter
+  `/run/dahlia/remote-test` ein; ein falsches Passwort oder ein falscher Pfad wird sofort
+  gemeldet und nichts gespeichert.
+- Wie bei den Platten keine `/etc/fstab`: je Freigabe eine `.mount`- und eine
+  `.automount`-Unit in `/etc/systemd/system` mit `_netdev,nofail` und 30 s Zeitlimit. Ein
+  ausgeschaltetes Gerät hält den Start nicht auf; eingehängt wird beim ersten Zugriff.
+- SMB: Benutzer und Passwort in `/etc/dahlia/remotes/<Name>.cred` (root, 0600), ohne Benutzer
+  als Gast. Dateien gehören `dahlia-apps:dahlia` (0664/0775, `noperm`), damit Apps schreiben
+  können. NFS: `soft,timeo=300,retrans=4`, die Besitzer kommen vom anderen Gerät.
+- Optional nur lesen (`ro`). Entfernen lässt sich eine Freigabe erst, wenn keine App mehr
+  einen Ordner darauf nutzt, oder ausdrücklich trotzdem. Die Dateien auf dem anderen Gerät
+  bleiben immer unberührt.
 
 Einstellungen (M9b):
 

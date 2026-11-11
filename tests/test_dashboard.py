@@ -573,6 +573,28 @@ def test_shares_endpoints(env):
     assert client.post("/api/shares/media/remove").status_code == 403
 
 
+def test_remotes_endpoints(env):
+    client, agent, _ = logged_in(env)
+    agent.calls.clear()
+    client.get("/api/remotes")
+    client.post("/api/remotes/nas", json={"type": "smb", "host": "nas.local", "share": "Fotos",
+                                          "username": "anna", "password": "geheim"},
+                headers=CSRF)
+    # No password: the agent keeps the saved one.
+    client.post("/api/remotes/nas", json={"type": "smb", "host": "nas.local", "share": "Fotos",
+                                          "username": "anna", "readonly": True}, headers=CSRF)
+    client.post("/api/remotes/nas/remove", json={"force": True}, headers=CSRF)
+    base = {"name": "nas", "type": "smb", "host": "nas.local", "share": "Fotos",
+            "username": "anna"}
+    assert agent.calls == [
+        ("remotes.list", {}),
+        ("remotes.set", {**base, "password": "geheim", "readonly": False}),
+        ("remotes.set", {**base, "readonly": True}),
+        ("remotes.remove", {"name": "nas", "force": True}),
+    ]
+    assert client.post("/api/remotes/nas/remove", json={}).status_code == 403
+
+
 def test_notify_and_ups_endpoints(env):
     client, agent, _ = logged_in(env)
     agent.calls.clear()
