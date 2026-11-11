@@ -365,7 +365,7 @@ def backup_of(ctx: Context) -> Backup:
             raise BackupError(e.message) from None
 
     return Backup(etc=ctx.etc, state=ctx.var, paths=apps.Paths(apps=ctx.var / "apps",
-                  pool=ctx.pool, system=ctx.system), run=run)
+                  pool=ctx.pool, system=ctx.system, remotes=ctx.remotes), run=run)
 
 
 BACKUP_DIR = "dahlia-backup"

@@ -64,6 +64,7 @@ class Context:
     run_dir: Path = Path("/run/dahlia")
     pool: Path = Path("/mnt/user")
     system: Path = Path("/srv")
+    remotes: Path = Path("/mnt/remotes")
     var: Path = Path("/var/lib/dahlia")
     log_dir: Path = Path("/var/log")
     dashboard_run: Path = Path("/run/dahlia-dashboard")
@@ -789,7 +790,9 @@ APP_SHARE_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{0,63}$")
 # Where app data and folders live: the array or the system SSD.
 ARRAY_ROOT = "/mnt/user"
 SYSTEM_ROOT = "/srv"
-ROOTS = (ARRAY_ROOT, SYSTEM_ROOT)
+# Shares of other devices (remotes.py); only for folders, not for app data.
+REMOTES_ROOT = "/mnt/remotes"
+ROOTS = (ARRAY_ROOT, SYSTEM_ROOT, REMOTES_ROOT)
 # A folder below a root, as dahlia-apps checks it (no "..", no leading "/").
 FOLDER_SEGMENT = r"[A-Za-z0-9][A-Za-z0-9 ._()+,-]{0,99}"
 FOLDER_RE = re.compile(rf"^{FOLDER_SEGMENT}(/{FOLDER_SEGMENT}){{0,9}}$")
@@ -930,6 +933,10 @@ def location_root(ctx: Context, location: str) -> tuple[Path, bool]:
     """Root of a location and whether it can be used now."""
     if location == ARRAY_ROOT:
         return ctx.pool, os.path.ismount(ctx.pool)
+    if location == REMOTES_ROOT:
+        from .remotes import load as load_remotes
+
+        return ctx.remotes, ctx.remotes.is_dir() and bool(load_remotes(ctx))
     return ctx.system, ctx.system.is_dir()
 
 
@@ -946,7 +953,8 @@ def root_dir(root: Path, rel: str) -> Path:
 
 def locations(ctx: Context) -> list[dict]:
     out = []
-    for name, path in (("array", ARRAY_ROOT), ("system", SYSTEM_ROOT)):
+    for name, path in (("array", ARRAY_ROOT), ("system", SYSTEM_ROOT),
+                       ("remotes", REMOTES_ROOT)):
         _, ok = location_root(ctx, path)
         out.append({"name": name, "path": path, "available": ok})
     return out
@@ -958,8 +966,8 @@ def locations(ctx: Context) -> list[dict]:
 def files_browse(ctx: Context, root: str, path: str):
     """Folders directly below <root>/<path>, for the folder picker. No files.
 
-    root is /mnt/user (array) or /srv (system SSD); locations lists both
-    with whether they can be used.
+    root is /mnt/user (array), /srv (system SSD) or /mnt/remotes (shares of
+    other devices); locations lists them with whether they can be used.
     """
     base, ok = location_root(ctx, root)
     out = {"root": root, "path": path, "locations": locations(ctx),
@@ -990,6 +998,8 @@ def files_mkdir(ctx: Context, root: str, path: str):
         raise AgentError(FAILED, f"{base} is not available")
     if path.split("/")[0] == "appdata":
         raise AgentError(INVALID_PARAMS, "folders below appdata belong to apps")
+    if root == REMOTES_ROOT and "/" not in path:
+        raise AgentError(INVALID_PARAMS, "new folders go inside a remote share")
     parent = root_dir(base, path.rsplit("/", 1)[0] if "/" in path else "")
     if not parent.is_dir():
         raise AgentError(FAILED, "parent folder does not exist")
@@ -1105,6 +1115,7 @@ from . import (  # noqa: E402, F401
     hardware,
     network,
     notify,
+    remotes,
     settings,
     smb,
     snapshots,

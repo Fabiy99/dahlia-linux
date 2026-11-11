@@ -618,6 +618,9 @@ def test_action_list_is_fixed():
         "parity.fix",
         "parity.get",
         "parity.sync",
+        "remotes.list",
+        "remotes.remove",
+        "remotes.set",
         "settings.confirm_network",
         "settings.firewall",
         "settings.network",
@@ -848,11 +851,13 @@ def test_files_browse_and_mkdir(ctx, tmp_path, monkeypatch):
 def test_files_on_system_ssd(ctx, tmp_path, monkeypatch):
     ctx.pool = tmp_path / "user"
     ctx.system = tmp_path / "srv"
+    ctx.remotes = tmp_path / "remotes"
     got = run(ctx, "files.browse", {"root": "/srv"})["result"]
     assert got["mounted"] is False
     assert got["locations"] == [
         {"name": "array", "path": "/mnt/user", "available": False},
-        {"name": "system", "path": "/srv", "available": False}]
+        {"name": "system", "path": "/srv", "available": False},
+        {"name": "remotes", "path": "/mnt/remotes", "available": False}]
     ctx.system.mkdir()
     assert run(ctx, "files.mkdir", {"root": "/srv", "path": "Medien"})["ok"]
     assert (ctx.system / "Medien").is_dir()

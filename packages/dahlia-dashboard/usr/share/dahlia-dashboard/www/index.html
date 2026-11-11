@@ -204,6 +204,20 @@
             <button type="submit" data-i18n="shares.user_add"></button>
           </form>
         </article>
+        <article class="card">
+          <div class="section-head">
+            <h2 data-i18n="remotes.title"></h2>
+            <button id="remote-new" data-i18n="remotes.new"></button>
+          </div>
+          <p class="hint" data-i18n="remotes.hint"></p>
+          <table class="shares">
+            <thead><tr>
+              <th data-i18n="shares.name"></th><th data-i18n="remotes.source"></th>
+              <th data-i18n="remotes.path"></th><th data-i18n="remotes.state"></th><th></th>
+            </tr></thead>
+            <tbody id="remotes"></tbody>
+          </table>
+        </article>
       </section>
 
       <section id="view-storage" hidden>
@@ -762,6 +776,31 @@
     <div class="dialog-actions">
       <button value="cancel" formnovalidate data-i18n="common.cancel"></button>
       <button value="ok" class="primary" data-i18n="common.save"></button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="remote-dialog">
+  <form id="remote-form" method="dialog">
+    <h2 id="remote-title"></h2>
+    <label><span data-i18n="remotes.name"></span><input name="name" autocomplete="off" required pattern="[a-z0-9][a-z0-9\-]{0,31}"></label>
+    <label><span data-i18n="remotes.type"></span>
+      <select name="type">
+        <option value="smb" data-i18n="remotes.type_smb"></option>
+        <option value="nfs" data-i18n="remotes.type_nfs"></option>
+      </select>
+    </label>
+    <label><span data-i18n="remotes.host"></span><input name="host" autocomplete="off" required data-i18n-placeholder="remotes.host_placeholder"></label>
+    <label><span id="remote-share-label"></span><input name="share" autocomplete="off" required></label>
+    <div id="remote-login">
+      <label><span data-i18n="remotes.username"></span><input name="username" autocomplete="off"></label>
+      <label><span data-i18n="remotes.password"></span><input name="password" type="password" autocomplete="new-password"></label>
+      <p class="hint" id="remote-login-hint"></p>
+    </div>
+    <label class="check"><input name="readonly" type="checkbox"><span data-i18n="remotes.readonly"></span></label>
+    <div class="dialog-actions">
+      <button value="cancel" formnovalidate data-i18n="common.cancel"></button>
+      <button value="ok" class="primary" data-i18n="remotes.connect"></button>
     </div>
   </form>
 </dialog>

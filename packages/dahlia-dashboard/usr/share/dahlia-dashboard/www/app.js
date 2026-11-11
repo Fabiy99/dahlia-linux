@@ -1163,6 +1163,7 @@ function renderInstalled(installed) {
 // Locations for app data and folders: the array and the system SSD.
 const ARRAY = "/mnt/user";
 const SYSTEM = "/srv";
+const REMOTES = "/mnt/remotes";
 let folderRoot = ARRAY;
 let folderPath = "";
 
@@ -1174,10 +1175,10 @@ function fullPath(root, path) {
   return path ? `${root}/${path}` : root;
 }
 
-// Two buttons, one per location; the chosen one is pressed.
-function placeButtons(box, current, available, onPick) {
+// One button per location; the chosen one is pressed.
+function placeButtons(box, current, available, onPick, roots = [["system", SYSTEM], ["array", ARRAY]]) {
   box.replaceChildren();
-  for (const [name, root] of [["system", SYSTEM], ["array", ARRAY]]) {
+  for (const [name, root] of roots) {
     const b = el("button", "place");
     b.type = "button";
     b.setAttribute("aria-pressed", String(root === current));
@@ -1194,8 +1195,11 @@ async function showFolder(root, path) {
   for (const loc of data.locations) available[loc.path] = loc.available;
   folderRoot = root;
   folderPath = path;
+  // Shares of other devices are offered once one is set up.
+  const roots = [["system", SYSTEM], ["array", ARRAY]];
+  if (available[REMOTES]) roots.push(["remotes", REMOTES]);
   placeButtons(document.getElementById("folder-roots"), root, available,
-               (to) => showFolder(to, "").catch(sayError));
+               (to) => showFolder(to, "").catch(sayError), roots);
   const crumbs = document.getElementById("folder-crumbs");
   crumbs.replaceChildren();
   const parts = path ? path.split("/") : [];
@@ -1225,7 +1229,7 @@ async function showFolder(root, path) {
     li.append(b);
     list.append(li);
   }
-  document.getElementById("folder-new").disabled = !data.mounted;
+  document.getElementById("folder-new").disabled = !data.mounted || (root === REMOTES && !path);
   document.getElementById("folder-ok").disabled = !path;
 }
 
@@ -1407,7 +1411,7 @@ function volumeRow(v, locationOf) {
   const sub = input("text", v?.appdata ?? "data", { pattern: "[a-z0-9][a-z0-9._\\-]{0,63}" });
   let folder = null;
   if (v?.folder) {
-    const root = [ARRAY, SYSTEM].find((r) => v.folder.startsWith(`${r}/`)) || ARRAY;
+    const root = [ARRAY, SYSTEM, REMOTES].find((r) => v.folder.startsWith(`${r}/`)) || ARRAY;
     folder = { root, path: v.folder.slice(root.length + 1) };
   }
   const shown = el("code");
@@ -2518,6 +2522,108 @@ async function loadShares() {
     tbody.append(tr);
   }
   renderSmbUsers();
+  await loadRemotes();
+}
+
+// --- shares of other devices -------------------------------------------------------
+
+const REMOTE_STATE_KIND = { mounted: "ok", idle: "", error: "crit", off: "warn" };
+let remotesData = [];
+let remoteEditing = null;
+
+async function loadRemotes() {
+  remotesData = (await api("GET", "remotes")).remotes;
+  const tbody = document.getElementById("remotes");
+  tbody.replaceChildren();
+  for (const r of remotesData) {
+    const tr = el("tr");
+    const name = el("div", "cname");
+    name.append(el("b", "", r.name));
+    if (r.readonly) name.append(badge(t("remotes.readonly_badge"), ""));
+    cell(tr, name);
+    const src = r.type === "smb" ? `\\\\${r.host}\\${r.share}` : `${r.host}:${r.share}`;
+    const srcBox = el("div", "cname");
+    srcBox.append(el("code", "", src), el("small", "muted",
+      r.type === "smb" ? (r.username || t("remotes.guest")) : "NFS"));
+    cell(tr, srcBox).dataset.label = t("remotes.source");
+    cell(tr, el("code", "", r.path)).dataset.label = t("remotes.path");
+    cell(tr, badge(tv("remote_state", r.state), REMOTE_STATE_KIND[r.state] ?? "")).dataset.label =
+      t("remotes.state");
+    const ops = el("div", "row-ops");
+    ops.append(button("shares.edit", () => openRemoteDialog(r)),
+               button("shares.remove", async () => {
+                 if (!await ask(t("remotes.confirm_remove", { name: r.name }), "shares.remove", true)) return;
+                 try {
+                   await api("POST", `remotes/${encodeURIComponent(r.name)}/remove`, {});
+                 } catch (err) {
+                   // Apps still use a folder on it: say which and ask again.
+                   if (!(err instanceof ApiError) || !/used by apps/.test(err.detail)) throw err;
+                   if (!await ask(t("remotes.confirm_force", { detail: err.detail.split(";")[0] }),
+                                  "shares.remove", true)) return;
+                   await api("POST", `remotes/${encodeURIComponent(r.name)}/remove`, { force: true });
+                 }
+                 say(t("remotes.removed", { name: r.name }), "ok");
+                 await loadRemotes();
+               }, "danger"));
+    cell(tr, ops);
+    tbody.append(tr);
+  }
+  if (!remotesData.length) {
+    const tr = el("tr");
+    cell(tr, t("remotes.none")).colSpan = 5;
+    tbody.append(tr);
+  }
+}
+
+function renderRemoteForm() {
+  const f = document.getElementById("remote-form").elements;
+  const smb = f.type.value === "smb";
+  document.getElementById("remote-share-label").textContent = t(smb ? "remotes.share_smb" : "remotes.share_nfs");
+  f.share.placeholder = t(smb ? "remotes.share_smb_placeholder" : "remotes.share_nfs_placeholder");
+  document.getElementById("remote-login").hidden = !smb;
+  document.getElementById("remote-login-hint").textContent =
+    remoteEditing?.has_password ? t("remotes.password_keep") : t("remotes.guest_hint");
+}
+
+function openRemoteDialog(r) {
+  remoteEditing = r;
+  const form = document.getElementById("remote-form");
+  form.reset();
+  const f = form.elements;
+  document.getElementById("remote-title").textContent =
+    r ? t("remotes.edit_title", { name: r.name }) : t("remotes.new");
+  f.name.value = r?.name ?? "";
+  f.name.readOnly = Boolean(r);
+  f.type.value = r?.type ?? "smb";
+  f.host.value = r?.host ?? "";
+  f.share.value = r?.share ?? "";
+  f.username.value = r?.username ?? "";
+  f.readonly.checked = r?.readonly ?? false;
+  renderRemoteForm();
+  document.getElementById("remote-dialog").showModal();
+}
+
+function bindRemotes() {
+  document.getElementById("remote-new").addEventListener("click", () => openRemoteDialog(null));
+  const form = document.getElementById("remote-form");
+  form.elements.type.addEventListener("change", renderRemoteForm);
+  form.addEventListener("submit", (e) => {
+    if (e.submitter?.value === "cancel") return;
+    e.preventDefault();
+    const f = form.elements;
+    const name = f.name.value.trim();
+    const body = { type: f.type.value, host: f.host.value.trim(), share: f.share.value.trim(),
+                   username: f.username.value.trim(), readonly: f.readonly.checked };
+    // Empty password field when editing: keep the saved one.
+    if (f.password.value || !remoteEditing?.has_password) body.password = f.password.value;
+    if (body.type === "nfs") { body.username = ""; delete body.password; }
+    guarded(e.submitter, async () => {
+      await api("POST", `remotes/${encodeURIComponent(name)}`, body);
+      document.getElementById("remote-dialog").close();
+      say(t("remotes.saved", { name, path: `/mnt/remotes/${name}` }), "ok");
+      await loadRemotes();
+    });
+  });
 }
 
 function renderSmbUsers() {
@@ -3443,6 +3549,7 @@ async function start() {
   bindButtons();
   bindShares();
   bindFormat();
+  bindRemotes();
   bindBurnin();
   bindImport();
   bindFolderPicker();

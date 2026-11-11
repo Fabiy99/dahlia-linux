@@ -109,6 +109,8 @@ APPS_DIR = Path("/var/lib/dahlia/apps")
 CATALOG_DIR = Path("/var/lib/dahlia/apps-catalog")
 USER_POOL = Path("/mnt/user")
 SYSTEM_DATA = Path("/srv")
+# Shares of other devices: folders for apps, never app data.
+REMOTES = Path("/mnt/remotes")
 APPS_USER = "dahlia-apps"
 APPS_GROUP = "dahlia"
 
@@ -633,6 +635,13 @@ class Paths:
     pool: Path = USER_POOL
     config: Path = CONFIG_FILE
     system: Path = SYSTEM_DATA
+    remotes: Path = REMOTES
+
+    def share_root(self, location: str) -> Path:
+        """Root of a folder chosen for a share: location roots and /mnt/remotes."""
+        if location == str(self.remotes):
+            return self.remotes
+        return self.root(location)
 
     def root(self, location: str) -> Path:
         for root in (self.pool, self.system):
@@ -685,13 +694,14 @@ FOLDER_RE = re.compile(rf"^{FOLDER_SEGMENT}(?:/{FOLDER_SEGMENT}){{0,9}}$")
 
 def split_folder(ref: str, paths: Paths) -> tuple[str, str]:
     """"/srv/media/films" -> ("/srv", "media/films")."""
-    for root in (paths.pool, paths.system):
+    for root in (paths.pool, paths.system, paths.remotes):
         prefix = f"{root}/"
         if isinstance(ref, str) and ref.startswith(prefix):
             rel = ref[len(prefix):]
             if FOLDER_RE.match(rel) and ".." not in rel.split("/"):
                 return str(root), rel
-    raise AppError(f"{ref!r} is not a folder below {paths.pool} or {paths.system}")
+    raise AppError(f"{ref!r} is not a folder below {paths.pool}, {paths.system} "
+                   f"or {paths.remotes}")
 
 
 def check_folders(t: Template, folders: dict[str, str] | None, paths: Paths,
@@ -705,10 +715,10 @@ def check_folders(t: Template, folders: dict[str, str] | None, paths: Paths,
         loc, rel = split_folder(ref, paths)
         if rel.split("/")[0] == "appdata":
             raise AppError("app data folders cannot be given to another app")
-        root = paths.root(loc).resolve()
+        root = paths.share_root(loc).resolve()
         real = (root / rel).resolve()
         if real != root and root not in real.parents:
-            raise AppError(f"folder for {share} leads outside {paths.root(loc)}")
+            raise AppError(f"folder for {share} leads outside {paths.share_root(loc)}")
         if (loc, rel) != (location, share):
             out[share] = f"{loc}/{rel}"
     return out
@@ -723,7 +733,7 @@ def volume_source(t: Template, v: Volume, paths: Paths,
     if ref is None:
         return paths.root(location) / v.share
     loc, rel = split_folder(ref, paths)
-    return paths.root(loc) / rel
+    return paths.share_root(loc) / rel
 
 
 def locations_used(t: Template, folders: dict[str, str] | None, location: str,

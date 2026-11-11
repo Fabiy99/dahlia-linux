@@ -83,6 +83,7 @@ code printed on tty1 and in `/etc/motd` (from milestone 5).
 | `/mnt/storage` | mergerfs across all data disks (mover target) |
 | `/mnt/user` | mergerfs across `/mnt/cache/shares` and all data disks, cache first |
 | `/mnt/external` | USB and NTFS disks, outside pool and SnapRAID |
+| `/mnt/remotes/<name>` | SMB and NFS shares of other devices (M24), only for app and backup folders |
 
 SMB shares only use `/mnt/user`. Apps live on `/mnt/user` or, when chosen at install or
 without an array, on the system SSD under `/srv` (see Apps). New files land on the cache
@@ -313,7 +314,10 @@ Protocol: one request per connection, one JSON line each way.
 | `apps.job` | `id` | state of the last install or update |
 | `apps.start`, `apps.stop` | `id` | start or stop, also for the next boot |
 | `apps.remove` | `id`, `delete_data` (optional) | remove the container, data only on request |
-| `files.browse` | `root` (`array` or `system`), `path` (relative to it) | subfolders for the folder picker, no hidden folders or symlinks, at most 500; plus which locations can be used |
+| `remotes.list` | – | mounted shares of other devices with state (`mounted`, `idle`, `error`, `off`), never the password |
+| `remotes.set` | `name`, `type` (`smb`/`nfs`), `host`, `share`, `username`, `password` (left out = keep), `readonly` | test mount, then `/etc/dahlia/remotes.json`, credentials `/etc/dahlia/remotes/<name>.cred` (0600), `.mount` and `.automount` unit |
+| `remotes.remove` | `name`, `force` | delete units and credentials; without `force` refused while an app uses a folder on it |
+| `files.browse` | `root` (`/mnt/user`, `/srv` or `/mnt/remotes`), `path` (relative to it) | subfolders for the folder picker, no hidden folders or symlinks, at most 500; plus which locations can be used |
 | `files.mkdir` | `root`, `path` | create a folder (group `dahlia`, 2775), not below `appdata` |
 | `domains.get` | - | mDNS aliases, names in the certificates, certificates |
 | `domains.set` | `mdns_aliases` | `dahlia-domains set`, new app certificate and proxy |
@@ -431,6 +435,22 @@ NFS shares (M21):
   `inodecalc=path-hash` and `noforget` for this.
 - `nfs-server` runs only while a share is exported over NFS.
 - Mounting on Linux: `mount -t nfs4 dahlia.local:/mnt/user/<name> /mnt/target`.
+
+Shares of other devices (M24):
+
+- Shares → *Shares of other devices* mounts SMB shares (NAS, Windows) and NFS exports. They
+  live under `/mnt/remotes/<name>` and show up in the folder picker as a location of their
+  own, e.g. for an app's media folders. App data (`appdata`) never goes there.
+- Before saving, the agent test-mounts the share once on `/run/dahlia/remote-test`; a wrong
+  password or path is reported right away and nothing is saved.
+- Like the disks, no `/etc/fstab`: one `.mount` and one `.automount` unit per share in
+  `/etc/systemd/system` with `_netdev,nofail` and a 30 s timeout. A device that is off does
+  not hold up the boot; the share is mounted on first access.
+- SMB: user and password in `/etc/dahlia/remotes/<name>.cred` (root, 0600), guest without a
+  user. Files belong to `dahlia-apps:dahlia` (0664/0775, `noperm`) so apps can write. NFS:
+  `soft,timeo=300,retrans=4`, owners come from the other device.
+- Optionally read-only (`ro`). A share can only be removed once no app uses a folder on it,
+  or explicitly anyway. Files on the other device are never touched.
 
 Settings (M9b):
 
