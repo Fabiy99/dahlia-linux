@@ -12,6 +12,8 @@ import asyncio
 import contextlib
 import json
 import re
+import socket
+import subprocess
 import threading
 import time
 import urllib.parse
@@ -28,7 +30,7 @@ from starlette.background import BackgroundTask
 from starlette.exceptions import HTTPException
 
 from . import setupcode
-from .auth import AuthError, RateLimiter, Session, SessionStore, UserStore
+from .auth import AuthError, RateLimiter, Session, SessionStore, UserStore, totp_uri
 
 COOKIE = "dahlia_session"
 CSRF_HEADER = "x-dahlia-request"
@@ -71,6 +73,18 @@ class Config:
     # None: sessions.json in state_dir.
     sessions: SessionStore | None = None
     login_limiter: RateLimiter = field(default_factory=RateLimiter)
+    # Clock for TOTP codes; tests set it.
+    clock: Callable[[], float] = time.time
+
+
+def qr_svg(text: str) -> str | None:
+    """QR code as SVG from qrencode; the text goes in on stdin, not the command line."""
+    try:
+        proc = subprocess.run(["qrencode", "-t", "SVG", "-o", "-"], input=text,
+                              capture_output=True, text=True, timeout=10, check=False)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    return proc.stdout if proc.returncode == 0 and proc.stdout.lstrip().startswith("<") else None
 
 
 class ApiError(Exception):
@@ -93,6 +107,20 @@ class SetupBody(BaseModel):
 class LoginBody(BaseModel):
     username: str
     password: str
+    code: str = ""
+
+
+class TotpBeginBody(BaseModel):
+    password: str
+
+
+class TotpCodeBody(BaseModel):
+    code: str
+
+
+class TotpDisableBody(BaseModel):
+    password: str
+    code: str
 
 
 class PasswordBody(BaseModel):
@@ -271,7 +299,7 @@ class ScheduleBody(BaseModel):
 
 def create_app(cfg: Config | None = None) -> FastAPI:
     cfg = cfg or Config()
-    users = UserStore(cfg.state_dir / "users.json")
+    users = UserStore(cfg.state_dir / "users.json", clock=cfg.clock)
     sessions = cfg.sessions or SessionStore(path=cfg.state_dir / "sessions.json")
     limiter = cfg.login_limiter
     agent_call = cfg.agent_call or default_agent_call(cfg.agent_socket)
@@ -367,6 +395,13 @@ def create_app(cfg: Config | None = None) -> FastAPI:
         if not users.verify(body.username, body.password):
             limiter.fail(ip)
             raise ApiError(401, "error.invalid_credentials")
+        if users.totp_enabled(body.username):
+            # Only said after a correct password; the form then asks for the code.
+            if not body.code.strip():
+                raise ApiError(401, "error.totp_required")
+            if not users.check_second_factor(body.username, body.code):
+                limiter.fail(ip)
+                raise ApiError(401, "error.totp_code")
         limiter.reset(ip)
         set_session(response, body.username)
         return {"user": body.username}
@@ -387,6 +422,52 @@ def create_app(cfg: Config | None = None) -> FastAPI:
             raise ApiError(400, f"error.{e}") from None
         # Other browsers logged in with the old password are logged out.
         sessions.drop_user(session.username, keep=request.cookies.get(COOKIE))
+        return {}
+
+    # --- second factor --------------------------------------------------------
+
+    def recheck_password(request: Request, username: str, password: str) -> None:
+        ip = client_ip(request)
+        if limiter.blocked(ip):
+            raise ApiError(429, "error.too_many_attempts")
+        if not users.verify(username, password):
+            limiter.fail(ip)
+            raise ApiError(400, "error.old_password")
+
+    @app.get("/api/account/totp")
+    def totp_status(session: Annotated[Session, Depends(require_user)]):
+        return users.totp_status(session.username)
+
+    @app.post("/api/account/totp/begin", dependencies=[Depends(require_csrf)])
+    def totp_begin(body: TotpBeginBody, request: Request,
+                   session: Annotated[Session, Depends(require_user)]):
+        recheck_password(request, session.username, body.password)
+        secret = users.totp_begin(session.username)
+        try:
+            host = agent("system.info").get("hostname") or socket.gethostname()
+        except ApiError:
+            host = socket.gethostname()
+        uri = totp_uri(secret, f"{session.username}@{host}", "Dahlia")
+        return {"secret": secret, "uri": uri, "qr_svg": qr_svg(uri)}
+
+    @app.post("/api/account/totp/confirm", dependencies=[Depends(require_csrf)])
+    def totp_confirm(body: TotpCodeBody, request: Request,
+                     session: Annotated[Session, Depends(require_user)]):
+        try:
+            codes = users.totp_confirm(session.username, body.code)
+        except AuthError as e:
+            raise ApiError(400, f"error.{e}") from None
+        sessions.drop_user(session.username, keep=request.cookies.get(COOKIE))
+        return {"recovery_codes": codes}
+
+    @app.post("/api/account/totp/disable", dependencies=[Depends(require_csrf)])
+    def totp_disable(body: TotpDisableBody, request: Request,
+                     session: Annotated[Session, Depends(require_user)]):
+        recheck_password(request, session.username, body.password)
+        if not users.check_second_factor(session.username, body.code):
+            limiter.fail(client_ip(request))
+            raise ApiError(400, "error.totp_code")
+        users.totp_disable(session.username)
         return {}
 
     # --- system ---------------------------------------------------------------

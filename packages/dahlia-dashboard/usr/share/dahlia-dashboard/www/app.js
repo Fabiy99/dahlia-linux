@@ -2542,7 +2542,7 @@ async function loadAccount() {
   document.querySelector("#hostname-form [name=hostname]").value = info.hostname;
   // Each card loads on its own; one failing part does not hide the others.
   await Promise.all([loadTime(), loadNetwork(), loadSpindown(), loadFirewall(), loadSchedules(),
-               loadNotify(), loadUps(), loadVpn()]
+               loadNotify(), loadUps(), loadVpn(), loadTotp()]
     .map((p) => p.catch(sayError)));
 }
 
@@ -2747,6 +2747,73 @@ async function loadVpn() {
   const data = await api("GET", "vpn");
   renderWireguard(data.wireguard);
   renderTailscale(data.tailscale);
+}
+
+// --- account: second factor ------------------------------------------------------
+
+async function loadTotp() {
+  const data = await api("GET", "account/totp");
+  const setupOpen = !document.getElementById("totp-setup").hidden ||
+    !document.getElementById("totp-recovery").hidden;
+  document.getElementById("totp-state").textContent = data.enabled
+    ? t("totp.on", { n: data.recovery_left }) : t("totp.off");
+  document.getElementById("totp-state").className = data.enabled ? "ok" : "muted";
+  document.getElementById("totp-begin-form").hidden = data.enabled || setupOpen;
+  document.getElementById("totp-disable-form").hidden = !data.enabled || setupOpen;
+}
+
+function clearTotpSetup() {
+  document.getElementById("totp-setup").hidden = true;
+  document.getElementById("totp-secret").textContent = "";
+  document.getElementById("totp-qr").removeAttribute("src");
+}
+
+function bindTotp() {
+  document.getElementById("totp-begin-form").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const f = formData(e.target);
+    guarded(e.submitter, async () => {
+      const res = await api("POST", "account/totp/begin", { password: f.password });
+      e.target.reset();
+      e.target.hidden = true;
+      const qr = document.getElementById("totp-qr");
+      qr.hidden = !res.qr_svg;
+      if (res.qr_svg) qr.src = `data:image/svg+xml;base64,${btoa(res.qr_svg)}`;
+      document.getElementById("totp-secret").textContent = res.secret.replace(/(.{4})/g, "$1 ").trim();
+      document.getElementById("totp-setup").hidden = false;
+      document.querySelector("#totp-confirm-form [name=code]").focus();
+    });
+  });
+  document.getElementById("totp-confirm-form").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const f = formData(e.target);
+    guarded(e.submitter, async () => {
+      const res = await api("POST", "account/totp/confirm", { code: f.code });
+      e.target.reset();
+      clearTotpSetup();
+      document.getElementById("totp-codes").textContent = res.recovery_codes.join("\n");
+      document.getElementById("totp-recovery").hidden = false;
+      say(t("totp.enabled"), "ok");
+      await loadTotp();
+    });
+  });
+  document.getElementById("totp-recovery-done").addEventListener("click", async () => {
+    // Shown once; drop the codes from the page.
+    document.getElementById("totp-codes").textContent = "";
+    document.getElementById("totp-recovery").hidden = true;
+    await loadTotp().catch(sayError);
+  });
+  document.getElementById("totp-disable-form").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const f = formData(e.target);
+    guarded(e.submitter, async () => {
+      if (!await ask(t("totp.disable_confirm"), "totp.disable", true)) return;
+      await api("POST", "account/totp/disable", { password: f.password, code: f.code });
+      e.target.reset();
+      say(t("totp.disabled"), "ok");
+      await loadTotp();
+    });
+  });
 }
 
 function showPeer(res) {
@@ -3036,14 +3103,27 @@ function bindForms() {
   document.getElementById("login-form").addEventListener("submit", (e) => {
     e.preventDefault();
     const f = formData(e.target);
+    const codeBox = document.getElementById("login-code");
     guarded(e.submitter, async () => {
-      await api("POST", "login", { username: f.username, password: f.password });
+      try {
+        await api("POST", "login", { username: f.username, password: f.password, code: f.code || "" });
+      } catch (err) {
+        // Password was right; the account also wants a code from the app.
+        if (err.key !== "error.totp_required") throw err;
+        codeBox.hidden = false;
+        codeBox.querySelector("input").focus();
+        say(t("login.code_needed"));
+        return;
+      }
       e.target.reset();
+      codeBox.hidden = true;
       say("");
       setLoggedIn(true);
       await open("overview");
     });
   });
+
+  bindTotp();
 
   document.getElementById("password-form").addEventListener("submit", (e) => {
     e.preventDefault();

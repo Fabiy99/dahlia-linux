@@ -352,6 +352,7 @@ nur für das Web-UI, nicht für SSH oder die Konsole.
 | Backend | FastAPI/uvicorn als `dahlia-ui` auf `127.0.0.1:8080`, systemd-Härtung (`ProtectSystem=strict`, keine Capabilities) |
 | Frontend | statische Dateien unter `/usr/share/dahlia-dashboard/www`, von nginx ausgeliefert, Texte aus `locales/de.json` und `locales/en.json` |
 | Konten | `/var/lib/dahlia-dashboard/users.json` (0600), Passwörter mit scrypt |
+| Zweiter Faktor | optional TOTP (RFC 6238, SHA-1, 6 Stellen, 30 s, ±1 Schritt), jeder Code nur einmal; 10 Wiederherstellungscodes (SHA-256, je einmal); QR-Code über `qrencode` |
 | Sitzungen | zufälliges Token im Speicher, Cookie `HttpOnly`, `Secure`, `SameSite=Strict`; 2 h Leerlauf, höchstens 12 h |
 | Schutz | ändernde Anfragen brauchen den Header `X-Dahlia-Request`; 5 Fehlversuche pro IP in 5 Minuten, dann Sperre |
 | root-Aktionen | nur über `dahlia-agent`; `dahlia-ui` ist Mitglied der Gruppe `dahlia-agent` |
@@ -422,6 +423,12 @@ rechnet das Frontend aus zwei Messungen.
 
 Passwort vergessen: `sudo rm /var/lib/dahlia-dashboard/users.json` und
 `sudo systemctl restart dahlia-dashboard` öffnen den Einrichtungsassistenten mit neuem Code.
+
+Zwei-Faktor-Anmeldung (M22): unter Einstellungen mit dem Passwort einrichten, QR-Code
+scannen, mit einem Code bestätigen. Erst dann ist sie an; andere angemeldete Browser werden
+abgemeldet. Bei der Anmeldung fragt das Formular nach dem Code erst, wenn das Passwort
+stimmt. Falsche Codes zählen zu den Fehlversuchen. Ausschalten braucht Passwort und Code.
+Handy und Wiederherstellungscodes weg: `sudo dahlia-dashboard --disable-totp <Konto>`.
 
 ### Terminal (ab Meilenstein 12)
 
