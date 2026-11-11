@@ -82,6 +82,7 @@ Layout:
 import argparse
 import contextlib
 import datetime
+import fcntl
 import grp
 import hashlib
 import json
@@ -1001,7 +1002,26 @@ def _fetch_icons(paths: Paths, base: str, wanted: dict, target: Path, fetcher) -
     return out
 
 
+@contextlib.contextmanager
+def catalog_lock(paths: Paths, exclusive: bool):
+    """Between a refresh (swaps the catalog directory) and readers in other processes."""
+    lock = paths.catalog.with_name(paths.catalog.name + ".lock")
+    lock.parent.mkdir(parents=True, exist_ok=True)
+    with open(lock, "a") as f:
+        fcntl.flock(f, fcntl.LOCK_EX if exclusive else fcntl.LOCK_SH)
+        try:
+            yield
+        finally:
+            fcntl.flock(f, fcntl.LOCK_UN)
+
+
 def refresh_catalog(paths: Paths, fetcher=fetch, icon_fetcher=fetch_bytes) -> list[Template]:
+    # One refresh at a time (timer and dashboard); readers wait only for the swap.
+    with catalog_lock(paths, exclusive=True):
+        return _refresh_catalog(paths, fetcher, icon_fetcher)
+
+
+def _refresh_catalog(paths: Paths, fetcher, icon_fetcher) -> list[Template]:
     base = catalog_url(paths)
     templates, texts, skipped, icons = [], {}, [], {}
     for app_id, text in _catalog_texts(base, fetcher, icons).items():
@@ -1228,14 +1248,15 @@ class Apps:
         if (self.paths.app_dir(app_id) / "state.json").exists():
             raise AppError(f"{app_id} is already installed")
         src = self.paths.catalog / f"{app_id}.yaml"
+        with catalog_lock(self.paths, exclusive=False):
+            in_catalog = src.is_file()
+            text = src.read_text() if in_catalog and spec is None else ""
         if spec is not None:
-            if src.is_file():
+            if in_catalog:
                 raise AppError(f"{app_id} is a catalog app, choose another id")
             text, folders = custom_template(app_id, spec)
-        elif not src.is_file():
+        elif not in_catalog:
             raise AppError(f"{app_id} is not in the catalog")
-        else:
-            text = src.read_text()
         t = parse_template(text, app_id)
         self._check_public_ports(t)
         location = location or self.default_location()
@@ -1309,9 +1330,8 @@ class Apps:
         if spec is not None:
             raise AppError(f"{app_id} is a catalog app, it cannot be edited")
         src = self.paths.catalog / f"{app_id}.yaml"
-        if not src.is_file():
-            src = d / "app.yaml"
-        text = src.read_text()
+        with catalog_lock(self.paths, exclusive=False):
+            text = src.read_text() if src.is_file() else (d / "app.yaml").read_text()
         t = parse_template(text, app_id)
         # Folders of shares the new template no longer has are dropped.
         location, folders = self._placement(t, state)

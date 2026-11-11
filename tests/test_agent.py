@@ -913,3 +913,8 @@ def test_apps_catalog_refresh(ctx):
     ctx.runner.answers[("dahlia-apps", "catalog")] = (0, "[]", "")
     assert run(ctx, "apps.catalog", {"refresh": True})["ok"]
     assert ctx.runner.calls[-1] == ["dahlia-apps", "catalog", "--refresh"]
+
+
+def test_catalog_refresh_does_not_hold_the_change_lock():
+    # A refresh downloads for a while; other changes must not wait for it.
+    assert actions.lookup("apps.catalog").mutating is False

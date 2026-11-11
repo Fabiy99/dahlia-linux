@@ -973,3 +973,21 @@ def test_cli_spec(env, tmp_path, monkeypatch, capsys):
     f.write_text("[1]")
     assert apps.main(["update", "kuma", "--spec", str(f)]) == 1
     assert "JSON object" in capsys.readouterr().err
+
+
+def test_refresh_waits_for_other_refresh(env, tmp_path):
+    import threading
+    import time
+
+    src = tmp_path / "src"
+    icon_catalog(src, {"whoami.svg": SVG, "notes.png": PNG})
+    env.paths.config.write_text(json.dumps({"catalog": f"file://{src}/"}))
+    done = []
+    with apps.catalog_lock(env.paths, exclusive=True):
+        t = threading.Thread(target=lambda: done.append(apps.refresh_catalog(env.paths)))
+        t.start()
+        time.sleep(0.3)
+        # Still waiting for the lock held here.
+        assert done == []
+    t.join(10)
+    assert done and (env.paths.catalog / "whoami.yaml").exists()

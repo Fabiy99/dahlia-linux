@@ -800,9 +800,11 @@ def app_unit(app_id: str) -> str:
     return f"dahlia-app-{app_id}.service"
 
 
+# Not mutating: a refresh downloads for a while and must not hold the agent's
+# lock for changes; apps.catalog_lock keeps it apart from installs.
 @action(
     "apps.catalog",
-    mutating=True,
+    mutating=False,
     params={"refresh": Param(bool, required=False, default=False)},
 )
 def apps_catalog(ctx: Context, refresh: bool):
