@@ -1044,10 +1044,7 @@ def apps_remove(ctx: Context, id: str, delete_data: bool):
     return dahlia_apps(ctx, *args, timeout=600)
 
 
-# --- domains ------------------------------------------------------------------
-
-LABEL = r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?"
-DOMAIN_RE = re.compile(rf"^{LABEL}(?:\.{LABEL}){{1,5}}$")
+# --- names and certificates -----------------------------------------------------
 
 
 def dahlia_domains(ctx: Context, *args: str):
@@ -1056,21 +1053,14 @@ def dahlia_domains(ctx: Context, *args: str):
 
 @action("domains.get", mutating=False)
 def domains_get(ctx: Context):
-    """Domain, mDNS aliases, DNS records to create and certificate state."""
+    """mDNS aliases, names in the certificates and certificate state."""
     return dahlia_domains(ctx, "show")
 
 
-@action(
-    "domains.set",
-    mutating=True,
-    params={
-        "domain": Param(str, pattern=DOMAIN_RE),
-        "mdns_aliases": Param(bool),
-    },
-)
-def domains_set(ctx: Context, domain: str, mdns_aliases: bool):
-    """Change the app domain and mDNS aliases; renews the certificate."""
-    return dahlia_domains(ctx, "set", "--domain", domain, "--mdns", "on" if mdns_aliases else "off")
+@action("domains.set", mutating=True, params={"mdns_aliases": Param(bool)})
+def domains_set(ctx: Context, mdns_aliases: bool):
+    """Turn the <app>.local aliases on or off; renews the app certificate."""
+    return dahlia_domains(ctx, "set", "--mdns", "on" if mdns_aliases else "off")
 
 
 # --- meta ---------------------------------------------------------------------

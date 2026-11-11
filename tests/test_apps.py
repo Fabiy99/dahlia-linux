@@ -414,7 +414,6 @@ def test_list(env):
     assert listed[0]["status"] == "running"
     assert listed[0]["enabled"] is True
     assert listed[0]["urls"] == {
-        "domain": "https://whoami.dahlia.home.arpa",
         "mdns": "https://whoami.local",
         "port": "http://dahlia.local:8099",
     }
@@ -592,7 +591,7 @@ def test_compose_stack(stack_env):
     env = stack_env
     t = parse_template(STACK)
     sec = {"SECRET_DB": "d" * 32, "SECRET_ADMIN": "a" * 32, "SECRET_CACHE": "c" * 32}
-    c = apps.compose(t, 41005, env.paths, Host("Europe/Berlin", 1001, 1002, "nas", "lab.home.arpa"),
+    c = apps.compose(t, 41005, env.paths, Host("Europe/Berlin", 1001, 1002, "nas"),
                      sec)
     app, db, cache = (c["services"][n] for n in ("app", "db", "cache"))
     assert app["container_name"] == "dahlia-notes"
@@ -602,7 +601,8 @@ def test_compose_stack(stack_env):
     assert app["depends_on"] == ["db", "cache"]
     assert app["user"] == "1001:1002"
     assert app["environment"]["DATABASE_URL"] == f"postgres://notes:{'d' * 32}@db/notes"
-    assert app["environment"]["BASE"] == "https://notes.lab.home.arpa"
+    # {DOMAIN} is "local": https://<app>.{DOMAIN} is the app's mDNS alias.
+    assert app["environment"]["BASE"] == "https://notes.local"
     assert app["environment"]["HOST"] == "nas"
     assert db["environment"]["POSTGRES_PASSWORD"] == "d" * 32
     assert cache["command"] == ["redis-server", "--requirepass", "c" * 32]

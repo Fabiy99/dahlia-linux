@@ -315,8 +315,8 @@ Protokoll: eine Anfrage pro Verbindung, je eine JSON-Zeile hin und zurück.
 | `apps.remove` | `id`, `delete_data` (optional) | Container entfernen, Daten nur auf Wunsch |
 | `files.browse` | `root` (`array` oder `system`), `path` (relativ dazu) | Unterordner für die Ordnerauswahl, ohne versteckte Ordner und Symlinks, höchstens 500; dazu, welche Speicherorte nutzbar sind |
 | `files.mkdir` | `root`, `path` | neuen Ordner anlegen (Gruppe `dahlia`, 2775), nicht unter `appdata` |
-| `domains.get` | - | Domain, mDNS-Aliase, nötige DNS-Einträge, Zertifikate |
-| `domains.set` | `domain`, `mdns_aliases` | `dahlia-domains set`, Zertifikat und Proxy neu |
+| `domains.get` | - | mDNS-Aliase, Namen in den Zertifikaten, Zertifikate |
+| `domains.set` | `mdns_aliases` | `dahlia-domains set`, App-Zertifikat und Proxy neu |
 | `backup.get` | – | Ziel, letztes Ergebnis, öffentlicher SSH-Schlüssel, mögliche Zielplatten (`/mnt/diskN`, `/mnt/cache`, `/mnt/user`, `/media/…`) |
 | `backup.set` | `target` (`{"type": "folder", "path": …}` oder `{"type": "sftp", "host", "port", "user", "path"}`), `stop_apps`, `folders` (optional, weitere Ordner unter `/mnt/user` oder `/srv`) | `/etc/dahlia/backup.json`, legt Passwort und SSH-Schlüssel an, schaltet `dahlia-backup.timer` ein |
 | `backup.key` | – | Passwort des Repositorys |
@@ -367,7 +367,7 @@ wird die Seitenleiste zum Menü, Tabellen werden zu Karten. Ein Web-App-Manifest
 | Platten | Belegung von `/mnt/user`, `/mnt/storage` und `/mnt/cache`; je physische Platte eine Karte mit Modell, Seriennummer, Temperatur, SMART-Zustand und ihren Dateisystemen (Status, Belegung, hinzufügen in einer Rolle, entfernen) |
 | Apps | installierte Apps als Karten (Zustand, Adressen, Updates, Start/Stopp), Katalog mit Suche und Kategorien, eigene Container |
 | Docker | alle Container (auch fremde) mit Zustand, Ports, CPU/RAM, Start/Stopp/Neustart, Logs; Platzbedarf und Aufräumen |
-| Domains | Domain, mDNS-Aliase, DNS-Einträge, CA-Download |
+| Adressen | mDNS-Aliase an/aus, CA-Download und Zertifikate |
 | Aufgaben | Mover, SnapRAID-Sync und -Scrub starten, Zustand |
 | System-Log | Journal mit Filter nach Stufe und Dienst |
 | Updates | suchen, installieren |
@@ -471,7 +471,7 @@ Vorlage unter `login` nennt.
 
 | Punkt | Umsetzung |
 | --- | --- |
-| Web-Port | Docker veröffentlicht ihn auf `127.0.0.1:41000-41999`; nginx lauscht im LAN auf dem öffentlichen Port der Vorlage (Port-Link `http://<server>:<port>/`) und auf 443 für `<id>.<domain>` und `<id>.local` |
+| Web-Port | Docker veröffentlicht ihn auf `127.0.0.1:41000-41999`; nginx lauscht im LAN auf dem öffentlichen Port der Vorlage (Port-Link `http://<server>:<port>/`) und mit mDNS-Alias auf 443 für `<id>.local` |
 | LAN-Ports | nur wenn die Vorlage sie nennt; das Dashboard zeigt sie vor der Installation |
 | Speicherort | Array `/mnt/user` oder System-SSD `/srv` (FHS: Daten, die das System bereitstellt). Wahl bei der Installation, ohne Array automatisch `/srv`. Apps von vor 0.7 liegen auf dem Array |
 | System-SSD | `/srv` ist auf Btrfs ein eigenes Subvolume `@srv` auf oberster Ebene wie bei openSUSE, eingehängt über `srv.mount` (angelegt von `/usr/lib/dahlia/system-data.sh` im postinst). Es gehört nicht zu den snapper-Snapshots von `/`: ein Rollback setzt App-Daten nicht zurück und verliert sie nicht. Auf anderen Dateisystemen ein normaler Ordner |
@@ -554,17 +554,15 @@ die Apps einzeln wiederherstellen und unter Apps starten.
 | Name | Weg | Voraussetzung |
 | --- | --- | --- |
 | `https://<server>.local/` | Dashboard, Avahi-Hostname | keine |
-| `https://<domain>/` | Dashboard | DNS-Eintrag `<domain>` auf den Server |
-| `https://<app>.<domain>/` | App über nginx | DNS-Eintrag `*.<domain>` auf den Server |
 | `https://<app>.local/` | App über nginx, mDNS-Alias | mDNS-Aliase eingeschaltet |
 | `http://<server>.local:<port>/` | Port-Link | keine |
 
-Die Domain ist standardmäßig `dahlia.home.arpa` (RFC 8375) und steht in
-`/etc/dahlia/domains.json`. Mehrstufige `.local`-Namen (`jellyfin.dahlia.local`) werden
-abgelehnt, weil mDNS-Clients sie nicht zuverlässig auflösen. Die DNS-Einträge legt man im
-lokalen DNS an, z. B. in AdGuard Home unter Filter > DNS-Umschreibungen
-(`*.dahlia.home.arpa` -> IP des Servers). Das Dashboard zeigt die Einträge mit der
-aktuellen Adresse.
+Einen eigenen DNS-Server oder eine eigene Domain braucht Dahlia nicht (bis 1.0 gab es
+`*.dahlia.home.arpa`; seit 1.1 nicht mehr, ein alter Eintrag `domain` in
+`/etc/dahlia/domains.json` wird ignoriert). Mehrstufige `.local`-Namen
+(`jellyfin.dahlia.local`) gibt es nicht, weil mDNS-Clients sie nicht zuverlässig auflösen.
+Der Platzhalter `{DOMAIN}` in App-Vorlagen steht für `local`, `https://<app>.{DOMAIN}` ist
+also der mDNS-Alias der App.
 
 mDNS-Aliase: `dahlia-mdns.service` (ohne Rechte, Benutzer `dahlia-mdns`) veröffentlicht für jede App
 mit Web-Oberfläche `<app>.local` per `avahi-publish` auf der primären IPv4-Adresse. Ändert
@@ -580,17 +578,17 @@ Zertifikate (`dahlia-domains`, Teil von `dahlia-agent`):
 | `/etc/dahlia/tls/apps.key`, `apps.crt` | Zertifikat der App-Proxys, 825 Tage |
 
 Die CA hat Namensbeschränkungen (`nameConstraints`): sie kann nur Namen unter `.local`,
-`home.arpa`, der eigenen Domain und private IPv4-Adressen (10/8, 172.16/12, 192.168/16)
-signieren. Wer sie importiert, vertraut ihr also für keine anderen Websites. Das
-Server-Zertifikat enthält `<server>.local`, `<domain>`, `*.<domain>` und die privaten
-IPv4-Adressen des Servers, das App-Zertifikat `*.<domain>` und die mDNS-Aliase. Apps
+und private IPv4-Adressen (10/8, 172.16/12, 192.168/16) signieren (CAs von vor 1.1 auch
+`home.arpa`; sie bleiben, damit niemand neu importieren muss). Wer sie importiert, vertraut
+ihr also für keine anderen Websites. Das Server-Zertifikat enthält `<server>.local` und die
+privaten IPv4-Adressen des Servers, das App-Zertifikat die mDNS-Aliase. Ohne Aliase lauscht
+der App-Proxy nur auf dem Port-Link. Apps
 installieren oder entfernen ändert so nur das App-Zertifikat; ein Browser, der das
 Server-Zertifikat einmal akzeptiert hat, verliert das Dashboard nicht. `dahlia-domains.timer`
 prüft täglich und nach dem Boot: neue Adresse, neue App, weniger als 30 Tage Restlaufzeit
-führen zu einem neuen Zertifikat. Eine Domain außerhalb von `home.arpa` braucht eine neue CA; das Dashboard sagt
-dann, dass die CA neu importiert werden muss.
+führen zu einem neuen Zertifikat.
 
-CA importieren: im Dashboard unter Domains `dahlia-ca.crt` herunterladen und den
+CA importieren: im Dashboard unter Adressen `dahlia-ca.crt` herunterladen und den
 SHA-256-Fingerabdruck mit der Anzeige nach dem Login (Konsole oder SSH) vergleichen.
 Danach unter Windows mit `certutil -addstore -f Root dahlia-ca.crt` (als Administrator),
 unter macOS in der Schlüsselbundverwaltung (System, "Immer vertrauen"), unter Debian/Ubuntu
@@ -599,7 +597,7 @@ Firefox nutzt seinen eigenen Speicher (Einstellungen > Zertifikate > Importieren
 
 ```sh
 dahlia-domains show
-dahlia-domains set --domain lab.home.arpa --mdns off
+dahlia-domains set --mdns off     # nur noch Port-Links
 dahlia-domains apply              # Zertifikat und Proxy prüfen, nur bei Bedarf neu
 ```
 

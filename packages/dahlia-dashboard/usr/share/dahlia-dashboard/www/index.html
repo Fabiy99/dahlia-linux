@@ -363,26 +363,15 @@
       </section>
 
       <section id="view-domains" hidden>
-        <div class="tiles two">
-          <article class="card">
-            <h2 data-i18n="domains.title"></h2>
-            <p class="hint" data-i18n="domains.hint"></p>
-            <form id="domains-form">
-              <label><span data-i18n="domains.domain"></span><input name="domain" required></label>
-              <label class="check"><input name="mdns_aliases" type="checkbox"><span data-i18n="domains.mdns"></span></label>
-              <p class="hint" data-i18n="domains.domain_hint"></p>
-              <button type="submit" data-i18n="common.save"></button>
-            </form>
-          </article>
-          <article class="card">
-            <h2 data-i18n="domains.dns_title"></h2>
-            <p class="hint" data-i18n="domains.dns_hint"></p>
-            <table>
-              <thead><tr><th data-i18n="domains.record"></th><th data-i18n="domains.target"></th></tr></thead>
-              <tbody id="dns-records"></tbody>
-            </table>
-          </article>
-        </div>
+        <article class="card">
+          <h2 data-i18n="domains.title"></h2>
+          <p class="hint" data-i18n="domains.hint"></p>
+          <form id="domains-form">
+            <label class="check"><input name="mdns_aliases" type="checkbox"><span data-i18n="domains.mdns"></span></label>
+            <p class="hint" data-i18n="domains.mdns_hint"></p>
+            <button type="submit" data-i18n="common.save"></button>
+          </form>
+        </article>
         <article class="card">
           <h2 data-i18n="domains.ca_title"></h2>
           <p class="hint" data-i18n="domains.ca_hint"></p>

@@ -123,7 +123,6 @@ class MkdirBody(BaseModel):
 
 
 class DomainsBody(BaseModel):
-    domain: str
     mdns_aliases: bool
 
 
@@ -782,7 +781,7 @@ def create_app(cfg: Config | None = None) -> FastAPI:
 
     @app.post("/api/domains", dependencies=changing)
     def domains_set(body: DomainsBody):
-        return agent("domains.set", {"domain": body.domain, "mdns_aliases": body.mdns_aliases})
+        return agent("domains.set", {"mdns_aliases": body.mdns_aliases})
 
     # --- terminal -------------------------------------------------------------
 

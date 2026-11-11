@@ -27,8 +27,9 @@ Beide Fassungen inhaltlich gleich halten.
   Einzige Shell: das Terminal (`dahlia-terminal`, unprivilegiert) startet `su -l <Benutzer>`;
   ohne das Linux-Passwort dieses Kontos gibt es keine Shell.
 - Firewall: nftables, verwaltet von Dahlia. Docker veröffentlicht Ports nur auf 127.0.0.1.
-- Domains: Server `dahlia.local`; Apps über Port-Links, einstufige mDNS-Aliase oder
-  `*.dahlia.home.arpa` per AdGuard. Keine mehrstufigen `.local`-Namen.
+- Namen: Server `dahlia.local`; Apps über Port-Links und einstufige mDNS-Aliase
+  (`<app>.local`). Keine eigene Domain (kein `home.arpa`), kein eigener DNS-Server.
+  Keine mehrstufigen `.local`-Namen.
 - Keine fertigen Dashboards (Cockpit, Portainer, CasaOS usw.). Bibliotheken sind erlaubt.
 - VMs und LXC erst ab Version 2, über Incus.
 
