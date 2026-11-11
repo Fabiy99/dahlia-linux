@@ -3,18 +3,27 @@
 Accounts are separate from Linux users. They live in users.json in the state
 directory (owner dahlia-ui, mode 0600) with scrypt password hashes.
 Sessions are random tokens; sessions.json keeps their hashes over a restart.
+
+Second factor: TOTP (RFC 6238, SHA-1, 6 digits, 30 s), as every
+authenticator app understands it. The secret is stored in users.json next to
+the password hash; a code is accepted once (the last used time step is kept)
+and one step early or late. Ten recovery codes, stored as SHA-256 hashes
+(they are random, so a slow hash adds nothing), each work once.
 """
 
+import base64
 import hashlib
 import hmac
 import json
 import os
 import re
 import secrets
+import struct
 import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
+from urllib.parse import quote
 
 USERNAME_RE = re.compile(r"^[a-z][a-z0-9_-]{1,31}$")
 MIN_PASSWORD = 10
@@ -25,8 +34,66 @@ SCRYPT_R = 8
 SCRYPT_P = 1
 
 
+TOTP_STEP = 30
+TOTP_DIGITS = 6
+TOTP_WINDOW = 1
+RECOVERY_CODES = 10
+CODE_RE = re.compile(r"^\d{6}$")
+RECOVERY_RE = re.compile(r"^[a-z0-9]{4}-?[a-z0-9]{4}$")
+RECOVERY_ALPHABET = "abcdefghjkmnpqrstuvwxyz23456789"
+
+
 class AuthError(Exception):
     pass
+
+
+# --- TOTP ---------------------------------------------------------------------
+
+
+def new_totp_secret() -> str:
+    """160 random bits, base32 without padding (what the apps expect)."""
+    return base64.b32encode(secrets.token_bytes(20)).decode().rstrip("=")
+
+
+def hotp(secret: str, counter: int) -> str:
+    key = base64.b32decode(secret + "=" * (-len(secret) % 8))
+    mac = hmac.new(key, struct.pack(">Q", counter), hashlib.sha1).digest()
+    offset = mac[-1] & 0x0F
+    value = struct.unpack(">I", mac[offset:offset + 4])[0] & 0x7FFFFFFF
+    return str(value % 10**TOTP_DIGITS).zfill(TOTP_DIGITS)
+
+
+def totp_step(now: float) -> int:
+    return int(now // TOTP_STEP)
+
+
+def totp_match(secret: str, code: str, now: float, after: int = -1) -> int | None:
+    """The time step the code belongs to, if valid and newer than `after`."""
+    if not CODE_RE.fullmatch(code):
+        return None
+    step = totp_step(now)
+    for s in range(step - TOTP_WINDOW, step + TOTP_WINDOW + 1):
+        if s > after and hmac.compare_digest(hotp(secret, s), code):
+            return s
+    return None
+
+
+def totp_uri(secret: str, username: str, issuer: str) -> str:
+    label = quote(f"{issuer}:{username}")
+    return (f"otpauth://totp/{label}?secret={secret}&issuer={quote(issuer)}"
+            f"&algorithm=SHA1&digits={TOTP_DIGITS}&period={TOTP_STEP}")
+
+
+def new_recovery_codes() -> list[str]:
+    def one() -> str:
+        c = "".join(secrets.choice(RECOVERY_ALPHABET) for _ in range(8))
+        return f"{c[:4]}-{c[4:]}"
+
+    return [one() for _ in range(RECOVERY_CODES)]
+
+
+def recovery_hash(code: str) -> str:
+    return hashlib.sha256(code.strip().lower().replace("-", "").encode()).hexdigest()
 
 
 def hash_password(password: str, salt: bytes | None = None) -> str:
@@ -58,8 +125,9 @@ def check_new_credentials(username: str, password: str) -> None:
 
 
 class UserStore:
-    def __init__(self, path: Path):
+    def __init__(self, path: Path, clock=time.time):
         self.path = path
+        self.clock = clock
         self.lock = threading.Lock()
         # Compared against when the user does not exist, so timing does not
         # tell whether a name is valid.
@@ -94,6 +162,73 @@ class UserStore:
         user = self._load()["users"].get(username)
         stored = user["password"] if user else self._dummy
         return verify_password(password, stored) and user is not None
+
+    def totp_enabled(self, username: str) -> bool:
+        user = self._load()["users"].get(username)
+        return bool(user and user.get("totp"))
+
+    def totp_status(self, username: str) -> dict:
+        user = self._load()["users"].get(username) or {}
+        return {"enabled": bool(user.get("totp")),
+                "recovery_left": len(user.get("recovery") or [])}
+
+    def check_second_factor(self, username: str, code: str) -> bool:
+        """A TOTP code (once per time step) or an unused recovery code."""
+        code = code.strip().replace(" ", "")
+        with self.lock:
+            data = self._load()
+            user = data["users"].get(username)
+            if not user or not user.get("totp"):
+                return False
+            step = totp_match(user["totp"], code, self.clock(), user.get("totp_last", -1))
+            if step is not None:
+                user["totp_last"] = step
+                self._save(data)
+                return True
+            if RECOVERY_RE.fullmatch(code.lower()):
+                h = recovery_hash(code)
+                left = user.get("recovery") or []
+                if any(hmac.compare_digest(h, x) for x in left):
+                    user["recovery"] = [x for x in left if x != h]
+                    self._save(data)
+                    return True
+            return False
+
+    def totp_begin(self, username: str) -> str:
+        """A new secret, pending until confirmed with a code from it."""
+        secret = new_totp_secret()
+        with self.lock:
+            data = self._load()
+            data["users"][username]["totp_pending"] = secret
+            self._save(data)
+        return secret
+
+    def totp_confirm(self, username: str, code: str) -> list[str]:
+        """Turn TOTP on; returns the recovery codes (shown once)."""
+        with self.lock:
+            data = self._load()
+            user = data["users"][username]
+            secret = user.get("totp_pending")
+            if not secret:
+                raise AuthError("totp_not_started")
+            step = totp_match(secret, code.strip().replace(" ", ""), self.clock())
+            if step is None:
+                raise AuthError("totp_code")
+            codes = new_recovery_codes()
+            user.pop("totp_pending")
+            user.update(totp=secret, totp_last=step, recovery=[recovery_hash(c) for c in codes])
+            self._save(data)
+        return codes
+
+    def totp_disable(self, username: str) -> None:
+        with self.lock:
+            data = self._load()
+            user = data["users"].get(username)
+            if user is None:
+                raise AuthError("unknown_user")
+            for key in ("totp", "totp_last", "totp_pending", "recovery"):
+                user.pop(key, None)
+            self._save(data)
 
     def change_password(self, username: str, old: str, new: str) -> None:
         if not self.verify(username, old):

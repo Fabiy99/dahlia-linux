@@ -348,6 +348,7 @@ SSH or the console.
 | Backend | FastAPI/uvicorn as `dahlia-ui` on `127.0.0.1:8080`, systemd hardening (`ProtectSystem=strict`, no capabilities) |
 | Frontend | static files in `/usr/share/dahlia-dashboard/www`, served by nginx, texts from `locales/de.json` and `locales/en.json` |
 | Accounts | `/var/lib/dahlia-dashboard/users.json` (0600), scrypt password hashes |
+| Second factor | optional TOTP (RFC 6238, SHA-1, 6 digits, 30 s, ±1 step), each code once; 10 recovery codes (SHA-256, each once); QR code via `qrencode` |
 | Sessions | random token in memory, cookie `HttpOnly`, `Secure`, `SameSite=Strict`; 2 h idle, 12 h at most |
 | Protection | changing requests need the header `X-Dahlia-Request`; 5 failures per IP within 5 minutes, then blocked |
 | Root actions | only through `dahlia-agent`; `dahlia-ui` is a member of the group `dahlia-agent` |
@@ -433,6 +434,12 @@ computes the CPU usage from two samples.
 
 Forgotten password: `sudo rm /var/lib/dahlia-dashboard/users.json` and
 `sudo systemctl restart dahlia-dashboard` open the setup wizard with a new code.
+
+Two-factor login (M22): set up under Settings with the password, scan the QR code, confirm
+with a code. Only then is it on; other logged-in browsers are logged out. At login the form
+asks for the code only once the password is right. Wrong codes count as failed attempts.
+Turning it off needs password and code. Phone and recovery codes lost:
+`sudo dahlia-dashboard --disable-totp <account>`.
 
 ### Terminal (from milestone 12)
 
