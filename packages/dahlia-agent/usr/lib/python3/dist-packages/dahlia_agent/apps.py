@@ -27,11 +27,17 @@ extra capabilities.
         environment: {TZ: "{TZ}", PAPERLESS_DBPASS: "{SECRET_DB}"}
         command: [--flag, value]         # optional
         user: "{PUID}:{PGID}"            # optional
+        gpu: true                        # optional, schema 3: /dev/dri for VA-API/QSV
       db:                                # container dahlia-<id>-db, host name "db"
         image: postgres:17.6
         environment: {POSTGRES_PASSWORD: "{SECRET_DB}"}
         volumes:
           - {container: /var/lib/postgresql/data, appdata: db}
+
+Schema 3 is schema 2 plus "gpu" on a service: the container gets /dev/dri
+and the groups render and video, if the server has a GPU with a DRM driver
+(Intel, AMD; NVIDIA needs its container toolkit and is not supported). Without
+one the app runs on the CPU. Older Dahlia versions skip schema 3 templates.
 
 Schema 1 is the single-container form (image, lan_ports, volumes and
 environment at the top level); it is read as a stack with only "app".
@@ -60,6 +66,7 @@ catalog's; tags are pinned, so a new version is a new template.
 Layout:
     /etc/dahlia/apps.json                    catalog URL
     /var/lib/dahlia/apps-catalog/            last downloaded catalog, meta.json
+    /var/lib/dahlia/apps-catalog/icons/      app logos, served by nginx as /app-icons/
     /var/lib/dahlia/apps/<id>/app.yaml       template the app was installed from
     /var/lib/dahlia/apps/<id>/compose.json   generated, used by docker compose
     /var/lib/dahlia/apps/<id>/state.json     host port, enabled flag, location, folders
@@ -70,6 +77,7 @@ import argparse
 import contextlib
 import datetime
 import grp
+import hashlib
 import json
 import os
 import pwd
@@ -87,7 +95,7 @@ from pathlib import Path
 
 import yaml
 
-from . import domains
+from . import domains, firewall
 
 CONFIG_FILE = Path("/etc/dahlia/apps.json")
 APPS_DIR = Path("/var/lib/dahlia/apps")
@@ -106,8 +114,13 @@ RESERVED_PUBLIC = RESERVED_PORTS | {53}
 MAX_FILE = 256 * 1024
 MAX_BUNDLE = 16 * 1024 * 1024
 DOWNLOAD_TIMEOUT = 30
-SCHEMAS = (1, 2)
+SCHEMAS = (1, 2, 3)
+GPU_SCHEMA = 3
+DRI = Path("/dev/dri")
+GPU_GROUPS = ("render", "video")
 BUNDLE_FORMAT = 1
+MAX_ICON = 64 * 1024
+ICON_RE = re.compile(r"icons/([a-z0-9][a-z0-9-]*)\.(svg|png)")
 MAX_SERVICES = 8
 MAIN = "app"
 
@@ -170,6 +183,7 @@ class Service:
     command: list[str] | None = None
     user: str | None = None
     depends_on: list[str] = field(default_factory=list)
+    gpu: bool = False
 
 
 @dataclass
@@ -199,6 +213,10 @@ class Template:
         return [p for s in self.services.values() for p in s.lan_ports]
 
     @property
+    def gpu(self) -> bool:
+        return any(s.gpu for s in self.services.values())
+
+    @property
     def volumes(self) -> list[Volume]:
         return [v for s in self.services.values() for v in s.volumes]
 
@@ -225,6 +243,7 @@ class Template:
             "public_port": self.public_port,
             "lan_ports": [vars(p) for p in self.lan_ports],
             "shares": self.share_list(),
+            "gpu": self.gpu,
         }
 
     def share_list(self) -> list[dict]:
@@ -368,6 +387,10 @@ def _service(name: str, data: dict, where: str) -> Service:
     if not isinstance(deps, list) or not all(isinstance(d, str) for d in deps):
         raise AppError(f"{where}.depends_on must be a list of service names")
     s.depends_on = list(deps)
+    if "gpu" in data:
+        if not isinstance(data["gpu"], bool):
+            raise AppError(f"{where}.gpu must be true or false")
+        s.gpu = data["gpu"]
     return s
 
 
@@ -391,7 +414,8 @@ def _check_dependencies(services: dict[str, Service]) -> None:
         visit(name, ())
 
 
-SERVICE_FIELDS = {"image", "lan_ports", "volumes", "environment", "command", "user", "depends_on"}
+SERVICE_FIELDS = {"image", "lan_ports", "volumes", "environment", "command", "user", "depends_on",
+                  "gpu"}
 
 
 def parse_template(text: str, expected_id: str | None = None) -> Template:
@@ -444,8 +468,10 @@ def parse_template(text: str, expected_id: str | None = None) -> Template:
             services[name] = _service(name, _fields(raw[name], SERVICE_FIELDS, {"image"}, where),
                                       where)
         _check_dependencies(services)
+        if schema < GPU_SCHEMA and any(sv.gpu for sv in services.values()):
+            raise AppError(f"gpu needs schema {GPU_SCHEMA}")
         t = Template(id=app_id, name=data["name"], description=desc, services=services,
-                     category=data["category"])
+                     schema=schema, category=data["category"])
         if "website" in data:
             if not isinstance(data["website"], str) or not URL_RE.fullmatch(data["website"]):
                 raise AppError("website must be an https:// URL")
@@ -485,6 +511,9 @@ class Host:
     gid: int
     hostname: str = "dahlia"
     domain: str = domains.DEFAULT_DOMAIN
+    # GPU for apps with "gpu": /dev/dri exists, and the gids of render and video.
+    dri: bool = False
+    gpu_gids: tuple[int, ...] = ()
 
     @classmethod
     def detect(cls) -> "Host":
@@ -502,7 +531,17 @@ class Host:
             gid = grp.getgrnam(APPS_GROUP).gr_gid
         except KeyError:
             gid = pwd.getpwnam(APPS_USER).pw_gid
-        return cls(tz=tz or "Etc/UTC", uid=uid, gid=gid, hostname=socket.gethostname())
+        gids = []
+        for name in GPU_GROUPS:
+            with contextlib.suppress(KeyError):
+                gids.append(grp.getgrnam(name).gr_gid)
+        return cls(tz=tz or "Etc/UTC", uid=uid, gid=gid, hostname=socket.gethostname(),
+                   dri=has_gpu(DRI), gpu_gids=tuple(gids))
+
+
+def has_gpu(dri: Path = DRI) -> bool:
+    """A DRM render node exists (Intel, AMD, nouveau)."""
+    return dri.is_dir() and any(dri.glob("renderD*"))
 
 
 @dataclass
@@ -653,6 +692,10 @@ def compose(t: Template, host_port: int | None, paths: Paths, host: Host,
             svc["user"] = fill(s.user, host)
         if s.depends_on:
             svc["depends_on"] = list(s.depends_on)
+        if s.gpu and host.dri:
+            svc["devices"] = [f"{DRI}:{DRI}"]
+            if host.gpu_gids:
+                svc["group_add"] = [str(g) for g in host.gpu_gids]
         services[s.name] = svc
     return {"name": f"dahlia-{t.id}", "services": services}
 
@@ -762,6 +805,10 @@ def catalog_url(paths: Paths) -> str:
 
 
 def fetch(url: str, limit: int = MAX_FILE) -> str:
+    return fetch_bytes(url, limit).decode()
+
+
+def fetch_bytes(url: str, limit: int = MAX_FILE) -> bytes:
     scheme = urllib.parse.urlsplit(url).scheme
     if scheme not in ("https", "file"):
         raise AppError(f"refusing to fetch {url}")
@@ -780,11 +827,38 @@ def fetch(url: str, limit: int = MAX_FILE) -> str:
         raise AppError(f"download failed: {url}: {e}") from None
     if len(data) > limit:
         raise AppError(f"{url} is larger than {limit} bytes")
-    return data.decode()
+    return data
 
 
-def _catalog_texts(base: str, fetcher) -> dict[str, str]:
-    """Template texts by id: catalog.json (one file), else index.json + apps/<id>.yaml."""
+def _catalog_icons(data: dict) -> dict[str, tuple[str, str]]:
+    """The "icons" of catalog.json: id -> (file name, sha256). Bad entries are left out."""
+    out = {}
+    icons = data.get("icons")
+    for app_id, entry in (icons.items() if isinstance(icons, dict) else []):
+        if not isinstance(entry, dict) or not isinstance(entry.get("file"), str):
+            continue
+        m = ICON_RE.fullmatch(entry["file"])
+        sha = entry.get("sha256")
+        if (m and m.group(1) == app_id and isinstance(sha, str)
+                and re.fullmatch(r"[0-9a-f]{64}", sha)):
+            out[app_id] = (f"{app_id}.{m.group(2)}", sha)
+    return out
+
+
+def icon_ok(name: str, data: bytes) -> bool:
+    """Size and file type. The dashboard shows icons only in <img>, where SVG scripts do not run."""
+    if len(data) > MAX_ICON:
+        return False
+    if name.endswith(".png"):
+        return data.startswith(b"\x89PNG\r\n\x1a\n")
+    return b"<svg" in data[:2048]
+
+
+def _catalog_texts(base: str, fetcher, icons: dict | None = None) -> dict[str, str]:
+    """Template texts by id: catalog.json (one file), else index.json + apps/<id>.yaml.
+
+    The icons listed in catalog.json are put into `icons` (id -> (file, sha256)).
+    """
     try:
         bundle = fetcher(base + "catalog.json", MAX_BUNDLE)
     except NotFound:
@@ -802,6 +876,8 @@ def _catalog_texts(base: str, fetcher) -> dict[str, str]:
             for k, v in texts.items()
         ):
             raise AppError("catalog.json must contain {\"apps\": {id: template}}")
+        if icons is not None:
+            icons.update(_catalog_icons(data))
         return dict(sorted(texts.items()))
     try:
         index = json.loads(fetcher(base + "index.json", MAX_FILE))
@@ -815,15 +891,39 @@ def _catalog_texts(base: str, fetcher) -> dict[str, str]:
 
 def _clear(d: Path) -> None:
     if d.exists():
-        for f in d.iterdir():
-            f.unlink()
-        d.rmdir()
+        shutil.rmtree(d)
 
 
-def refresh_catalog(paths: Paths, fetcher=fetch) -> list[Template]:
+def _fetch_icons(paths: Paths, base: str, wanted: dict, target: Path, fetcher) -> dict:
+    """Copy unchanged icons from the cache, download the others; id -> {file, sha256}.
+
+    An icon that fails is left out: the dashboard shows the first letter instead.
+    """
+    old = catalog_meta(paths).get("icons") or {}
+    target.mkdir()
+    target.chmod(0o755)  # nginx (www-data) serves them
+    out = {}
+    for app_id, (name, sha) in sorted(wanted.items()):
+        cached = paths.catalog / "icons" / name
+        if old.get(app_id, {}).get("sha256") == sha and cached.is_file():
+            data = cached.read_bytes()
+        else:
+            try:
+                data = fetcher(f"{base}icons/{name}", MAX_ICON)
+            except AppError:
+                continue
+        if hashlib.sha256(data).hexdigest() != sha or not icon_ok(name, data):
+            continue
+        (target / name).write_bytes(data)
+        (target / name).chmod(0o644)
+        out[app_id] = {"file": name, "sha256": sha}
+    return out
+
+
+def refresh_catalog(paths: Paths, fetcher=fetch, icon_fetcher=fetch_bytes) -> list[Template]:
     base = catalog_url(paths)
-    templates, texts, skipped = [], {}, []
-    for app_id, text in _catalog_texts(base, fetcher).items():
+    templates, texts, skipped, icons = [], {}, [], {}
+    for app_id, text in _catalog_texts(base, fetcher, icons).items():
         schema = template_schema(text)
         # Templates for a newer Dahlia are left out, not an error.
         if type(schema) is int and schema > max(SCHEMAS):
@@ -837,10 +937,12 @@ def refresh_catalog(paths: Paths, fetcher=fetch) -> list[Template]:
     new.mkdir(parents=True)
     for app_id, text in texts.items():
         (new / f"{app_id}.yaml").write_text(text)
+    icons = {k: v for k, v in icons.items() if k in texts}
     meta = {
         "refreshed": datetime.datetime.now(datetime.UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "source": base,
         "skipped": skipped,
+        "icons": _fetch_icons(paths, base, icons, new / "icons", icon_fetcher),
     }
     (new / "meta.json").write_text(json.dumps(meta) + "\n")
     old = paths.catalog.with_name(paths.catalog.name + ".old")
@@ -874,6 +976,16 @@ def cached_template(paths: Paths, app_id: str) -> Template | None:
 
 def catalog_meta(paths: Paths) -> dict:
     return read_json(paths.catalog / "meta.json", {}) or {}
+
+
+def icon_urls(paths: Paths) -> dict[str, str]:
+    """id -> path below /app-icons/; the hash in the query renews the browser cache."""
+    icons = catalog_meta(paths).get("icons")
+    if not isinstance(icons, dict):
+        return {}
+    return {app_id: f"{v['file']}?v={v['sha256'][:12]}" for app_id, v in icons.items()
+            if isinstance(v, dict) and isinstance(v.get("file"), str)
+            and isinstance(v.get("sha256"), str)}
 
 
 # --- docker -------------------------------------------------------------------
@@ -933,6 +1045,8 @@ class Apps:
     naming: domains.Domains = field(default_factory=domains.Domains)
     port_check: object = port_free
     mounted: object = os.path.ismount
+    # Loads the firewall table again after ports changed; tests replace it.
+    reload_firewall: object = firewall.apply_quietly
 
     def _host(self) -> Host:
         if self.host is None:
@@ -965,6 +1079,8 @@ class Apps:
             self.naming.apply(proxies(self.paths))
         except domains.DomainError as e:
             raise AppError(str(e)) from None
+        # Port links and LAN ports of apps are opened for local networks only.
+        self.reload_firewall()
 
     def _prepare_dirs(self, t: Template, folders: dict[str, str] | None,
                       location: str) -> None:
@@ -1016,8 +1132,11 @@ class Apps:
         templates = refresh_catalog(self.paths) if refresh else cached_catalog(self.paths)
         have = set(installed(self.paths))
         meta = catalog_meta(self.paths)
+        icons = icon_urls(self.paths)
         return {
-            "apps": [{**t.summary(), "installed": t.id in have} for t in templates],
+            "gpu_available": self._host().dri,
+            "apps": [{**t.summary(), "installed": t.id in have, "icon": icons.get(t.id)}
+                     for t in templates],
             "refreshed": meta.get("refreshed"),
             "skipped": meta.get("skipped", []),
         }
@@ -1155,6 +1274,7 @@ class Apps:
         out = []
         settings = self.naming.settings()
         host = self.naming._host()
+        icons = icon_urls(self.paths)
         for app_id in installed(self.paths):
             t, state = load_installed(self.paths, app_id)
             login = {}
@@ -1171,6 +1291,7 @@ class Apps:
                 if t.public_port else None,
                 "update": update_info(t, cached_template(self.paths, app_id)),
                 "login": login or None,
+                "icon": icons.get(app_id),
             })
         return out
 

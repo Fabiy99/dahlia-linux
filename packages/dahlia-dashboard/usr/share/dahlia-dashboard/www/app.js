@@ -134,8 +134,17 @@ function cell(tr, content) {
   return td;
 }
 
-// Letter avatar with a colour derived from the id, so it stays the same.
-function avatar(id, name) {
+// App logo from the catalog, else a letter avatar with a colour derived from
+// the id, so it stays the same.
+function avatar(id, name, icon) {
+  if (icon) {
+    const img = el("img", "avatar logo-img");
+    img.src = `/app-icons/${icon}`;
+    img.alt = "";
+    img.loading = "lazy";
+    img.addEventListener("error", () => img.replaceWith(avatar(id, name)), { once: true });
+    return img;
+  }
   let h = 0;
   for (const c of id) h = (h * 31 + c.charCodeAt(0)) % 360;
   const a = el("span", "avatar", (name || id).slice(0, 1).toUpperCase());
@@ -300,7 +309,7 @@ const loaders = {
   shares: loadShares,
   log: loadLog,
   jobs: loadJobs,
-  updates: () => {},
+  updates: loadUpdateProgress,
   account: loadAccount,
 };
 
@@ -494,7 +503,7 @@ function renderOverviewApps(installed) {
     const item = el("div", "app-mini");
     const meta = el("div", "meta");
     meta.append(el("b", "", app.name), el("small", "", tv("app_status", app.status)));
-    item.append(el("span", `dot ${DOT_KIND[STATUS_KIND[app.status] ?? ""]}`), avatar(app.id, app.name), meta);
+    item.append(el("span", `dot ${DOT_KIND[STATUS_KIND[app.status] ?? ""]}`), avatar(app.id, app.name, app.icon), meta);
     if (app.update) item.append(badge(t("apps.update_short"), "accent"));
     const url = primaryUrl(app);
     if (url && app.status === "running") {
@@ -558,6 +567,9 @@ async function loadOverview() {
     const board = [hw.board.board_vendor, hw.board.board_name].filter(Boolean).join(" ")
       || [hw.board.sys_vendor, hw.board.product_name].filter(Boolean).join(" ");
     if (board) fact(dl, "overview.board", board);
+    const gpu = (hw.gpus || []).filter((g) => g.render)
+      .map((g) => [g.vendor, g.driver && `(${g.driver})`].filter(Boolean).join(" ")).join(", ");
+    if (gpu) fact(dl, "overview.gpu", gpu);
   }).catch(tileError("overview-disks"));
 }
 
@@ -834,6 +846,7 @@ async function loadStorage() {
 // --- apps -----------------------------------------------------------------------
 
 let catalogApps = [];
+let gpuAvailable = false;
 
 // Install and update run in the background on the server; poll until done.
 async function waitForAppJob(id) {
@@ -880,7 +893,7 @@ function cardHead(app, sub) {
   const head = el("div", "head");
   const title = el("div", "title");
   title.append(el("b", "", app.name), el("small", "", sub));
-  head.append(avatar(app.id, app.name), title);
+  head.append(avatar(app.id, app.name, app.icon), title);
   return head;
 }
 
@@ -891,6 +904,7 @@ function renderInstalled(installed) {
     const card = el("article", "app-card");
     const head = cardHead(app, `${tv("category", app.category)} · ${app.version}`);
     head.append(badge(tv("app_status", app.status), STATUS_KIND[app.status] ?? ""));
+    if (app.gpu && gpuAvailable) head.append(badge("GPU", "info"));
     card.append(head);
 
     const notes = app.notes && (app.notes[lang] || app.notes.en);
@@ -1160,6 +1174,7 @@ function renderCatalog() {
     card.append(el("div", "desc", app.description[lang] || app.description.en || ""));
     const extra = helpers(app);
     if (extra) card.append(el("div", "hint", t("apps.with_services", { services: extra })));
+    if (app.gpu) card.append(el("div", "hint", t(gpuAvailable ? "apps.gpu_used" : "apps.gpu_none")));
     const ops = el("div", "ops");
     if (app.website) ops.append(link(app.website, t("apps.website")));
     if (app.installed) {
@@ -1199,6 +1214,7 @@ function fillCategories() {
 
 async function loadApps() {
   const data = await api("GET", "apps");
+  gpuAvailable = data.gpu_available;
   renderInstalled(data.installed);
   catalogApps = data.catalog;
   fillCategories();
@@ -1397,6 +1413,7 @@ async function loadJobs() {
 async function checkUpdates() {
   const status = document.getElementById("updates-status");
   status.textContent = t("updates.checking");
+  document.getElementById("update-progress").hidden = true;
   const data = await api("POST", "updates/check");
   const tbody = document.getElementById("updates");
   tbody.replaceChildren();
@@ -1411,11 +1428,79 @@ async function checkUpdates() {
   document.getElementById("updates-apply").disabled = !data.packages.length;
 }
 
+let updateTimer = null;
+let updateWasRunning = false;
+
+function packageList(title, pkgs, label) {
+  const box = el("div", "update-list");
+  box.append(el("b", "", `${title} (${pkgs.length})`));
+  const ul = el("ul");
+  for (const p of pkgs) ul.append(el("li", p.step, label(p)));
+  box.append(ul);
+  return box;
+}
+
+function renderUpdateProgress(data) {
+  const box = document.getElementById("update-progress");
+  box.replaceChildren();
+  box.hidden = data.state === "none";
+  if (data.state === "none") return;
+  const done = data.packages.filter((p) => p.step === "done");
+  const open = data.packages.filter((p) => p.step !== "done");
+  box.append(el("b", "", t(`updates.state_${data.state}`)));
+  const bar = el("div", "bar");
+  const fill = el("span", data.state === "failed" ? "crit" : "");
+  fill.style.width = `${data.percent}%`;
+  bar.append(fill);
+  box.append(bar, el("small", "hint", t("updates.progress", {
+    pct: data.percent, done: done.length, total: data.packages.length,
+  })));
+  if (data.state === "running" && data.last) box.append(el("small", "hint mono", data.last));
+  const lists = el("div", "update-lists");
+  if (open.length) {
+    lists.append(packageList(t("updates.open"), open, (p) => `${p.name} · ${t(`updates.step_${p.step}`)}`));
+  }
+  if (done.length) lists.append(packageList(t("updates.done"), done, (p) => p.name));
+  box.append(lists);
+  box.classList.toggle("bad", data.state === "failed");
+  box.classList.toggle("ok", data.state === "done");
+  document.getElementById("updates-apply").disabled = data.state === "running";
+  document.getElementById("updates-check").disabled = data.state === "running";
+}
+
+async function loadUpdateProgress() {
+  clearTimeout(updateTimer);
+  let data;
+  try {
+    data = await api("GET", "updates/progress");
+  } catch (e) {
+    // An update of Dahlia itself restarts the dashboard and nginx; keep asking.
+    if (updateWasRunning && current === "updates") {
+      updateTimer = setTimeout(() => loadUpdateProgress().catch(sayError), 3000);
+      return;
+    }
+    throw e;
+  }
+  renderUpdateProgress(data);
+  const running = data.state === "running";
+  if (updateWasRunning && !running) {
+    say(t(data.state === "done" ? "updates.finished" : "updates.failed"),
+        data.state === "done" ? "ok" : "error");
+  }
+  updateWasRunning = running;
+  if (running && current === "updates") {
+    updateTimer = setTimeout(() => loadUpdateProgress().catch(sayError), 2000);
+  }
+}
+
 async function applyUpdates() {
   if (!await ask(t("updates.confirm"), "updates.apply")) return;
   await api("POST", "updates/apply");
   document.getElementById("updates-apply").disabled = true;
-  say(t("updates.started"), "ok");
+  document.getElementById("updates").replaceChildren();
+  document.getElementById("updates-status").textContent = "";
+  updateWasRunning = true;
+  await loadUpdateProgress();
 }
 
 // --- SMB shares ---------------------------------------------------------------------
@@ -1589,7 +1674,7 @@ async function loadAccount() {
   setSidebar(info);
   document.querySelector("#hostname-form [name=hostname]").value = info.hostname;
   // Each card loads on its own; one failing part does not hide the others.
-  await Promise.all([loadTime(), loadNetwork(), loadSpindown(), loadSchedules(),
+  await Promise.all([loadTime(), loadNetwork(), loadSpindown(), loadFirewall(), loadSchedules(),
                loadNotify(), loadUps()]
     .map((p) => p.catch(sayError)));
 }
@@ -1683,6 +1768,24 @@ async function loadSpindown() {
     label.append(sel);
     box.append(label);
   }
+}
+
+async function loadFirewall() {
+  const data = await api("GET", "settings/firewall");
+  const f = document.getElementById("firewall-form");
+  f.elements.enabled.checked = data.enabled;
+  f.dataset.enabled = String(data.enabled);
+  f.elements.networks.value = data.networks.join(", ");
+  document.getElementById("firewall-local").textContent = t("settings.firewall_local", {
+    networks: [...data.local, ...data.subnets].join(", "),
+  });
+  const ports = data.ports.map((p) => {
+    const name = p.service.startsWith("app:") ? p.service.slice(4) : t(`firewall.${p.service}`);
+    return `${p.port}/${p.protocol} ${name}`;
+  });
+  document.getElementById("firewall-ports").textContent = data.enabled
+    ? t("settings.firewall_ports", { ports: ports.join(", ") })
+    : t("settings.firewall_off");
 }
 
 function scheduleRow(job, s) {
@@ -1989,6 +2092,19 @@ function bindForms() {
         say(t("settings.spindown_saved"), "ok");
       }
       await loadSpindown();
+    });
+  });
+
+  document.getElementById("firewall-form").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const f = e.target.elements;
+    const networks = f.networks.value.split(/[\s,]+/).filter(Boolean);
+    guarded(e.submitter, async () => {
+      const turningOff = !f.enabled.checked && e.target.dataset.enabled === "true";
+      if (turningOff && !await ask(t("settings.firewall_disable_confirm"), "settings.firewall_disable", true)) return;
+      await api("POST", "settings/firewall", { enabled: f.enabled.checked, networks });
+      say(t("settings.firewall_saved"), "ok");
+      await loadFirewall();
     });
   });
 

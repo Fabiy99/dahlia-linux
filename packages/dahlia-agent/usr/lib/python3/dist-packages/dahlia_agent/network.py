@@ -274,3 +274,43 @@ def main(argv: list[str] | None = None) -> int:
     print("network change kept" if kept else "network change not confirmed, rolled back",
           file=sys.stderr)
     return 0 if kept else 1
+
+
+# --- firewall -----------------------------------------------------------------
+
+
+def firewall_of(ctx: Context):
+    from .firewall import Firewall, FirewallError
+
+    def run(cmd: list[str]) -> str:
+        try:
+            return ctx.runner.run(cmd).stdout
+        except AgentError as e:
+            raise FirewallError(e.message) from None
+
+    return Firewall(etc=ctx.etc, run_dir=ctx.run_dir, apps_dir=ctx.var / "apps", run=run)
+
+
+@action("settings.firewall", mutating=False)
+def settings_firewall(ctx: Context):
+    """Firewall on/off, allowed networks and the ports open for them."""
+    return firewall_of(ctx).status()
+
+
+@action(
+    "settings.set_firewall",
+    mutating=True,
+    params={"enabled": Param(bool), "networks": Param(list, required=False, default=[])},
+)
+def settings_set_firewall(ctx: Context, enabled: bool, networks: list):
+    """Turn the firewall on or off and set extra allowed networks (CIDR)."""
+    from .firewall import FirewallError, check_networks
+
+    try:
+        networks = check_networks(networks)
+    except FirewallError as e:
+        raise AgentError(INVALID_PARAMS, str(e)) from None
+    try:
+        return firewall_of(ctx).set(enabled, networks)
+    except FirewallError as e:
+        raise AgentError(FAILED, str(e)) from None

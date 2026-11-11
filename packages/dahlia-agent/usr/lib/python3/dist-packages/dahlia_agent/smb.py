@@ -239,7 +239,16 @@ def shares_set(ctx: Context, name: str, comment: str, security: str, users: dict
     shares.append(share)
     apply(ctx, shares)
     save_shares(ctx, shares)
+    reload_firewall(ctx)
     return share
+
+
+def reload_firewall(ctx: Context) -> None:
+    """SMB and WS-Discovery ports are open only while shares exist."""
+    from .firewall import apply_quietly
+    from .network import firewall_of
+
+    apply_quietly(firewall_of(ctx))
 
 
 def data_gid(ctx: Context) -> int:
@@ -256,6 +265,7 @@ def shares_remove(ctx: Context, name: str):
         raise AgentError(FAILED, f"no share '{name}'")
     apply(ctx, rest)
     save_shares(ctx, rest)
+    reload_firewall(ctx)
     return {"name": name}
 
 

@@ -165,7 +165,18 @@ def test_system_hardware(ctx):
     write(ctx.sys / "class/dmi/id/board_name", "B550M Pro4\n")
     write(ctx.sys / "class/dmi/id/sys_vendor", "\n")
 
+    write(ctx.sys / "class/drm/card0/device/vendor", "0x8086\n")
+    write(ctx.sys / "class/drm/card0/device/drm/renderD128/dev", "226:128\n")
+    (ctx.sys / "drivers/i915").mkdir(parents=True)
+    (ctx.sys / "class/drm/card0/device/driver").symlink_to(ctx.sys / "drivers/i915")
+    write(ctx.sys / "class/drm/card0-HDMI-A-1/status", "connected\n")
+    write(ctx.sys / "class/drm/card1/device/vendor", "0x1234\n")
+
     hw = run(ctx, "system.hardware")["result"]
+    assert hw["gpus"] == [
+        {"card": "card0", "vendor": "Intel", "driver": "i915", "render": "renderD128"},
+        {"card": "card1", "vendor": "0x1234", "driver": None, "render": None},
+    ]
     assert hw["cpu_temperature"] == 48.2
     assert hw["board"]["board_vendor"] == "ASRock"
     assert hw["board"]["sys_vendor"] is None and hw["board"]["bios_version"] is None

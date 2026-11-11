@@ -1,3 +1,4 @@
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -80,10 +81,12 @@ def env(tmp_path):
     paths.catalog.mkdir()
     (paths.catalog / "whoami.yaml").write_text(WHOAMI)
     reloads = []
+    firewall_calls = []
     a = Apps(
         paths=paths,
         docker=FakeDocker(),
         host=Host(tz="Europe/Berlin", uid=os.getuid(), gid=os.getgid()),
+        reload_firewall=lambda: firewall_calls.append(1),
         naming=domains.Domains(
             paths=dpaths,
             host=domains.Host("dahlia", ["192.168.1.5"]),
@@ -94,6 +97,7 @@ def env(tmp_path):
         mounted=lambda p: True,
     )
     a.reloads = reloads
+    a.firewall_calls = firewall_calls
     return a
 
 
@@ -111,7 +115,7 @@ def test_parse_ok():
 @pytest.mark.parametrize(
     ("changes", "message"),
     [
-        ({"schema": 3}, "schema"),
+        ({"schema": 4}, "schema"),
         ({"id": "Bad_ID"}, "id"),
         ({"image": "traefik/whoami"}, "image"),
         ({"image": "traefik/whoami:latest"}, "latest"),
@@ -201,7 +205,7 @@ def test_install(env):
     assert "listen 8099;" in conf
     assert "proxy_pass http://127.0.0.1:41000;" in conf
     assert (env.naming.paths.nginx / "dahlia-apps-map.conf").exists()
-    assert env.reloads
+    assert env.reloads and env.firewall_calls
     with pytest.raises(AppError, match="already installed"):
         env.install("whoami")
 
@@ -691,14 +695,74 @@ def test_refresh_from_bundle_skips_newer_schema(env, tmp_path):
     src = tmp_path / "src"
     src.mkdir()
     bundle = {"format": 1, "apps": {"notes": STACK, "whoami": WHOAMI,
-                                    "future": "schema: 3\nid: future\n"}}
+                                    "future": "schema: 4\nid: future\n"}}
     (src / "catalog.json").write_text(json.dumps(bundle))
     env.paths.config.write_text(json.dumps({"catalog": f"file://{src}/"}))
     listed = env.catalog(refresh=True)
     assert [a["id"] for a in listed["apps"]] == ["notes", "whoami"]
     assert listed["skipped"] == ["future"]
     assert sorted(f.name for f in env.paths.catalog.iterdir()) == [
-        "meta.json", "notes.yaml", "whoami.yaml"]
+        "icons", "meta.json", "notes.yaml", "whoami.yaml"]
+
+
+SVG = b'<svg xmlns="http://www.w3.org/2000/svg"><circle r="1"/></svg>'
+PNG = b"\x89PNG\r\n\x1a\n" + b"\0" * 20
+
+
+def icon_catalog(src, icons):
+    """catalog.json with whoami and notes plus the given icon files (name -> bytes)."""
+    (src / "icons").mkdir(parents=True, exist_ok=True)
+    listed = {}
+    for name, data in icons.items():
+        (src / "icons" / name).write_bytes(data)
+        listed[name.split(".")[0]] = {"file": f"icons/{name}",
+                                      "sha256": hashlib.sha256(data).hexdigest()}
+    (src / "catalog.json").write_text(json.dumps(
+        {"format": 1, "apps": {"notes": STACK, "whoami": WHOAMI}, "icons": listed}))
+
+
+def test_refresh_catalog_icons(env, tmp_path):
+    src = tmp_path / "src"
+    icon_catalog(src, {"whoami.svg": SVG, "notes.png": PNG})
+    env.paths.config.write_text(json.dumps({"catalog": f"file://{src}/"}))
+    listed = {a["id"]: a for a in env.catalog(refresh=True)["apps"]}
+    sha = hashlib.sha256(SVG).hexdigest()
+    assert listed["whoami"]["icon"] == f"whoami.svg?v={sha[:12]}"
+    assert listed["notes"]["icon"].startswith("notes.png?v=")
+    assert (env.paths.catalog / "icons/whoami.svg").read_bytes() == SVG
+
+    # Unchanged icons come from the cache, not from the source.
+    fetched = []
+
+    def icon_fetcher(url, limit):
+        fetched.append(url)
+        return apps.fetch_bytes(url, limit)
+
+    icon_catalog(src, {"whoami.svg": SVG, "notes.png": PNG + b"x"})
+    apps.refresh_catalog(env.paths, icon_fetcher=icon_fetcher)
+    assert fetched == [f"file://{src}/icons/notes.png"]
+
+
+def test_refresh_catalog_drops_bad_icons(env, tmp_path):
+    src = tmp_path / "src"
+    icon_catalog(src, {"whoami.svg": SVG, "notes.png": b"<svg/>"})
+    data = json.loads((src / "catalog.json").read_text())
+    data["icons"]["whoami"]["sha256"] = "0" * 64  # does not match the file
+    data["icons"]["future"] = {"file": "icons/future.svg", "sha256": "0" * 64}
+    data["icons"]["evil"] = {"file": "../../etc/passwd", "sha256": "0" * 64}
+    (src / "catalog.json").write_text(json.dumps(data))
+    env.paths.config.write_text(json.dumps({"catalog": f"file://{src}/"}))
+    listed = env.catalog(refresh=True)["apps"]
+    assert all(a["icon"] is None for a in listed)
+    assert list((env.paths.catalog / "icons").iterdir()) == []
+
+
+def test_refresh_catalog_without_icons_key(env, tmp_path):
+    src = tmp_path / "src"
+    src.mkdir()
+    (src / "catalog.json").write_text(json.dumps({"format": 1, "apps": {"whoami": WHOAMI}}))
+    env.paths.config.write_text(json.dumps({"catalog": f"file://{src}/"}))
+    assert env.catalog(refresh=True)["apps"][0]["icon"] is None
 
 
 @pytest.mark.parametrize(
@@ -730,3 +794,47 @@ def test_cli_quiet_refresh(env, tmp_path, monkeypatch, capsys):
     out = capsys.readouterr().out
     assert out.strip() == ("dahlia-apps: catalog has 1 apps, 1 updates available: "
                            "whoami v1.11.0 -> v1.12.0")
+
+
+# --- GPU ----------------------------------------------------------------------
+
+
+def gpu_stack(schema=3):
+    return STACK.replace("schema: 2", f"schema: {schema}").replace(
+        "    image: example/notes:2.1.0\n", "    image: example/notes:2.1.0\n    gpu: true\n")
+
+
+def test_gpu_needs_schema_3():
+    with pytest.raises(AppError, match="gpu needs schema 3"):
+        apps.parse_template(gpu_stack(2))
+    t = apps.parse_template(gpu_stack())
+    assert t.schema == 3 and t.gpu and t.services["app"].gpu
+    assert not any(s.gpu for n, s in t.services.items() if n != "app")
+    assert t.summary()["gpu"] is True
+
+
+def test_gpu_must_be_bool():
+    with pytest.raises(AppError, match="gpu must be true or false"):
+        apps.parse_template(gpu_stack().replace("gpu: true", "gpu: /dev/mem"))
+
+
+def test_compose_gpu(env):
+    t = apps.parse_template(gpu_stack())
+    sec = {"SECRET_DB": "d" * 32, "SECRET_ADMIN": "a" * 32, "SECRET_CACHE": "c" * 32}
+    with_gpu = Host("Europe/Berlin", 1001, 1002, dri=True, gpu_gids=(993, 44))
+    svc = apps.compose(t, 41005, env.paths, with_gpu, sec)["services"]
+    assert svc["app"]["devices"] == ["/dev/dri:/dev/dri"]
+    assert svc["app"]["group_add"] == ["993", "44"]
+    assert all("devices" not in v for k, v in svc.items() if k != "app")
+    # No GPU in the server: the app runs on the CPU.
+    svc = apps.compose(t, 41005, env.paths, Host("Europe/Berlin", 1001, 1002), sec)["services"]
+    assert "devices" not in svc["app"] and "group_add" not in svc["app"]
+
+
+def test_has_gpu(tmp_path):
+    assert not apps.has_gpu(tmp_path / "dri")
+    (tmp_path / "dri").mkdir()
+    (tmp_path / "dri/card0").touch()
+    assert not apps.has_gpu(tmp_path / "dri")
+    (tmp_path / "dri/renderD128").touch()
+    assert apps.has_gpu(tmp_path / "dri")
