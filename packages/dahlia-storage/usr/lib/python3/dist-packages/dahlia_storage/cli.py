@@ -5,6 +5,7 @@
     dahlia-disk remove UUID [--force]
     dahlia-disk apply
     dahlia-disk snapraid-config [--write]
+    dahlia-disk settings
     dahlia-disk set-minfreespace SIZE
     dahlia-disk set-option NAME VALUE
     dahlia-disk format DEVICE --fs xfs|ext4|btrfs [--label LABEL] [--json]
@@ -25,6 +26,7 @@ import re
 import subprocess
 import sys
 import time
+from dataclasses import asdict
 
 from . import disks, importer, snapraid, state, units
 
@@ -387,6 +389,11 @@ def cmd_snapraid_config(args) -> int:
     return 0
 
 
+def cmd_settings(args) -> int:
+    print(json.dumps(asdict(state.load().settings), indent=2))
+    return 0
+
+
 def cmd_set_minfreespace(args) -> int:
     with state.locked():
         st = state.load()
@@ -463,6 +470,8 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--write", action="store_true")
     s.set_defaults(func=cmd_snapraid_config)
 
+    s = sub.add_parser("settings", help="mover, mergerfs and SnapRAID settings as JSON")
+    s.set_defaults(func=cmd_settings)
     s = sub.add_parser("set-minfreespace", help="free space per disk mergerfs keeps")
     s.add_argument("size")
     s.set_defaults(func=cmd_set_minfreespace)

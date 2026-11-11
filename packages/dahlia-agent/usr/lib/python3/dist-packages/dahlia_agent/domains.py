@@ -11,7 +11,10 @@ Names for the server and its apps:
 <domain> defaults to dahlia.home.arpa (RFC 8375). Multi-level .local names
 are refused: mDNS resolvers only answer single labels reliably.
 
-A local CA signs the server certificate. The CA carries name constraints:
+A local CA signs the certificates. The server's own certificate names only
+the server, so installing or removing an app never replaces it: a browser
+that accepted it once keeps working. The <app>.local aliases go into a
+second certificate used by the app proxies. The CA carries name constraints:
 it can only sign names under .local, home.arpa, the configured domain and
 private IPv4 addresses, so importing it into a browser does not let it
 vouch for other sites. The CA key never leaves /etc/dahlia/tls.
@@ -20,8 +23,10 @@ Layout:
     /etc/dahlia/domains.json               domain, mdns_aliases
     /etc/dahlia/tls/ca.key, ca.crt         local CA (key readable by root only)
     /etc/dahlia/tls/ca.json                names the CA may sign
-    /etc/dahlia/tls/server.key, server.crt certificate for nginx
+    /etc/dahlia/tls/server.key, server.crt certificate of the server itself
     /etc/dahlia/tls/server.json            names in server.crt
+    /etc/dahlia/tls/apps.key, apps.crt     certificate of the app proxies
+    /etc/dahlia/tls/apps.json              names in apps.crt
     /var/lib/dahlia/mdns-aliases.json      names dahlia-mdns publishes
     /etc/nginx/conf.d/dahlia-app-<id>.conf generated per app
 """
@@ -251,6 +256,18 @@ class TlsPaths:
     def meta(self) -> Path:
         return self.dir / "server.json"
 
+    @property
+    def apps_key(self) -> Path:
+        return self.dir / "apps.key"
+
+    @property
+    def apps_crt(self) -> Path:
+        return self.dir / "apps.crt"
+
+    @property
+    def apps_meta(self) -> Path:
+        return self.dir / "apps.json"
+
 
 def openssl(*args: str) -> str:
     try:
@@ -355,24 +372,37 @@ nameConstraints = critical,{",".join(constraints)}
     write_file(tls.ca_meta, json.dumps({"dns": dns}) + "\n")
     # Certificates of the old CA are worthless now.
     tls.meta.unlink(missing_ok=True)
+    tls.apps_meta.unlink(missing_ok=True)
     return True
 
 
-def server_names(settings: Settings, host: Host, apps: list[AppProxy]) -> list[str]:
-    names = [f"{host.name}.local", settings.domain, f"*.{settings.domain}"]
-    names += [f"{a}.local" for a in aliases(apps, settings, host)]
-    return names
+def server_names(settings: Settings, host: Host) -> list[str]:
+    return [f"{host.name}.local", settings.domain, f"*.{settings.domain}"]
+
+
+def app_names(settings: Settings, host: Host, apps: list[AppProxy]) -> list[str]:
+    return [f"*.{settings.domain}"] + [f"{a}.local" for a in aliases(apps, settings, host)]
 
 
 def ensure_server_cert(tls: TlsPaths, names: list[str], addresses: list[str]) -> bool:
     """Issue server.crt when names, addresses, CA or validity changed."""
+    return ensure_cert(tls, tls.key, tls.crt, tls.meta, names, addresses)
+
+
+def ensure_apps_cert(tls: TlsPaths, names: list[str]) -> bool:
+    """Issue apps.crt when names, CA or validity changed."""
+    return ensure_cert(tls, tls.apps_key, tls.apps_crt, tls.apps_meta, names, [])
+
+
+def ensure_cert(tls: TlsPaths, key: Path, crt: Path, meta: Path, names: list[str],
+                addresses: list[str]) -> bool:
     ca_fpr = cert_info(tls.ca_crt)["sha256"]
     want = {"names": names, "addresses": addresses, "ca": ca_fpr}
-    if (read_meta(tls.meta) == want and tls.key.is_file()
-            and valid_for(tls.crt, CERT_RENEW_SECONDS)):
+    if (read_meta(meta) == want and key.is_file()
+            and valid_for(crt, CERT_RENEW_SECONDS)):
         return False
-    if not tls.key.is_file():
-        new_key(tls.key)
+    if not key.is_file():
+        new_key(key)
     san = ",".join([f"DNS:{n}" for n in names] + [f"IP:{a}" for a in addresses])
     ext = f"""[v3]
 basicConstraints = critical,CA:FALSE
@@ -387,15 +417,15 @@ subjectAltName = {san}
         extfile.write_text(ext)
         csr = Path(tmp, "server.csr")
         out = Path(tmp, "server.crt")
-        openssl("req", "-new", "-key", str(tls.key), "-subj", f"/CN={names[0]}",
+        openssl("req", "-new", "-key", str(key), "-subj", f"/CN={names[0]}",
                 "-out", str(csr))
         openssl("x509", "-req", "-in", str(csr), "-CA", str(tls.ca_crt),
                 "-CAkey", str(tls.ca_key), "-set_serial", "0x" + secrets.token_hex(16),
                 "-days", str(CERT_DAYS), "-extfile", str(extfile), "-extensions", "v3",
                 "-out", str(out))
         # nginx sends the chain; clients that trust the CA verify it.
-        write_file(tls.crt, out.read_text() + tls.ca_crt.read_text())
-    write_file(tls.meta, json.dumps(want) + "\n")
+        write_file(crt, out.read_text() + tls.ca_crt.read_text())
+    write_file(meta, json.dumps(want) + "\n")
     return True
 
 
@@ -443,8 +473,8 @@ server {{
     server_tokens off;
     client_max_body_size 0;
 
-    ssl_certificate     {tls.crt};
-    ssl_certificate_key {tls.key};
+    ssl_certificate     {tls.apps_crt};
+    ssl_certificate_key {tls.apps_key};
     ssl_protocols TLSv1.2 TLSv1.3;
 
 {loc}
@@ -519,15 +549,16 @@ class Domains:
         host = self._host()
         tls = self.paths.tls
         ca_new = ensure_ca(tls, s.domain, host)
-        cert_new = ensure_server_cert(tls, server_names(s, host, apps), host.addresses)
+        cert_new = ensure_server_cert(tls, server_names(s, host), host.addresses)
+        apps_new = ensure_apps_cert(tls, app_names(s, host, apps))
         proxies = write_proxies(apps, s, self.paths.nginx, tls)
         alias_text = json.dumps({"aliases": aliases(apps, s, host)}) + "\n"
         alias_changed = write_file(self.paths.aliases, alias_text)
-        if ca_new or cert_new or proxies:
+        if ca_new or cert_new or apps_new or proxies:
             self.nginx_reload()
         if alias_changed:
             self.mdns_reload()
-        return {"ca_renewed": ca_new, "cert_renewed": cert_new}
+        return {"ca_renewed": ca_new, "cert_renewed": cert_new, "apps_cert_renewed": apps_new}
 
     def set(self, apps: list[AppProxy], domain: str | None = None,
             mdns_aliases: bool | None = None) -> dict:
@@ -557,7 +588,9 @@ class Domains:
             "dns_records": [f"{s.domain}", f"*.{s.domain}"],
             "ca": cert_info(self.paths.tls.ca_crt),
             "cert": cert_info(self.paths.tls.crt),
-            "names": read_meta(self.paths.tls.meta).get("names", []),
+            "names": list(dict.fromkeys(
+                read_meta(self.paths.tls.meta).get("names", [])
+                + read_meta(self.paths.tls.apps_meta).get("names", []))),
             "aliases": aliases(apps, s, host),
         }
 

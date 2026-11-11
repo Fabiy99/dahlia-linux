@@ -121,34 +121,49 @@ def test_lan_addresses_without_ip(monkeypatch):
 
 def test_ca_and_server_cert(d):
     result = d.apply([WHOAMI])
-    assert result == {"ca_renewed": True, "cert_renewed": True}
+    assert result == {"ca_renewed": True, "cert_renewed": True, "apps_cert_renewed": True}
     tls = d.paths.tls
     assert tls.ca_key.stat().st_mode & 0o777 == 0o600
     assert tls.key.stat().st_mode & 0o777 == 0o600
+    assert tls.apps_key.stat().st_mode & 0o777 == 0o600
     assert tls.ca_crt.stat().st_mode & 0o777 == 0o644
     assert verify(tls).returncode == 0, verify(tls).stderr
+    assert verify(tls, tls.apps_crt).returncode == 0
     names = sans(tls.crt)
     for n in ("DNS:dahlia.local", "DNS:dahlia.home.arpa", "DNS:*.dahlia.home.arpa",
-              "DNS:whoami.local", "IP Address:192.168.1.5", "IP Address:10.0.0.7"):
+              "IP Address:192.168.1.5", "IP Address:10.0.0.7"):
         assert n in names
+    assert "whoami.local" not in names
+    apps = sans(tls.apps_crt)
+    assert "DNS:*.dahlia.home.arpa" in apps and "DNS:whoami.local" in apps
     assert d.calls == {"nginx": 1, "mdns": 1}
 
 
 def test_apply_twice_changes_nothing(d):
     d.apply([WHOAMI])
     before = d.paths.tls.crt.read_text()
-    assert d.apply([WHOAMI]) == {"ca_renewed": False, "cert_renewed": False}
+    assert d.apply([WHOAMI]) == {
+        "ca_renewed": False, "cert_renewed": False, "apps_cert_renewed": False,
+    }
     assert d.paths.tls.crt.read_text() == before
     assert d.calls == {"nginx": 1, "mdns": 1}
 
 
-def test_new_app_reissues_cert_with_same_ca(d):
+def test_new_app_keeps_server_cert(d):
+    # A browser that accepted the server certificate must not lose the
+    # dashboard because an app was installed.
     d.apply([WHOAMI])
     ca = d.paths.tls.ca_crt.read_text()
-    assert d.apply([WHOAMI, JELLYFIN]) == {"ca_renewed": False, "cert_renewed": True}
+    server = d.paths.tls.crt.read_text()
+    assert d.apply([WHOAMI, JELLYFIN]) == {
+        "ca_renewed": False, "cert_renewed": False, "apps_cert_renewed": True,
+    }
     assert d.paths.tls.ca_crt.read_text() == ca
-    assert "DNS:jellyfin.local" in sans(d.paths.tls.crt)
-    assert verify(d.paths.tls).returncode == 0
+    assert d.paths.tls.crt.read_text() == server
+    assert "DNS:jellyfin.local" in sans(d.paths.tls.apps_crt)
+    assert verify(d.paths.tls, d.paths.tls.apps_crt).returncode == 0
+    d.apply([JELLYFIN])
+    assert d.paths.tls.crt.read_text() == server
 
 
 def test_ca_name_constraints_block_other_names(d, tmp_path):
@@ -180,7 +195,9 @@ def test_domain_outside_constraints_makes_new_ca(d):
         "local", "home.arpa", "lab.example.org",
     ]
     assert "DNS:*.lab.example.org" in sans(d.paths.tls.crt)
+    assert "DNS:*.lab.example.org" in sans(d.paths.tls.apps_crt)
     assert verify(d.paths.tls).returncode == 0
+    assert verify(d.paths.tls, d.paths.tls.apps_crt).returncode == 0
 
 
 def test_domain_inside_home_arpa_keeps_ca(d):
@@ -233,7 +250,8 @@ def test_proxy_conf(d):
     assert "listen 8099;" in conf
     assert "listen 443 ssl;" in conf
     assert "server_name whoami.dahlia.home.arpa whoami.local;" in conf
-    assert f"ssl_certificate     {d.paths.tls.crt};" in conf
+    assert f"ssl_certificate     {d.paths.tls.apps_crt};" in conf
+    assert f"ssl_certificate_key {d.paths.tls.apps_key};" in conf
     assert conf.count("proxy_pass http://127.0.0.1:41000;") == 2
     assert (d.paths.nginx / "dahlia-apps-map.conf").exists()
 
@@ -258,8 +276,9 @@ def test_mdns_off(d):
     d.apply([WHOAMI])
     mdns_before = d.calls["mdns"]
     result = d.set([WHOAMI], mdns_aliases=False)
-    assert result["cert_renewed"] is True
-    assert "whoami.local" not in sans(d.paths.tls.crt)
+    assert result["cert_renewed"] is False
+    assert result["apps_cert_renewed"] is True
+    assert "whoami.local" not in sans(d.paths.tls.apps_crt)
     assert json.loads(d.paths.aliases.read_text()) == {"aliases": []}
     assert d.calls["mdns"] == mdns_before + 1
 

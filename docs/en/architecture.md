@@ -141,7 +141,12 @@ dahlia-snapraid fix --disk N                   # rebuild the files of /mnt/diskN
 dahlia-snapraid fix --bad                      # repair bad blocks found by a scrub
 dahlia-snapraid status [--json]                # coverage, scrub state, errors, last runs
 dahlia-disk set-option snapraid_delete_threshold 50
+dahlia-disk set-option mover_min_age_minutes 1440
+dahlia-disk set-minfreespace 100G               # free space per disk for mergerfs
+dahlia-disk settings                           # all settings as JSON
 ```
+
+The dashboard sets the same values under Disks > Settings (from milestone 17).
 
 The mover leaves open files, recently modified files, files that already exist on the data
 disks and hard links on the cache. It copies, verifies, renames and only then deletes.
@@ -208,8 +213,8 @@ Debian's `nftables.service` stays off; its `/etc/nftables.conf` starts with
 
 The agent listens on `/run/dahlia/agent.sock` (root:dahlia-agent, 0660) and is started by
 `dahlia-agent.socket` on the first call. On top of the file permissions it checks the peer
-via `SO_PEERCRED`: root and members of the group `dahlia-agent` are allowed. Later this is
-the dashboard user `dahlia-ui`.
+via `SO_PEERCRED`: root and members of the group `dahlia-agent` are allowed, which
+includes the dashboard user `dahlia-ui`.
 
 Protocol: one request per connection, one JSON line each way.
 
@@ -249,6 +254,8 @@ Protocol: one request per connection, one JSON line each way.
 | `storage.add` | `uuid`, `role` (data, parity, cache, external) | `dahlia-disk add` |
 | `storage.remove` | `uuid`, `force` (optional) | `dahlia-disk remove` |
 | `storage.set_option` | `name`, `value` (integer) | `dahlia-disk set-option` |
+| `storage.settings` | – | `dahlia-disk settings` |
+| `storage.set_minfreespace` | `size` (e.g. `100G`, M/G/T) | `dahlia-disk set-minfreespace` |
 | `storage.format` | `device` (whole disk), `filesystem` (`xfs`, `ext4`, `btrfs`), `confirm` (disk name repeated) | `dahlia-disk format`, blank or imported disks only |
 | `storage.import` / `storage.import_status` | `uuid`, `target` (name below `/mnt/user`) | `dahlia-disk import` as unit `dahlia-import`, progress in `/run/dahlia/import.json` |
 | `job.start` | `job` (mover, snapraid-sync, snapraid-scrub, backup) | starts the unit, returns at once |
@@ -514,14 +521,17 @@ Certificates (`dahlia-domains`, part of `dahlia-agent`):
 | File | Content |
 | --- | --- |
 | `/etc/dahlia/tls/ca.key`, `ca.crt` | local CA, EC P-256, 20 years; key readable by root only |
-| `/etc/dahlia/tls/server.key`, `server.crt` | server certificate for nginx, 825 days |
+| `/etc/dahlia/tls/server.key`, `server.crt` | certificate of the server (dashboard), 825 days |
+| `/etc/dahlia/tls/apps.key`, `apps.crt` | certificate of the app proxies, 825 days |
 
 The CA carries name constraints (`nameConstraints`): it can only sign names under `.local`,
 `home.arpa`, the configured domain and private IPv4 addresses (10/8, 172.16/12,
 192.168/16). Importing it therefore does not make it trusted for any other website. The
-server certificate holds `<server>.local`, `<domain>`, `*.<domain>`, the mDNS aliases and
-the server's private IPv4 addresses. `dahlia-domains.timer` checks daily and after boot: a
-new address, a new app or less than 30 days left lead to a new certificate. A domain outside
+server certificate holds `<server>.local`, `<domain>`, `*.<domain>` and the server's
+private IPv4 addresses, the app certificate `*.<domain>` and the mDNS aliases. Installing or
+removing an app therefore only changes the app certificate; a browser that accepted the
+server certificate once does not lose the dashboard. `dahlia-domains.timer` checks daily and
+after boot: a new address, a new app or less than 30 days left lead to a new certificate. A domain outside
 `home.arpa` needs a new CA; the dashboard then says that the CA must be imported again.
 
 Importing the CA: download `dahlia-ca.crt` in the dashboard under Domains and compare the

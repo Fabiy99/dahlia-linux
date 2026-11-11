@@ -142,7 +142,12 @@ dahlia-snapraid fix --disk N                   # Dateien von /mnt/diskN aus der 
 dahlia-snapraid fix --bad                      # vom Scrub gefundene defekte Blöcke reparieren
 dahlia-snapraid status [--json]                # Abdeckung, Scrub-Stand, Fehler, letzte Läufe
 dahlia-disk set-option snapraid_delete_threshold 50
+dahlia-disk set-option mover_min_age_minutes 1440
+dahlia-disk set-minfreespace 100G               # freier Platz pro Platte für mergerfs
+dahlia-disk settings                           # alle Einstellungen als JSON
 ```
+
+Dieselben Werte setzt das Dashboard unter Platten > Einstellungen (ab Meilenstein 17).
 
 Der Mover lässt offene, kürzlich geänderte und schon auf den Datenplatten vorhandene
 Dateien sowie Hardlinks auf dem Cache. Er kopiert erst, prüft, benennt um und löscht dann.
@@ -212,7 +217,7 @@ Debians `nftables.service` bleibt aus; sein `/etc/nftables.conf` beginnt mit
 Der Agent hört auf `/run/dahlia/agent.sock` (root:dahlia-agent, 0660) und wird von
 `dahlia-agent.socket` beim ersten Aufruf gestartet. Zusätzlich zu den Dateirechten prüft er
 die Gegenstelle per `SO_PEERCRED`: erlaubt sind root und Mitglieder der Gruppe
-`dahlia-agent`. Später ist das der Dashboard-Benutzer `dahlia-ui`.
+`dahlia-agent`, dazu gehört der Dashboard-Benutzer `dahlia-ui`.
 
 Protokoll: eine Anfrage pro Verbindung, je eine JSON-Zeile hin und zurück.
 
@@ -252,6 +257,8 @@ Protokoll: eine Anfrage pro Verbindung, je eine JSON-Zeile hin und zurück.
 | `storage.add` | `uuid`, `role` (data, parity, cache, external) | `dahlia-disk add` |
 | `storage.remove` | `uuid`, `force` (optional) | `dahlia-disk remove` |
 | `storage.set_option` | `name`, `value` (Zahl) | `dahlia-disk set-option` |
+| `storage.settings` | – | `dahlia-disk settings` |
+| `storage.set_minfreespace` | `size` (z. B. `100G`, M/G/T) | `dahlia-disk set-minfreespace` |
 | `storage.format` | `device` (ganze Platte), `filesystem` (`xfs`, `ext4`, `btrfs`), `confirm` (Plattenname wiederholt) | `dahlia-disk format`, nur leere oder übernommene Platten |
 | `storage.import` / `storage.import_status` | `uuid`, `target` (Name unter `/mnt/user`) | `dahlia-disk import` als Unit `dahlia-import`, Fortschritt in `/run/dahlia/import.json` |
 | `job.start` | `job` (mover, snapraid-sync, snapraid-scrub, backup) | startet die Unit, kehrt sofort zurück |
@@ -523,15 +530,18 @@ Zertifikate (`dahlia-domains`, Teil von `dahlia-agent`):
 | Datei | Inhalt |
 | --- | --- |
 | `/etc/dahlia/tls/ca.key`, `ca.crt` | lokale CA, EC P-256, 20 Jahre; Schlüssel nur für root lesbar |
-| `/etc/dahlia/tls/server.key`, `server.crt` | Server-Zertifikat für nginx, 825 Tage |
+| `/etc/dahlia/tls/server.key`, `server.crt` | Zertifikat des Servers (Dashboard), 825 Tage |
+| `/etc/dahlia/tls/apps.key`, `apps.crt` | Zertifikat der App-Proxys, 825 Tage |
 
 Die CA hat Namensbeschränkungen (`nameConstraints`): sie kann nur Namen unter `.local`,
 `home.arpa`, der eigenen Domain und private IPv4-Adressen (10/8, 172.16/12, 192.168/16)
 signieren. Wer sie importiert, vertraut ihr also für keine anderen Websites. Das
-Server-Zertifikat enthält `<server>.local`, `<domain>`, `*.<domain>`, die mDNS-Aliase und
-die privaten IPv4-Adressen des Servers. `dahlia-domains.timer` prüft täglich und nach dem
-Boot: neue Adresse, neue App, weniger als 30 Tage Restlaufzeit führen zu einem neuen
-Zertifikat. Eine Domain außerhalb von `home.arpa` braucht eine neue CA; das Dashboard sagt
+Server-Zertifikat enthält `<server>.local`, `<domain>`, `*.<domain>` und die privaten
+IPv4-Adressen des Servers, das App-Zertifikat `*.<domain>` und die mDNS-Aliase. Apps
+installieren oder entfernen ändert so nur das App-Zertifikat; ein Browser, der das
+Server-Zertifikat einmal akzeptiert hat, verliert das Dashboard nicht. `dahlia-domains.timer`
+prüft täglich und nach dem Boot: neue Adresse, neue App, weniger als 30 Tage Restlaufzeit
+führen zu einem neuen Zertifikat. Eine Domain außerhalb von `home.arpa` braucht eine neue CA; das Dashboard sagt
 dann, dass die CA neu importiert werden muss.
 
 CA importieren: im Dashboard unter Domains `dahlia-ca.crt` herunterladen und den

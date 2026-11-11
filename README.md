@@ -92,10 +92,30 @@ Details: [docs/de/architektur.md](docs/de/architektur.md)
 15. Automatische Sicherheitsupdates (unattended-upgrades)
 16. Diagnosepaket zum Herunterladen, danach Release 1.0
 
-Nach 1.0 (1.x): Storage-Optionen im UI, Snapshot-Rollback im UI, eigene Container,
-WireGuard/Tailscale, NFS, Zwei-Faktor-Login (TOTP), SMART-Selbsttests, Bridge/VLAN,
-Wake-on-LAN, SMB-Papierkorb, Verschlüsselung (LUKS), Dateimanager, mehrere und
-nur-lesende Konten, USB-Creator für Windows, Installationsanleitung.
+Nach 1.0 (1.x):
+
+17. Speicher-Einstellungen im UI: freier Platz pro Platte, Mover-Mindestalter, Lösch-Schwelle
+18. Snapshot-Rollback im UI
+19. Eigene Container ohne Katalog, mit denselben Grenzen wie die Vorlagen
+20. Fernzugriff per WireGuard oder Tailscale
+21. NFS-Freigaben, Time Machine über SMB
+22. Zwei-Faktor-Login (TOTP)
+23. Geplante SMART-Selbsttests, Platten-Test vor dem Einsatz
+24. Let's-Encrypt-Zertifikate per DNS-Challenge für eine eigene Domain
+25. SMB-/NFS-Freigaben anderer Geräte einbinden
+26. Verlaufsgrafiken (CPU, RAM, Netz, Temperaturen), Export nach InfluxDB
+27. API-Tokens für Home Assistant, Homepage usw.
+28. Eigene Firewall-Regeln
+29. Energiesparmodus (CPU-Governor), Liste der PCI- und USB-Geräte
+30. Gesundheitscheck mit Hinweisen
+31. Remote-Syslog, Platte per LED finden, Verlauf der Parity-Läufe, alle Apps starten/stoppen
+32. Bridge, VLAN, Bond, Wake-on-LAN
+33. SMB-Papierkorb
+34. Mehrere und nur-lesende Dashboard-Konten
+35. Dateimanager
+36. Verschlüsselung (LUKS)
+
+Später: USB-Creator für Windows, Installationsanleitung.
 
 Version 2: VMs und LXC über Incus.
 
@@ -195,10 +215,30 @@ Details: [docs/en/architecture.md](docs/en/architecture.md)
 15. Automatic security updates (unattended-upgrades)
 16. Diagnostics bundle to download, then release 1.0
 
-After 1.0 (1.x): storage options in the UI, snapshot rollback in the UI, custom containers,
-WireGuard/Tailscale, NFS, two-factor login (TOTP), SMART self-tests, bridge/VLAN,
-Wake-on-LAN, SMB recycle bin, encryption (LUKS), file manager, multiple and read-only
-accounts, USB creator for Windows, installation guide.
+After 1.0 (1.x):
+
+17. Storage settings in the UI: free space per disk, mover minimum age, delete threshold
+18. Snapshot rollback in the UI
+19. Custom containers without the catalog, with the same limits as templates
+20. Remote access via WireGuard or Tailscale
+21. NFS shares, Time Machine over SMB
+22. Two-factor login (TOTP)
+23. Scheduled SMART self-tests, disk test before use
+24. Let's Encrypt certificates via DNS challenge for an own domain
+25. Mount SMB/NFS shares of other devices
+26. History graphs (CPU, RAM, network, temperatures), export to InfluxDB
+27. API tokens for Home Assistant, Homepage etc.
+28. Custom firewall rules
+29. Power saving (CPU governor), list of PCI and USB devices
+30. Health check with hints
+31. Remote syslog, find a disk by its LED, history of parity runs, start/stop all apps
+32. Bridge, VLAN, bond, Wake-on-LAN
+33. SMB recycle bin
+34. Multiple and read-only dashboard accounts
+35. File manager
+36. Encryption (LUKS)
+
+Later: USB creator for Windows, installation guide.
 
 Version 2: VMs and LXC via Incus.
 

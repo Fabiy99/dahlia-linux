@@ -60,13 +60,54 @@ class ApiError extends Error {
   }
 }
 
+// nginx answers 502-504 while the dashboard restarts (package update); a
+// network error means nginx itself reloads. GET requests wait for the
+// server instead of failing; other requests are not repeated.
+const RESTARTING = new Set([502, 503, 504]);
+let reconnecting = null;
+let serverRestarted = false;
+
+function waitForServer() {
+  if (reconnecting) return reconnecting;
+  const notice = document.getElementById("reconnect");
+  notice.hidden = false;
+  reconnecting = (async () => {
+    const until = Date.now() + 120000;
+    while (Date.now() < until) {
+      await new Promise((r) => setTimeout(r, 2000));
+      try {
+        const res = await fetch("/api/state", { credentials: "same-origin", cache: "no-store" });
+        if (!RESTARTING.has(res.status)) {
+          serverRestarted = true;
+          return true;
+        }
+      } catch (_) { /* still down */ }
+    }
+    return false;
+  })().finally(() => {
+    notice.hidden = true;
+    reconnecting = null;
+  });
+  return reconnecting;
+}
+
 async function api(method, path, body) {
   const opts = { method, headers: { "X-Dahlia-Request": "1" }, credentials: "same-origin" };
   if (body !== undefined) {
     opts.headers["Content-Type"] = "application/json";
     opts.body = JSON.stringify(body);
   }
-  const res = await fetch(`/api/${path}`, opts);
+  let res = null;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      res = await fetch(`/api/${path}`, opts);
+    } catch (_) {
+      res = null;
+    }
+    const down = res === null || RESTARTING.has(res.status);
+    if (!down || method !== "GET" || attempt > 0 || !await waitForServer()) break;
+  }
+  if (res === null) throw new ApiError(0, "error.network");
   let data = {};
   try { data = await res.json(); } catch (_) { /* empty or non-JSON body */ }
   if (!res.ok) {
@@ -302,7 +343,7 @@ function showLogin() {
 
 const loaders = {
   overview: loadOverview,
-  storage: loadStorage,
+  storage: () => Promise.all([loadStorage(), loadStorageSettings()]),
   parity: loadParity,
   apps: loadApps,
   domains: loadDomains,
@@ -796,6 +837,54 @@ function bindImport() {
       document.getElementById("import-dialog").close();
       importWasRunning = true;
       await pollImport();
+    });
+  });
+}
+
+// --- storage settings -------------------------------------------------------------
+
+const MOVER_AGES = [0, 60, 360, 720, 1440, 4320, 10080, 43200];
+
+function moverAgeLabel(m) {
+  if (m === 0) return t("storage.mover_age_none");
+  if (m % 1440 === 0) return t("storage.mover_age_days", { n: m / 1440 });
+  if (m % 60 === 0) return t("storage.mover_age_hours", { n: m / 60 });
+  return t("storage.mover_age_minutes", { n: m });
+}
+
+async function loadStorageSettings() {
+  const { settings } = await api("GET", "storage/settings");
+  const f = document.getElementById("storage-settings");
+  if (document.activeElement?.form === f) return;
+  const ages = MOVER_AGES.includes(settings.mover_min_age_minutes)
+    ? MOVER_AGES : [...MOVER_AGES, settings.mover_min_age_minutes].sort((a, b) => a - b);
+  fillOptions(f.elements.mover_min_age_minutes, ages, moverAgeLabel);
+  f.elements.mover_min_age_minutes.value = String(settings.mover_min_age_minutes);
+  // minfreespace is a number with an optional K/M/G/T suffix; show it in MB, GB or TB.
+  const m = /^(\d+)([KMGT]?)$/.exec(settings.minfreespace) || [null, "50", "G"];
+  let [value, unit] = [Number(m[1]), m[2] || "B"];
+  const bytes = value * { B: 1, K: 1024, M: 1024 ** 2, G: 1024 ** 3, T: 1024 ** 4 }[unit];
+  if (!["M", "G", "T"].includes(unit)) [value, unit] = [Math.max(1, Math.round(bytes / 1024 ** 2)), "M"];
+  fillOptions(f.elements.free_unit, ["M", "G", "T"], (u) => t(`storage.unit_${u}`));
+  f.elements.free_value.value = String(value);
+  f.elements.free_unit.value = unit;
+  f.elements.snapraid_delete_threshold.value = String(settings.snapraid_delete_threshold);
+}
+
+function bindStorageSettings() {
+  const f = document.getElementById("storage-settings");
+  f.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const btn = f.querySelector("button");
+    guarded(btn, async () => {
+      await api("POST", "storage/settings", {
+        minfreespace: `${Number(f.elements.free_value.value)}${f.elements.free_unit.value}`,
+        mover_min_age_minutes: Number(f.elements.mover_min_age_minutes.value),
+        snapraid_delete_threshold: Number(f.elements.snapraid_delete_threshold.value),
+      });
+      say(t("storage.settings_saved"), "ok");
+      btn.blur();
+      await loadStorageSettings();
     });
   });
 }
@@ -1985,6 +2074,8 @@ async function loadUpdateProgress() {
   if (updateWasRunning && !running) {
     say(t(data.state === "done" ? "updates.finished" : "updates.failed"),
         data.state === "done" ? "ok" : "error");
+    // The dashboard restarted during the update: load the new UI.
+    if (serverRestarted) setTimeout(() => location.reload(), 2000);
   }
   updateWasRunning = running;
   if (running && current === "updates") {
@@ -2735,6 +2826,7 @@ function bindButtons() {
     }));
   }
   document.getElementById("storage-refresh").addEventListener("click", (e) => guarded(e.currentTarget, loadStorage));
+  bindStorageSettings();
   document.getElementById("apps-search").addEventListener("input", renderCatalog);
   document.getElementById("apps-category").addEventListener("change", renderCatalog);
   const refresh = document.getElementById("apps-refresh");
