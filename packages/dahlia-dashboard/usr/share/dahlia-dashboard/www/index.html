@@ -43,6 +43,7 @@
   <symbol id="i-log" viewBox="0 0 24 24"><path d="M6 3h9l4 4v14H6z"/><path d="M15 3v4h4M9 11h7M9 14.5h7M9 18h4"/></symbol>
   <symbol id="i-thermo" viewBox="0 0 24 24"><path d="M10 4a2 2 0 0 1 4 0v9.5a4 4 0 1 1-4 0Z"/><path d="M12 10v7"/></symbol>
   <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 6.5A1.5 1.5 0 0 1 4.5 5H9l2 2.5h8.5A1.5 1.5 0 0 1 21 9v8.5a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 17.5Z"/></symbol>
+  <symbol id="i-terminal" viewBox="0 0 24 24"><rect x="2.5" y="4" width="19" height="16" rx="2"/><path d="M6.5 9l3 3-3 3M12 15h5"/></symbol>
   <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></symbol>
 </svg>
 
@@ -63,6 +64,7 @@
       <button data-view="domains"><svg><use href="#i-domains"/></svg><span data-i18n="nav.domains"></span></button>
       <button data-view="jobs"><svg><use href="#i-jobs"/></svg><span data-i18n="nav.jobs"></span></button>
       <button data-view="log"><svg><use href="#i-log"/></svg><span data-i18n="nav.log"></span></button>
+      <button data-view="terminal"><svg><use href="#i-terminal"/></svg><span data-i18n="nav.terminal"></span></button>
       <button data-view="updates"><svg><use href="#i-updates"/></svg><span data-i18n="nav.updates"></span></button>
       <button data-view="account"><svg><use href="#i-account"/></svg><span data-i18n="nav.account"></span></button>
     </nav>
@@ -244,6 +246,18 @@
             </tr></thead>
             <tbody id="containers"></tbody>
           </table>
+        </article>
+      </section>
+
+      <section id="view-terminal" hidden>
+        <article class="card terminal-card">
+          <form id="terminal-form" class="filters">
+            <label><span data-i18n="terminal.user"></span><input name="user" value="dahlia-admin" autocomplete="username" required></label>
+            <button type="submit" class="primary" data-i18n="terminal.connect"></button>
+            <button type="button" id="terminal-close" data-i18n="terminal.disconnect" hidden></button>
+          </form>
+          <p class="hint" data-i18n="terminal.hint"></p>
+          <div id="terminal"></div>
         </article>
       </section>
 
