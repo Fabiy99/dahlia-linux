@@ -576,5 +576,8 @@
   "backup.started": "Backup started.",
   "backup.choose_target": "Please choose a target.",
   "backup.not_mounted": "not mounted",
-  "backup.free": "{size} free"
+  "backup.free": "{size} free",
+  "apps.gpu_used": "Uses the GPU (/dev/dri) for video and AI.",
+  "apps.gpu_none": "Can use a GPU; none found, runs on the CPU.",
+  "overview.gpu": "Graphics"
 }

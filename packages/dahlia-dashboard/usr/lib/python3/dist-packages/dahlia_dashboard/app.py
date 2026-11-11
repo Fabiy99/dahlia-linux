@@ -411,6 +411,7 @@ def create_app(cfg: Config | None = None) -> FastAPI:
             "installed": installed,
             "catalog": catalog["apps"],
             "catalog_refreshed": catalog.get("refreshed"),
+            "gpu_available": catalog.get("gpu_available", False),
         }
 
     @app.post("/api/apps/catalog/refresh", dependencies=changing)

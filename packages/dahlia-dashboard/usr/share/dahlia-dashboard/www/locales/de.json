@@ -576,5 +576,8 @@
   "backup.started": "Sicherung gestartet.",
   "backup.choose_target": "Bitte ein Ziel wählen.",
   "backup.not_mounted": "nicht eingehängt",
-  "backup.free": "{size} frei"
+  "backup.free": "{size} frei",
+  "apps.gpu_used": "Nutzt die Grafikkarte (/dev/dri) für Video und KI.",
+  "apps.gpu_none": "Kann eine Grafikkarte nutzen; keine gefunden, läuft auf der CPU.",
+  "overview.gpu": "Grafik"
 }
