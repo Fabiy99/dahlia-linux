@@ -633,8 +633,10 @@ def test_action_list_is_fixed():
         "system.set_hostname",
         "system.stats",
         "updates.apply",
+        "updates.auto",
         "updates.check",
         "updates.progress",
+        "updates.set_auto",
         "ups.get",
         "ups.set",
     ]

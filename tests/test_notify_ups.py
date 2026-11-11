@@ -37,6 +37,7 @@ def ctx(tmp_path, sent):
     return actions.Context(runner=FakeRunner(), proc=proc, sys=tmp_path / "sys",
                            etc=tmp_path / "etc", run_dir=tmp_path / "run",
                            var=tmp_path / "var", hostname=lambda: "nas", clock=lambda: 1000.0,
+                           log_dir=tmp_path / "log", reboot_flag=tmp_path / "reboot-required",
                            senders=sent.senders())
 
 
@@ -131,6 +132,24 @@ def test_check_sends_once_and_resolves(ctx, sent):
     ctx.runner.answers[("smartctl",)] = (0, smart(True, 40), "")
     assert sorted(notify.check(ctx)) == ["smart:/dev/sda", "temp:/dev/sda"]
     assert sent.items[-1][1] == "info" and sent.items[-1][2].startswith("Resolved")
+
+
+def test_check_reports_pending_restart_once(ctx, sent):
+    run(ctx, "notify.set", {"channel": "ntfy", "settings": NTFY})
+    ctx.reboot_flag.write_text("*** System restart required ***\n")
+    (ctx.reboot_flag.parent / "reboot-required.pkgs").write_text("linux-image-amd64\nlibc6\n")
+    assert notify.check(ctx) == ["reboot:required"]
+    assert sent.items[-1][2] == "Restart needed" and "libc6, linux-image-amd64" in sent.items[-1][3]
+    assert notify.check(ctx) == []
+    ctx.reboot_flag.unlink()
+    assert notify.check(ctx) == [] and len(sent.items) == 1
+
+
+def test_no_restart_notice_with_automatic_reboot(ctx, sent):
+    run(ctx, "notify.set", {"channel": "ntfy", "settings": NTFY})
+    run(ctx, "updates.set_auto", {"enabled": True, "reboot": True, "reboot_time": "03:30"})
+    ctx.reboot_flag.write_text("")
+    assert notify.check(ctx) == []
 
 
 def test_job_failed(ctx, sent):

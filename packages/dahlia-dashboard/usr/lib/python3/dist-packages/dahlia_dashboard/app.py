@@ -204,6 +204,12 @@ class UpsBody(BaseModel):
     shutdown_minutes: int = 0
 
 
+class AutoUpdatesBody(BaseModel):
+    enabled: bool
+    reboot: bool
+    reboot_time: str
+
+
 class ParitySyncBody(BaseModel):
     force: bool = False
 
@@ -439,6 +445,14 @@ def create_app(cfg: Config | None = None) -> FastAPI:
     @app.get("/api/updates/progress", dependencies=authed)
     def updates_progress():
         return agent("updates.progress")
+
+    @app.get("/api/updates/auto", dependencies=authed)
+    def updates_auto():
+        return agent("updates.auto")
+
+    @app.post("/api/updates/auto", dependencies=changing)
+    def updates_set_auto(body: AutoUpdatesBody):
+        return agent("updates.set_auto", body.model_dump())
 
     # --- apps -----------------------------------------------------------------
 

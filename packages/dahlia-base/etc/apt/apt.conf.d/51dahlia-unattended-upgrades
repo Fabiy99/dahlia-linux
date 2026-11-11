@@ -1,0 +1,11 @@
+// Dahlia: unattended-upgrades installs Debian security updates only.
+// Point releases, Dahlia and Docker packages are updated from the dashboard
+// (Updates), with a snapper snapshot before. On/off: 20auto-upgrades,
+// automatic reboot: 52dahlia-auto-reboot, both set in the dashboard.
+#clear Unattended-Upgrade::Origins-Pattern;
+#clear Unattended-Upgrade::Allowed-Origins;
+Unattended-Upgrade::Origins-Pattern {
+	"origin=Debian,codename=${distro_codename}-security,label=Debian-Security";
+};
+Unattended-Upgrade::Remove-Unused-Kernel-Packages "true";
+Unattended-Upgrade::Remove-New-Unused-Dependencies "true";

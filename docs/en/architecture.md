@@ -245,6 +245,8 @@ Protocol: one request per connection, one JSON line each way.
 | `parity.fix` | `what` (`bad` or `diskN`) | `dahlia-snapraid fix --bad` or `--disk N` as `dahlia-parity.service` |
 | `updates.check` | - | `apt-get update`, list of upgrades |
 | `updates.apply` | - | `apt-get full-upgrade` through the unit `dahlia-update.service`; the planned packages (simulation) in `/run/dahlia/update.json` |
+| `updates.auto` | - | Switch and reboot settings, last unattended-upgrades run, pending restart |
+| `updates.set_auto` | `enabled`, `reboot`, `reboot_time` (`HH:MM`) | `20auto-upgrades`, `52dahlia-auto-reboot`, `/etc/dahlia/updates.json` |
 | `updates.progress` | - | state, percent, per package waiting/downloaded/setting up/done from the apt output in this run's journal; shown on the dashboard's update page |
 | `apps.catalog` | `refresh` (optional) | App catalog and its age, `refresh` downloads it first |
 | `apps.list` | - | installed apps with container state, version, available update |
@@ -519,7 +521,15 @@ dahlia-domains apply              # check certificate and proxy, renew only when
 
 ## Updates
 
-- Debian security updates via `unattended-upgrades`.
+- Debian security updates via `unattended-upgrades` (from milestone 15), on by default.
+  `dahlia-base` ships `/etc/apt/apt.conf.d/51dahlia-unattended-upgrades`: only
+  `${distro_codename}-security`, old kernels are removed. The switch is Debian's
+  `20auto-upgrades`; the automatic reboot (off, time selectable) is in
+  `52dahlia-auto-reboot`; the dashboard sets both under Updates. `apt-daily-upgrade.timer`
+  runs it (daily around 06:00); snapper takes snapshots as for every apt run. The dashboard
+  shows the last run from `/var/log/unattended-upgrades/unattended-upgrades.log` and a
+  pending restart (`/run/reboot-required`). Without the automatic reboot `dahlia-notify`
+  reports it once (event `updates`).
 - Dahlia packages and other updates are applied from the UI, always with a snapshot first.
 - The apt repository is built and signed in CI and published on GitHub Pages
   (`https://fabiy99.github.io/dahlia-linux/`). The private key exists only as a GitHub

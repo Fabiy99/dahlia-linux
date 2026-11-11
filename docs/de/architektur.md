@@ -249,6 +249,8 @@ Protokoll: eine Anfrage pro Verbindung, je eine JSON-Zeile hin und zurück.
 | `parity.fix` | `what` (`bad` oder `diskN`) | `dahlia-snapraid fix --bad` bzw. `--disk N` als `dahlia-parity.service` |
 | `updates.check` | - | `apt-get update`, Liste der Upgrades |
 | `updates.apply` | - | `apt-get full-upgrade` über die Unit `dahlia-update.service`; die geplanten Pakete (Simulation) in `/run/dahlia/update.json` |
+| `updates.auto` | - | Schalter und Neustart-Einstellungen, letzter Lauf von unattended-upgrades, ausstehender Neustart |
+| `updates.set_auto` | `enabled`, `reboot`, `reboot_time` (`HH:MM`) | `20auto-upgrades`, `52dahlia-auto-reboot`, `/etc/dahlia/updates.json` |
 | `updates.progress` | - | Zustand, Prozent, je Paket wartet/geladen/eingerichtet/fertig aus der apt-Ausgabe im Journal dieses Laufs; das Dashboard zeigt es auf der Update-Seite |
 | `apps.catalog` | `refresh` (optional) | App-Katalog und sein Stand, mit `refresh` vorher herunterladen |
 | `apps.list` | - | installierte Apps mit Container-Zustand, Version, verfügbarem Update |
@@ -530,7 +532,16 @@ dahlia-domains apply              # Zertifikat und Proxy prüfen, nur bei Bedarf
 
 ## Updates
 
-- Debian-Sicherheitsupdates über `unattended-upgrades`.
+- Debian-Sicherheitsupdates über `unattended-upgrades` (ab Meilenstein 15), standardmäßig an.
+  `dahlia-base` liefert `/etc/apt/apt.conf.d/51dahlia-unattended-upgrades`: nur
+  `${distro_codename}-security`, alte Kernel werden entfernt. Der Schalter ist Debians
+  `20auto-upgrades`, der automatische Neustart (aus, Uhrzeit wählbar) steht in
+  `52dahlia-auto-reboot`; beides setzt das Dashboard unter Updates. Ausgeführt wird es von
+  `apt-daily-upgrade.timer` (täglich gegen 06:00), snapper legt wie bei jedem apt-Lauf
+  Snapshots an. Das Dashboard zeigt den letzten Lauf aus
+  `/var/log/unattended-upgrades/unattended-upgrades.log` und einen nötigen Neustart
+  (`/run/reboot-required`). Ohne automatischen Neustart meldet `dahlia-notify` ihn einmal
+  (Meldungsart `updates`).
 - Dahlia-Pakete und übrige Updates per Klick im UI, immer mit Snapshot vorher.
 - Das apt-Repo wird in CI gebaut, signiert und auf GitHub Pages veröffentlicht
   (`https://fabiy99.github.io/dahlia-linux/`). Der private Schlüssel existiert nur als
