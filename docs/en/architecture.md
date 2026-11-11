@@ -238,7 +238,7 @@ Protocol: one request per connection, one JSON line each way.
 | `storage.set_option` | `name`, `value` (integer) | `dahlia-disk set-option` |
 | `storage.format` | `device` (whole disk), `filesystem` (`xfs`, `ext4`, `btrfs`), `confirm` (disk name repeated) | `dahlia-disk format`, blank or imported disks only |
 | `storage.import` / `storage.import_status` | `uuid`, `target` (name below `/mnt/user`) | `dahlia-disk import` as unit `dahlia-import`, progress in `/run/dahlia/import.json` |
-| `job.start` | `job` (mover, snapraid-sync, snapraid-scrub) | starts the unit, returns at once |
+| `job.start` | `job` (mover, snapraid-sync, snapraid-scrub, backup) | starts the unit, returns at once |
 | `job.status` | `job` (plus `update`) | State and last result |
 | `parity.get` | – | `dahlia-snapraid status --json` and the state of sync, scrub, mover and repair |
 | `parity.sync` | `force` (optional) | start a sync; with `force` without the delete threshold as `dahlia-parity.service` |
@@ -256,6 +256,11 @@ Protocol: one request per connection, one JSON line each way.
 | `files.mkdir` | `root`, `path` | create a folder (group `dahlia`, 2775), not below `appdata` |
 | `domains.get` | - | domain, mDNS aliases, DNS records needed, certificates |
 | `domains.set` | `domain`, `mdns_aliases` | `dahlia-domains set`, new certificate and proxy |
+| `backup.get` | – | Target, last result, public SSH key, possible target disks (`/mnt/diskN`, `/mnt/cache`, `/mnt/user`, `/media/…`) |
+| `backup.set` | `target` (`{"type": "folder", "path": …}` or `{"type": "sftp", "host", "port", "user", "path"}`), `stop_apps`, `folders` (optional, more folders below `/mnt/user` or `/srv`) | `/etc/dahlia/backup.json`, creates password and SSH key, enables `dahlia-backup.timer` |
+| `backup.key` | – | Repository password |
+| `backup.snapshots` | – | `restic snapshots` |
+| `backup.restore` | `snapshot`, `what` (`config` or an app id) | in the background as unit `dahlia-backup-restore` |
 | `agent.actions` | - | this list |
 
 Unknown actions, unknown or missing parameters and wrong types are rejected before any
@@ -423,6 +428,44 @@ dahlia-apps update jellyfin
 dahlia-apps remove jellyfin [--delete-data]
 dahlia-apps check app.yaml        # validate a template
 ```
+
+## Backup (from milestone 13)
+
+`dahlia-backup` uses restic to save what is needed to restore a server:
+
+- `/etc/dahlia`
+- `/var/lib/dahlia/apps` (templates, state and secrets of the installed apps)
+- `/var/lib/dahlia-dashboard` (dashboard accounts)
+- `<location>/appdata/<id>` of every installed app
+- more folders from `folders` in `/etc/dahlia/backup.json`
+
+Shares with films or photos are not included. Parity and a second copy cover those.
+
+The target is a folder `dahlia-backup` on another disk (safest: a USB disk under `/media`)
+or an SFTP server. For SFTP Dahlia creates `/etc/dahlia/backup_ed25519`; the dashboard
+shows the public key, which goes into `~/.ssh/authorized_keys` on the server. The
+repository is encrypted with a random password from `/etc/dahlia/backup.pass` (0600).
+Nothing can be restored without it, so the dashboard shows it for safe keeping.
+
+Running apps are stopped for the backup and started again afterwards so that databases are
+consistent (can be turned off). Then restic keeps 7 daily, 4 weekly and 6 monthly
+snapshots. `dahlia-backup.timer` runs daily at 02:00 and is only enabled once a target is
+saved; the time is under Settings > Schedules. Failures go to the notifications like the
+other jobs.
+
+Restore works per app (containers stopped, `appdata` replaced, started again) or for the
+configuration (`/etc/dahlia` and the app list).
+
+```sh
+sudo dahlia-backup run
+sudo dahlia-backup snapshots
+sudo dahlia-backup restore 4f2a9c1d paperless
+sudo dahlia-backup restore 4f2a9c1d config
+```
+
+On a new server: install Dahlia, write the old password to `/etc/dahlia/backup.pass` (0600),
+enter the same target in the dashboard and restore `config`, then restore the apps one by one
+and start them under Apps.
 
 ## Network and names (from milestone 7)
 

@@ -418,6 +418,12 @@ ol.steps { margin: 0 0 1rem; padding-left: 1.3rem; display: grid; gap: .35rem; c
 #parity-notice .actions { margin: .5rem 0 .8rem; }
 #parity-notice p + p { margin-top: .5rem; }
 
+/* backup */
+code.pubkey { display: block; font-size: .78rem; overflow-wrap: anywhere; background: var(--card-2);
+              border: 1px solid var(--line); border-radius: 6px; padding: .5rem; user-select: all; }
+#backup-snapshots .ops { display: flex; gap: .4rem; flex-wrap: wrap; }
+#backup-snapshots select { min-width: 0; max-width: 14rem; }
+
 /* terminal */
 .terminal-card { display: grid; gap: .6rem; }
 #terminal { height: min(70vh, 40rem); min-height: 16rem; background: #14121a; border-radius: 8px;

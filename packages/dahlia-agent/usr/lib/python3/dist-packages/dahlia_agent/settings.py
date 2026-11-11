@@ -195,6 +195,7 @@ SCHEDULE_TIMERS = {
     "mover": "dahlia-mover.timer",
     "snapraid-sync": "dahlia-snapraid-sync.timer",
     "snapraid-scrub": "dahlia-snapraid-scrub.timer",
+    "backup": "dahlia-backup.timer",
 }
 FREQUENCIES = ("off", "hourly", "daily", "weekly", "monthly")
 WEEKDAYS = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
@@ -204,6 +205,7 @@ DEFAULT_SCHEDULES = {
     "mover": {"frequency": "daily", "time": "03:00", "weekday": "sun", "monthday": 1},
     "snapraid-sync": {"frequency": "daily", "time": "04:30", "weekday": "sun", "monthday": 1},
     "snapraid-scrub": {"frequency": "weekly", "time": "06:00", "weekday": "sun", "monthday": 1},
+    "backup": {"frequency": "daily", "time": "02:00", "weekday": "sun", "monthday": 1},
 }
 
 
