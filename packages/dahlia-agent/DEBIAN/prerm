@@ -9,7 +9,9 @@ case "$1" in
                 dahlia-domains.timer dahlia-apps-catalog.timer || true
         fi
         systemctl disable dahlia-agent.socket dahlia-mdns.service dahlia-domains.timer \
-            dahlia-apps-catalog.timer >/dev/null 2>&1 || true
+            dahlia-apps-catalog.timer dahlia-firewall.service >/dev/null 2>&1 || true
+        # Without the agent nothing keeps the firewall table up to date.
+        nft delete table inet dahlia 2>/dev/null || true
         ;;
     upgrade|deconfigure|failed-upgrade)
         ;;

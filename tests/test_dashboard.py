@@ -200,6 +200,7 @@ def test_actions_go_to_agent(env):
     client.get("/api/storage/import")
     client.post("/api/jobs/mover/start", headers=CSRF)
     client.post("/api/updates/apply", headers=CSRF)
+    client.get("/api/updates/progress")
     client.post("/api/system/hostname", json={"hostname": "nas"}, headers=CSRF)
     assert agent.calls == [
         ("storage.add", {"uuid": "1234-ABCD", "role": "data"}),
@@ -209,6 +210,7 @@ def test_actions_go_to_agent(env):
         ("storage.import_status", {}),
         ("job.start", {"job": "mover"}),
         ("updates.apply", {}),
+        ("updates.progress", {}),
         ("system.set_hostname", {"hostname": "nas"}),
     ]
 
@@ -447,6 +449,9 @@ def test_settings_endpoints(env):
     client.get("/api/settings/spindown")
     client.post("/api/settings/spindown", json={"default": 30, "disks": {"WD-1": 60}},
                 headers=CSRF)
+    client.get("/api/settings/firewall")
+    client.post("/api/settings/firewall", json={"enabled": True, "networks": ["10.8.0.0/24"]},
+                headers=CSRF)
     client.get("/api/settings/schedules")
     client.post("/api/settings/schedules/mover", json={"frequency": "weekly", "time": "02:00",
                                                        "weekday": "sat"}, headers=CSRF)
@@ -459,6 +464,8 @@ def test_settings_endpoints(env):
         ("settings.confirm_network", {}),
         ("settings.spindown", {}),
         ("settings.set_spindown", {"default": 30, "disks": {"WD-1": 60}}),
+        ("settings.firewall", {}),
+        ("settings.set_firewall", {"enabled": True, "networks": ["10.8.0.0/24"]}),
         ("settings.schedules", {}),
         ("settings.set_schedule", {"job": "mover", "frequency": "weekly", "time": "02:00",
                                    "weekday": "sat", "monthday": 1}),

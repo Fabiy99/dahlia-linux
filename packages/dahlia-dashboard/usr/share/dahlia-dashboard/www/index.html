@@ -315,6 +315,7 @@
             <button id="updates-check" data-i18n="updates.check"></button>
             <button id="updates-apply" class="primary" data-i18n="updates.apply" disabled></button>
           </div>
+          <div id="update-progress" class="notice" hidden></div>
           <p id="updates-status"></p>
           <table>
             <thead><tr>
@@ -366,6 +367,17 @@
               <label><span data-i18n="settings.spindown_default"></span><select name="default"></select></label>
               <div id="spindown-disks" class="field-group"></div>
               <p class="hint" data-i18n="settings.spindown_hint"></p>
+              <button type="submit" data-i18n="common.save"></button>
+            </form>
+          </article>
+          <article class="card">
+            <h2 data-i18n="settings.firewall_title"></h2>
+            <form id="firewall-form">
+              <label class="check"><input name="enabled" type="checkbox"><span data-i18n="settings.firewall_enabled"></span></label>
+              <p class="hint" data-i18n="settings.firewall_hint"></p>
+              <p class="hint" id="firewall-local"></p>
+              <p class="hint" id="firewall-ports"></p>
+              <label><span data-i18n="settings.firewall_networks"></span><input name="networks" placeholder="192.168.50.0/24, 10.8.0.0/24"></label>
               <button type="submit" data-i18n="common.save"></button>
             </form>
           </article>
