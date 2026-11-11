@@ -717,3 +717,27 @@ def test_backup_endpoints(env):
     ]
     # The password needs the CSRF header.
     assert client.post("/api/backup/key").status_code == 403
+
+
+def test_vpn_endpoints(env):
+    client, agent, _ = logged_in(env)
+    agent.calls.clear()
+    assert client.get("/api/vpn").json() == {"action": "vpn.status"}
+    wg = {"enabled": True, "port": 51820, "endpoint": "home.example.org", "route": "lan",
+          "dns": "", "subnet": "10.253.0.0/24"}
+    client.post("/api/vpn/wireguard", json=wg, headers=CSRF)
+    client.post("/api/vpn/wireguard/peers", json={"name": "Handy"}, headers=CSRF)
+    client.post("/api/vpn/wireguard/peers/delete", json={"name": "Handy"}, headers=CSRF)
+    client.post("/api/vpn/tailscale/install", headers=CSRF)
+    client.post("/api/vpn/tailscale/up", json={"routes": True, "exit_node": False}, headers=CSRF)
+    client.post("/api/vpn/tailscale/logout", headers=CSRF)
+    assert agent.calls == [
+        ("vpn.status", {}),
+        ("vpn.wireguard_set", wg),
+        ("vpn.wireguard_add_peer", {"name": "Handy"}),
+        ("vpn.wireguard_remove_peer", {"name": "Handy"}),
+        ("vpn.tailscale_install", {}),
+        ("vpn.tailscale_up", {"routes": True, "exit_node": False}),
+        ("vpn.tailscale_logout", {}),
+    ]
+    assert client.post("/api/vpn/tailscale/install").status_code == 403

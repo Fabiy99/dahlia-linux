@@ -662,6 +662,13 @@ def test_action_list_is_fixed():
         "updates.set_auto",
         "ups.get",
         "ups.set",
+        "vpn.status",
+        "vpn.tailscale_install",
+        "vpn.tailscale_logout",
+        "vpn.tailscale_up",
+        "vpn.wireguard_add_peer",
+        "vpn.wireguard_remove_peer",
+        "vpn.wireguard_set",
     ]
     assert all(a.description for a in actions.ACTIONS.values())
 

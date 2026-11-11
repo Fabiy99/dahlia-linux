@@ -1110,4 +1110,5 @@ from . import (  # noqa: E402, F401
     snapshots,
     unattended,
     ups,
+    vpn,
 )
