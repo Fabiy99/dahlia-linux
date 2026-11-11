@@ -48,7 +48,8 @@ def ctx(tmp_path):
     hosts = tmp_path / "hosts"
     hosts.write_text("127.0.0.1\tlocalhost\n127.0.1.1\tdahlia\n::1\tlocalhost\n")
     runner = FakeRunner({("systemctl", "show"): (0, INACTIVE, "")})
-    return actions.Context(runner=runner, proc=proc, release_file=release, hosts_file=hosts)
+    return actions.Context(runner=runner, proc=proc, release_file=release, hosts_file=hosts,
+                           run_dir=tmp_path / "run")
 
 
 def run(ctx, action, params=None):
@@ -446,10 +447,82 @@ def test_updates_check(ctx):
     assert ["apt-get", "update", "-q"] in ctx.runner.calls
 
 
+OLD_RUN = "0" * 31 + "1"
+NEW_RUN = "0" * 31 + "2"
+UPDATE_LOG = """\
+Reading package lists...
+Get:1 http://deb.debian.org/debian trixie/main amd64 libc6 amd64 2.41-12+deb13u1 [2,800 kB]
+Get:2 https://fabiy99.github.io/dahlia-linux trixie/main amd64 dahlia-base all 0.1.3 [4 kB]
+Unpacking libc6:amd64 (2.41-12+deb13u1) over (2.41-12) ...
+Setting up libc6:amd64 (2.41-12+deb13u1) ...
+Unpacking dahlia-base (0.1.3) over (0.1.2) ...
+"""
+
+
+def answer_first(ctx, prefix, answer):
+    # FakeRunner takes the first matching prefix; a specific one goes before ("systemctl", "show").
+    rest = {k: v for k, v in ctx.runner.answers.items() if k != prefix}
+    ctx.runner.answers = {prefix: answer, **rest}
+
+
+def set_invocation(ctx, run_id):
+    answer_first(ctx, ("systemctl", "show", "-p", "InvocationID"), (0, run_id + "\n", ""))
+
+
+def started_update(ctx, clock=1000.0):
+    ctx.clock = lambda: clock
+    ctx.runner.answers[("apt-get", "-s")] = (0, SIMULATION, "")
+    set_invocation(ctx, OLD_RUN)
+    assert run(ctx, "updates.apply")["result"]["packages"] == 3
+
+
 def test_updates_apply(ctx):
-    assert run(ctx, "updates.apply")["ok"]
-    cmd = ctx.runner.calls[-1]
-    assert cmd == ["systemctl", "start", "--no-block", "dahlia-update.service"]
+    started_update(ctx)
+    assert ["systemctl", "start", "--no-block", "dahlia-update.service"] in ctx.runner.calls
+    plan = json.loads((ctx.run_dir / "update.json").read_text())
+    assert plan == {"packages": ["libc6", "dahlia-base", "newpkg"], "started": 1000,
+                    "previous": OLD_RUN}
+
+
+def test_updates_progress_none(ctx):
+    assert run(ctx, "updates.progress")["result"] == {"state": "none"}
+
+
+def test_updates_progress_starting(ctx):
+    started_update(ctx)
+    res = run(ctx, "updates.progress")["result"]
+    assert res["state"] == "running" and res["percent"] == 0
+    assert not any(c[0] == "journalctl" for c in ctx.runner.calls)
+    # systemd never started it.
+    ctx.clock = lambda: 1000.0 + actions.START_GRACE + 1
+    assert run(ctx, "updates.progress")["result"]["state"] == "failed"
+
+
+def test_updates_progress_running(ctx):
+    started_update(ctx)
+    set_invocation(ctx, NEW_RUN)
+    answer_first(ctx, ("systemctl", "show", "dahlia-update.service"), (0, RUNNING, ""))
+    ctx.runner.answers[("journalctl",)] = (0, UPDATE_LOG, "")
+    res = run(ctx, "updates.progress")["result"]
+    assert res["state"] == "running"
+    assert res["packages"] == [{"name": "libc6", "step": "done"},
+                               {"name": "dahlia-base", "step": "unpacked"},
+                               {"name": "newpkg", "step": "waiting"}]
+    assert res["percent"] == (3 + 2) * 100 // 9
+    assert res["last"].startswith("Unpacking dahlia-base")
+    assert ["journalctl", f"_SYSTEMD_INVOCATION_ID={NEW_RUN}", "-o", "cat",
+            "--no-pager"] in ctx.runner.calls
+
+
+def test_updates_progress_finished(ctx):
+    started_update(ctx)
+    set_invocation(ctx, NEW_RUN)
+    answer_first(ctx, ("systemctl", "show", "dahlia-update.service"), (0, INACTIVE, ""))
+    assert run(ctx, "updates.progress")["result"]["state"] == "done"
+    assert run(ctx, "updates.progress")["result"]["percent"] == 100
+    failed = INACTIVE.replace("Result=success", "Result=exit-code")
+    answer_first(ctx, ("systemctl", "show", "dahlia-update.service"), (0, failed, ""))
+    assert run(ctx, "updates.progress")["result"]["state"] == "failed"
 
 
 def test_updates_apply_busy(ctx):
@@ -524,8 +597,10 @@ def test_action_list_is_fixed():
         "parity.get",
         "parity.sync",
         "settings.confirm_network",
+        "settings.firewall",
         "settings.network",
         "settings.schedules",
+        "settings.set_firewall",
         "settings.set_network",
         "settings.set_schedule",
         "settings.set_spindown",
@@ -554,6 +629,7 @@ def test_action_list_is_fixed():
         "system.stats",
         "updates.apply",
         "updates.check",
+        "updates.progress",
         "ups.get",
         "ups.set",
     ]

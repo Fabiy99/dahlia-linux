@@ -83,8 +83,21 @@ Details: [docs/de/architektur.md](docs/de/architektur.md)
 7. Domains, Reverse-Proxy, Zertifikate
 8. Geführter Installer: Zielplatte auswählen, Servername, Passwort, Netzwerk, Zusammenfassung
    mit Lösch-Warnung. Der unbeaufsichtigte Modus bleibt als eigener Menüeintrag.
-9. Überwachung, Benachrichtigungen, USV, Release 1.0
-10. Version 2: VMs und LXC über Incus
+9. Überwachung, Benachrichtigungen, USV
+10. Firewall: nur lokale Netze, nur Ports genutzter Dienste und Apps
+11. Grafikkarte (`/dev/dri`) für Apps, z. B. Transcoding in Jellyfin
+12. Terminal im Dashboard
+13. Backup: Appdaten und Konfiguration nach Zeitplan
+14. Parity im Dashboard: einrichten, Sync, Scrub, Wiederherstellen
+15. Automatische Sicherheitsupdates (unattended-upgrades)
+16. Diagnosepaket zum Herunterladen, danach Release 1.0
+
+Nach 1.0 (1.x): Storage-Optionen im UI, Snapshot-Rollback im UI, eigene Container,
+WireGuard/Tailscale, NFS, Zwei-Faktor-Login (TOTP), SMART-Selbsttests, Bridge/VLAN,
+Wake-on-LAN, SMB-Papierkorb, Verschlüsselung (LUKS), Dateimanager, mehrere und
+nur-lesende Konten, USB-Creator für Windows, Installationsanleitung.
+
+Version 2: VMs und LXC über Incus.
 
 ### Mitmachen
 
@@ -173,8 +186,21 @@ Details: [docs/en/architecture.md](docs/en/architecture.md)
 7. Domains, reverse proxy, certificates
 8. Guided installer: pick the target disk, server name, password, network, summary with a
    wipe warning. The unattended mode stays as a separate menu entry.
-9. Monitoring, notifications, UPS, release 1.0
-10. Version 2: VMs and LXC via Incus
+9. Monitoring, notifications, UPS
+10. Firewall: local networks only, only ports of services and apps in use
+11. GPU (`/dev/dri`) for apps, e.g. transcoding in Jellyfin
+12. Terminal in the dashboard
+13. Backup: app data and configuration on a schedule
+14. Parity in the dashboard: set up, sync, scrub, restore
+15. Automatic security updates (unattended-upgrades)
+16. Diagnostics bundle to download, then release 1.0
+
+After 1.0 (1.x): storage options in the UI, snapshot rollback in the UI, custom containers,
+WireGuard/Tailscale, NFS, two-factor login (TOTP), SMART self-tests, bridge/VLAN,
+Wake-on-LAN, SMB recycle bin, encryption (LUKS), file manager, multiple and read-only
+accounts, USB creator for Windows, installation guide.
+
+Version 2: VMs and LXC via Incus.
 
 ### Contributing
 

@@ -12,7 +12,7 @@ GROUP = (0, "dahlia-smb:x:998:anna,ben\n", "")
 @pytest.fixture
 def ctx(tmp_path):
     c = actions.Context(runner=FakeRunner(), etc=tmp_path / "etc", run_dir=tmp_path / "run",
-                        pool=tmp_path / "user")
+                        pool=tmp_path / "user", var=tmp_path / "var")
     c.pool.mkdir()
     (c.pool / "media").mkdir()
     (c.etc / "samba").mkdir(parents=True)
@@ -168,3 +168,12 @@ def test_list(ctx):
     out = run(ctx, "shares.list")["result"]
     assert out == {"shares": [], "users": ["anna", "ben"], "pool_mounted": False,
                    "running": False}
+
+
+def test_shares_reload_firewall(ctx):
+    rules = str(ctx.run_dir / "firewall.nft")
+    assert run(ctx, "shares.set", {"name": "media", "security": "public"})["ok"]
+    assert ["nft", "-f", rules] in ctx.runner.calls
+    assert "445" in (ctx.run_dir / "firewall.nft").read_text()
+    assert run(ctx, "shares.remove", {"name": "media"})["ok"]
+    assert "445" not in (ctx.run_dir / "firewall.nft").read_text()
