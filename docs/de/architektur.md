@@ -168,6 +168,7 @@ Protokoll: eine Anfrage pro Verbindung, je eine JSON-Zeile hin und zurück.
 | `system.stats` | - | CPU-Zähler, Speicher, Swap, Netzwerk, Belegung von `/` und `/mnt/*` |
 | `system.hardware` | - | Mainboard (DMI), CPU-Temperatur (hwmon), SMART je Platte mit `smartctl -n standby` (weckt keine schlafende Platte) |
 | `system.log` | `lines`, `priority`, `unit` (optional) | `journalctl -n … -p …` |
+| `system.diagnostics` | – | Diagnosepaket nach `/run/dahlia-dashboard/diagnostics.tar.gz` (0600, Dashboard-Benutzer) |
 | `settings.time` / `settings.set_time` | `timezone`, `ntp` | `timedatectl set-timezone`, `set-ntp` |
 | `settings.network` / `settings.set_network` | `mode` (`dhcp`/`static`), `address` (CIDR), `gateway`, `dns` | `/etc/network/interfaces`, Anwendung über `dahlia-network` mit Rückfall |
 | `settings.confirm_network` | – | bestätigt die neue Netzwerkeinstellung |
@@ -402,6 +403,19 @@ dahlia-domains show
 dahlia-domains set --domain lab.home.arpa --mdns off
 dahlia-domains apply              # Zertifikat und Proxy prüfen, nur bei Bedarf neu
 ```
+
+## Diagnosepaket (ab Meilenstein 16)
+
+Für Fehlermeldungen: Systemprotokoll > "Diagnosepaket herunterladen". Der Agent sammelt
+Versionen (`dpkg-query`, `uname`, `/etc/os-release`), Dienste und Timer, Journal des
+aktuellen Boots (Warnungen, `dahlia*`, Kernel) und Fehler des vorigen, Platten (`lsblk`,
+`findmnt`, `df`, `dahlia-disk list`, Parity-Status, `/etc/snapraid.conf`), Netzwerk
+(`ip`, `nft list ruleset`, `ss -tulpn`), Docker (`ps`, `info`, `system df`), die Enden von
+apt- und unattended-upgrades-Log sowie `state.json` und `app.yaml` jeder App. Draußen
+bleiben `compose.json` und `secrets.json` der Apps, `/etc/dahlia/backup.pass`, SSH- und
+TLS-Schlüssel; in JSON-Einstellungen werden Schlüssel wie `password`, `token` oder `key`
+durch `***` ersetzt. Das Archiv liegt im Laufzeitverzeichnis des Dashboards und wird nach
+dem ersten Herunterladen gelöscht.
 
 ## Updates
 

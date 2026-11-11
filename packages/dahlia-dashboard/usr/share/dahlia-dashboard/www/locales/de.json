@@ -508,5 +508,10 @@
   "folder.missing": "Den Ordner gibt es noch nicht; er wird bei der Installation angelegt.",
   "install.location": "Speicherort",
   "location.system": "System-SSD",
-  "location.array": "Array (Datenplatten)"
+  "location.array": "Array (Datenplatten)",
+  "diag.title": "Diagnosepaket",
+  "diag.hint": "Ein Archiv mit Versionen, Diensten, Journal, Platten, Netzwerk, Docker und App-Zustand für eine Fehlermeldung. Passwörter, Tokens, Schlüssel und App-Geheimnisse bleiben draußen; Datei-, Freigabe- und Benutzernamen können vorkommen. Vor dem Veröffentlichen durchsehen.",
+  "diag.create": "Diagnosepaket herunterladen",
+  "diag.working": "Wird erstellt, das dauert bis zu einer Minute …",
+  "diag.ready": "Fertig ({size}), der Download startet."
 }

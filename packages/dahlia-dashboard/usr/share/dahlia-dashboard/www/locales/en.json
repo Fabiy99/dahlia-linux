@@ -508,5 +508,10 @@
   "folder.missing": "This folder does not exist yet; it is created on install.",
   "install.location": "Location",
   "location.system": "System SSD",
-  "location.array": "Array (data disks)"
+  "location.array": "Array (data disks)",
+  "diag.title": "Diagnostics bundle",
+  "diag.hint": "An archive with versions, services, journal, disks, network, Docker and app state for a bug report. Passwords, tokens, keys and app secrets stay out; file, share and user names can appear. Look through it before posting it publicly.",
+  "diag.create": "Download diagnostics bundle",
+  "diag.working": "Creating it, this takes up to a minute …",
+  "diag.ready": "Done ({size}), the download starts."
 }

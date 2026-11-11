@@ -505,6 +505,7 @@ def test_action_list_is_fixed():
         "storage.list",
         "storage.remove",
         "storage.set_option",
+        "system.diagnostics",
         "system.hardware",
         "system.info",
         "system.log",
