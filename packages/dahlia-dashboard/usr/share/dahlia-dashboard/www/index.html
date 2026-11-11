@@ -483,6 +483,27 @@
           </form>
           <dl id="auto-last" class="facts"></dl>
         </article>
+        <article class="card" id="snap-card">
+          <h2 data-i18n="snap.title"></h2>
+          <p class="hint" data-i18n="snap.hint"></p>
+          <div id="snap-notice" class="notice" hidden></div>
+          <form id="snap-form" class="inline-form">
+            <label><span data-i18n="snap.description"></span><input name="description" maxlength="80" required></label>
+            <button type="submit" data-i18n="snap.create"></button>
+          </form>
+          <table>
+            <thead><tr>
+              <th data-i18n="snap.number"></th><th data-i18n="snap.date"></th>
+              <th data-i18n="snap.description"></th><th></th>
+            </tr></thead>
+            <tbody id="snap-list"></tbody>
+          </table>
+          <div id="snap-old" hidden>
+            <h3 data-i18n="snap.old_title"></h3>
+            <p class="hint" data-i18n="snap.old_hint"></p>
+            <table><tbody id="snap-old-list"></tbody></table>
+          </div>
+        </article>
       </section>
 
       <section id="view-account" hidden>

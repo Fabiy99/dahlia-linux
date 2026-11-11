@@ -221,6 +221,7 @@ JOB_NAMES = {
     "dahlia-snapraid-sync.service": "SnapRAID sync",
     "dahlia-snapraid-scrub.service": "SnapRAID scrub",
     "dahlia-parity.service": "Parity repair",
+    "dahlia-rollback.service": "Rollback",
     "dahlia-update.service": "System update",
     "dahlia-tailscale-install.service": "Tailscale install",
 }
