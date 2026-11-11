@@ -80,10 +80,12 @@ def env(tmp_path):
     paths.catalog.mkdir()
     (paths.catalog / "whoami.yaml").write_text(WHOAMI)
     reloads = []
+    firewall_calls = []
     a = Apps(
         paths=paths,
         docker=FakeDocker(),
         host=Host(tz="Europe/Berlin", uid=os.getuid(), gid=os.getgid()),
+        reload_firewall=lambda: firewall_calls.append(1),
         naming=domains.Domains(
             paths=dpaths,
             host=domains.Host("dahlia", ["192.168.1.5"]),
@@ -94,6 +96,7 @@ def env(tmp_path):
         mounted=lambda p: True,
     )
     a.reloads = reloads
+    a.firewall_calls = firewall_calls
     return a
 
 
@@ -201,7 +204,7 @@ def test_install(env):
     assert "listen 8099;" in conf
     assert "proxy_pass http://127.0.0.1:41000;" in conf
     assert (env.naming.paths.nginx / "dahlia-apps-map.conf").exists()
-    assert env.reloads
+    assert env.reloads and env.firewall_calls
     with pytest.raises(AppError, match="already installed"):
         env.install("whoami")
 

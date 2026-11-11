@@ -149,6 +149,11 @@ class SpindownBody(BaseModel):
     disks: dict[str, int] = {}
 
 
+class FirewallBody(BaseModel):
+    enabled: bool
+    networks: list[str] = []
+
+
 class ShareBody(BaseModel):
     comment: str = ""
     security: str
@@ -488,6 +493,14 @@ def create_app(cfg: Config | None = None) -> FastAPI:
     @app.post("/api/settings/spindown", dependencies=changing)
     def settings_set_spindown(body: SpindownBody):
         return agent("settings.set_spindown", body.model_dump())
+
+    @app.get("/api/settings/firewall", dependencies=authed)
+    def settings_firewall():
+        return agent("settings.firewall")
+
+    @app.post("/api/settings/firewall", dependencies=changing)
+    def settings_set_firewall(body: FirewallBody):
+        return agent("settings.set_firewall", body.model_dump())
 
     @app.get("/api/settings/schedules", dependencies=authed)
     def settings_schedules():

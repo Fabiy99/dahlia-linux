@@ -447,6 +447,9 @@ def test_settings_endpoints(env):
     client.get("/api/settings/spindown")
     client.post("/api/settings/spindown", json={"default": 30, "disks": {"WD-1": 60}},
                 headers=CSRF)
+    client.get("/api/settings/firewall")
+    client.post("/api/settings/firewall", json={"enabled": True, "networks": ["10.8.0.0/24"]},
+                headers=CSRF)
     client.get("/api/settings/schedules")
     client.post("/api/settings/schedules/mover", json={"frequency": "weekly", "time": "02:00",
                                                        "weekday": "sat"}, headers=CSRF)
@@ -459,6 +462,8 @@ def test_settings_endpoints(env):
         ("settings.confirm_network", {}),
         ("settings.spindown", {}),
         ("settings.set_spindown", {"default": 30, "disks": {"WD-1": 60}}),
+        ("settings.firewall", {}),
+        ("settings.set_firewall", {"enabled": True, "networks": ["10.8.0.0/24"]}),
         ("settings.schedules", {}),
         ("settings.set_schedule", {"job": "mover", "frequency": "weekly", "time": "02:00",
                                    "weekday": "sat", "monthday": 1}),

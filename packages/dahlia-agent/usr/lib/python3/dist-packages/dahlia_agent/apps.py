@@ -87,7 +87,7 @@ from pathlib import Path
 
 import yaml
 
-from . import domains
+from . import domains, firewall
 
 CONFIG_FILE = Path("/etc/dahlia/apps.json")
 APPS_DIR = Path("/var/lib/dahlia/apps")
@@ -933,6 +933,8 @@ class Apps:
     naming: domains.Domains = field(default_factory=domains.Domains)
     port_check: object = port_free
     mounted: object = os.path.ismount
+    # Loads the firewall table again after ports changed; tests replace it.
+    reload_firewall: object = firewall.apply_quietly
 
     def _host(self) -> Host:
         if self.host is None:
@@ -965,6 +967,8 @@ class Apps:
             self.naming.apply(proxies(self.paths))
         except domains.DomainError as e:
             raise AppError(str(e)) from None
+        # Port links and LAN ports of apps are opened for local networks only.
+        self.reload_firewall()
 
     def _prepare_dirs(self, t: Template, folders: dict[str, str] | None,
                       location: str) -> None:
