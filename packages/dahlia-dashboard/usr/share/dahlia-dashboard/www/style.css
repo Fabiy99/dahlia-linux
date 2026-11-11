@@ -412,6 +412,12 @@ form.inline-form { max-width: none; grid-template-columns: repeat(auto-fit, minm
   table.shares .row-ops { justify-content: flex-start; margin-top: .3rem; }
 }
 
+/* storage settings */
+.input-unit { display: flex; gap: .4rem; }
+.input-unit input { flex: 1; min-width: 0; }
+.input-unit select { width: auto; flex: none; }
+#view-storage > .card { margin-top: 1rem; max-width: 40rem; }
+
 /* Parity */
 ol.steps { margin: 0 0 1rem; padding-left: 1.3rem; display: grid; gap: .35rem; color: var(--muted); font-size: .92rem; }
 #parity-disks small.muted { color: var(--muted); font-size: .82rem; }

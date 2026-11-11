@@ -227,6 +227,12 @@ class ParitySettingsBody(BaseModel):
     scrub_older_than_days: int
 
 
+class StorageSettingsBody(BaseModel):
+    minfreespace: str
+    mover_min_age_minutes: int
+    snapraid_delete_threshold: int
+
+
 class ScheduleBody(BaseModel):
     frequency: str
     time: str = "03:00"
@@ -418,6 +424,17 @@ def create_app(cfg: Config | None = None) -> FastAPI:
     @app.post("/api/parity/fix", dependencies=changing)
     def parity_fix(body: ParityFixBody):
         return agent("parity.fix", {"what": body.what})
+
+    @app.get("/api/storage/settings", dependencies=authed)
+    def storage_settings():
+        return agent("storage.settings", {})
+
+    @app.post("/api/storage/settings", dependencies=changing)
+    def storage_settings_set(body: StorageSettingsBody):
+        agent("storage.set_minfreespace", {"size": body.minfreespace})
+        for name in ("mover_min_age_minutes", "snapraid_delete_threshold"):
+            agent("storage.set_option", {"name": name, "value": getattr(body, name)})
+        return body.model_dump()
 
     @app.post("/api/parity/settings", dependencies=changing)
     def parity_settings(body: ParitySettingsBody):

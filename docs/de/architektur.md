@@ -131,7 +131,12 @@ dahlia-snapraid fix --disk N                   # Dateien von /mnt/diskN aus der 
 dahlia-snapraid fix --bad                      # vom Scrub gefundene defekte Blöcke reparieren
 dahlia-snapraid status [--json]                # Abdeckung, Scrub-Stand, Fehler, letzte Läufe
 dahlia-disk set-option snapraid_delete_threshold 50
+dahlia-disk set-option mover_min_age_minutes 1440
+dahlia-disk set-minfreespace 100G               # freier Platz pro Platte für mergerfs
+dahlia-disk settings                           # alle Einstellungen als JSON
 ```
+
+Dieselben Werte setzt das Dashboard unter Platten > Einstellungen (ab Meilenstein 17).
 
 Der Mover lässt offene, kürzlich geänderte und schon auf den Datenplatten vorhandene
 Dateien sowie Hardlinks auf dem Cache. Er kopiert erst, prüft, benennt um und löscht dann.
@@ -201,7 +206,7 @@ Debians `nftables.service` bleibt aus; sein `/etc/nftables.conf` beginnt mit
 Der Agent hört auf `/run/dahlia/agent.sock` (root:dahlia-agent, 0660) und wird von
 `dahlia-agent.socket` beim ersten Aufruf gestartet. Zusätzlich zu den Dateirechten prüft er
 die Gegenstelle per `SO_PEERCRED`: erlaubt sind root und Mitglieder der Gruppe
-`dahlia-agent`. Später ist das der Dashboard-Benutzer `dahlia-ui`.
+`dahlia-agent`, dazu gehört der Dashboard-Benutzer `dahlia-ui`.
 
 Protokoll: eine Anfrage pro Verbindung, je eine JSON-Zeile hin und zurück.
 
@@ -241,6 +246,8 @@ Protokoll: eine Anfrage pro Verbindung, je eine JSON-Zeile hin und zurück.
 | `storage.add` | `uuid`, `role` (data, parity, cache, external) | `dahlia-disk add` |
 | `storage.remove` | `uuid`, `force` (optional) | `dahlia-disk remove` |
 | `storage.set_option` | `name`, `value` (Zahl) | `dahlia-disk set-option` |
+| `storage.settings` | – | `dahlia-disk settings` |
+| `storage.set_minfreespace` | `size` (z. B. `100G`, M/G/T) | `dahlia-disk set-minfreespace` |
 | `storage.format` | `device` (ganze Platte), `filesystem` (`xfs`, `ext4`, `btrfs`), `confirm` (Plattenname wiederholt) | `dahlia-disk format`, nur leere oder übernommene Platten |
 | `storage.import` / `storage.import_status` | `uuid`, `target` (Name unter `/mnt/user`) | `dahlia-disk import` als Unit `dahlia-import`, Fortschritt in `/run/dahlia/import.json` |
 | `job.start` | `job` (mover, snapraid-sync, snapraid-scrub, backup) | startet die Unit, kehrt sofort zurück |

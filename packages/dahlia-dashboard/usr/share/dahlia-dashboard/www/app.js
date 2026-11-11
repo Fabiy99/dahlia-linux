@@ -302,7 +302,7 @@ function showLogin() {
 
 const loaders = {
   overview: loadOverview,
-  storage: loadStorage,
+  storage: () => Promise.all([loadStorage(), loadStorageSettings()]),
   parity: loadParity,
   apps: loadApps,
   domains: loadDomains,
@@ -796,6 +796,54 @@ function bindImport() {
       document.getElementById("import-dialog").close();
       importWasRunning = true;
       await pollImport();
+    });
+  });
+}
+
+// --- storage settings -------------------------------------------------------------
+
+const MOVER_AGES = [0, 60, 360, 720, 1440, 4320, 10080, 43200];
+
+function moverAgeLabel(m) {
+  if (m === 0) return t("storage.mover_age_none");
+  if (m % 1440 === 0) return t("storage.mover_age_days", { n: m / 1440 });
+  if (m % 60 === 0) return t("storage.mover_age_hours", { n: m / 60 });
+  return t("storage.mover_age_minutes", { n: m });
+}
+
+async function loadStorageSettings() {
+  const { settings } = await api("GET", "storage/settings");
+  const f = document.getElementById("storage-settings");
+  if (document.activeElement?.form === f) return;
+  const ages = MOVER_AGES.includes(settings.mover_min_age_minutes)
+    ? MOVER_AGES : [...MOVER_AGES, settings.mover_min_age_minutes].sort((a, b) => a - b);
+  fillOptions(f.elements.mover_min_age_minutes, ages, moverAgeLabel);
+  f.elements.mover_min_age_minutes.value = String(settings.mover_min_age_minutes);
+  // minfreespace is a number with an optional K/M/G/T suffix; show it in MB, GB or TB.
+  const m = /^(\d+)([KMGT]?)$/.exec(settings.minfreespace) || [null, "50", "G"];
+  let [value, unit] = [Number(m[1]), m[2] || "B"];
+  const bytes = value * { B: 1, K: 1024, M: 1024 ** 2, G: 1024 ** 3, T: 1024 ** 4 }[unit];
+  if (!["M", "G", "T"].includes(unit)) [value, unit] = [Math.max(1, Math.round(bytes / 1024 ** 2)), "M"];
+  fillOptions(f.elements.free_unit, ["M", "G", "T"], (u) => t(`storage.unit_${u}`));
+  f.elements.free_value.value = String(value);
+  f.elements.free_unit.value = unit;
+  f.elements.snapraid_delete_threshold.value = String(settings.snapraid_delete_threshold);
+}
+
+function bindStorageSettings() {
+  const f = document.getElementById("storage-settings");
+  f.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const btn = f.querySelector("button");
+    guarded(btn, async () => {
+      await api("POST", "storage/settings", {
+        minfreespace: `${Number(f.elements.free_value.value)}${f.elements.free_unit.value}`,
+        mover_min_age_minutes: Number(f.elements.mover_min_age_minutes.value),
+        snapraid_delete_threshold: Number(f.elements.snapraid_delete_threshold.value),
+      });
+      say(t("storage.settings_saved"), "ok");
+      btn.blur();
+      await loadStorageSettings();
     });
   });
 }
@@ -2646,6 +2694,7 @@ function bindButtons() {
     }));
   }
   document.getElementById("storage-refresh").addEventListener("click", (e) => guarded(e.currentTarget, loadStorage));
+  bindStorageSettings();
   document.getElementById("apps-search").addEventListener("input", renderCatalog);
   document.getElementById("apps-category").addEventListener("change", renderCatalog);
   const refresh = document.getElementById("apps-refresh");
