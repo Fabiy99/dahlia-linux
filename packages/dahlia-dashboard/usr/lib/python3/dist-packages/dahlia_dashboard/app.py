@@ -386,6 +386,10 @@ def create_app(cfg: Config | None = None) -> FastAPI:
     def updates_apply():
         return agent("updates.apply")
 
+    @app.get("/api/updates/progress", dependencies=authed)
+    def updates_progress():
+        return agent("updates.progress")
+
     # --- apps -----------------------------------------------------------------
 
     @app.get("/api/apps", dependencies=authed)

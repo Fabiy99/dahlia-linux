@@ -309,7 +309,7 @@ const loaders = {
   shares: loadShares,
   log: loadLog,
   jobs: loadJobs,
-  updates: () => {},
+  updates: loadUpdateProgress,
   account: loadAccount,
 };
 
@@ -1406,6 +1406,7 @@ async function loadJobs() {
 async function checkUpdates() {
   const status = document.getElementById("updates-status");
   status.textContent = t("updates.checking");
+  document.getElementById("update-progress").hidden = true;
   const data = await api("POST", "updates/check");
   const tbody = document.getElementById("updates");
   tbody.replaceChildren();
@@ -1420,11 +1421,79 @@ async function checkUpdates() {
   document.getElementById("updates-apply").disabled = !data.packages.length;
 }
 
+let updateTimer = null;
+let updateWasRunning = false;
+
+function packageList(title, pkgs, label) {
+  const box = el("div", "update-list");
+  box.append(el("b", "", `${title} (${pkgs.length})`));
+  const ul = el("ul");
+  for (const p of pkgs) ul.append(el("li", p.step, label(p)));
+  box.append(ul);
+  return box;
+}
+
+function renderUpdateProgress(data) {
+  const box = document.getElementById("update-progress");
+  box.replaceChildren();
+  box.hidden = data.state === "none";
+  if (data.state === "none") return;
+  const done = data.packages.filter((p) => p.step === "done");
+  const open = data.packages.filter((p) => p.step !== "done");
+  box.append(el("b", "", t(`updates.state_${data.state}`)));
+  const bar = el("div", "bar");
+  const fill = el("span", data.state === "failed" ? "crit" : "");
+  fill.style.width = `${data.percent}%`;
+  bar.append(fill);
+  box.append(bar, el("small", "hint", t("updates.progress", {
+    pct: data.percent, done: done.length, total: data.packages.length,
+  })));
+  if (data.state === "running" && data.last) box.append(el("small", "hint mono", data.last));
+  const lists = el("div", "update-lists");
+  if (open.length) {
+    lists.append(packageList(t("updates.open"), open, (p) => `${p.name} · ${t(`updates.step_${p.step}`)}`));
+  }
+  if (done.length) lists.append(packageList(t("updates.done"), done, (p) => p.name));
+  box.append(lists);
+  box.classList.toggle("bad", data.state === "failed");
+  box.classList.toggle("ok", data.state === "done");
+  document.getElementById("updates-apply").disabled = data.state === "running";
+  document.getElementById("updates-check").disabled = data.state === "running";
+}
+
+async function loadUpdateProgress() {
+  clearTimeout(updateTimer);
+  let data;
+  try {
+    data = await api("GET", "updates/progress");
+  } catch (e) {
+    // An update of Dahlia itself restarts the dashboard and nginx; keep asking.
+    if (updateWasRunning && current === "updates") {
+      updateTimer = setTimeout(() => loadUpdateProgress().catch(sayError), 3000);
+      return;
+    }
+    throw e;
+  }
+  renderUpdateProgress(data);
+  const running = data.state === "running";
+  if (updateWasRunning && !running) {
+    say(t(data.state === "done" ? "updates.finished" : "updates.failed"),
+        data.state === "done" ? "ok" : "error");
+  }
+  updateWasRunning = running;
+  if (running && current === "updates") {
+    updateTimer = setTimeout(() => loadUpdateProgress().catch(sayError), 2000);
+  }
+}
+
 async function applyUpdates() {
   if (!await ask(t("updates.confirm"), "updates.apply")) return;
   await api("POST", "updates/apply");
   document.getElementById("updates-apply").disabled = true;
-  say(t("updates.started"), "ok");
+  document.getElementById("updates").replaceChildren();
+  document.getElementById("updates-status").textContent = "";
+  updateWasRunning = true;
+  await loadUpdateProgress();
 }
 
 // --- SMB shares ---------------------------------------------------------------------

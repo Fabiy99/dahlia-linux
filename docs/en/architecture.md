@@ -224,7 +224,8 @@ Protocol: one request per connection, one JSON line each way.
 | `job.start` | `job` (mover, snapraid-sync, snapraid-scrub) | starts the unit, returns at once |
 | `job.status` | `job` (plus `update`) | State and last result |
 | `updates.check` | - | `apt-get update`, list of upgrades |
-| `updates.apply` | - | `apt-get full-upgrade` through the unit `dahlia-update.service` |
+| `updates.apply` | - | `apt-get full-upgrade` through the unit `dahlia-update.service`; the planned packages (simulation) in `/run/dahlia/update.json` |
+| `updates.progress` | - | state, percent, per package waiting/downloaded/setting up/done from the apt output in this run's journal; shown on the dashboard's update page |
 | `apps.catalog` | `refresh` (optional) | App catalog and its age, `refresh` downloads it first |
 | `apps.list` | - | installed apps with container state, version, available update |
 | `apps.install`, `apps.update` | `id`, for `install` `location` (optional, `/mnt/user` or `/srv`) and `folders` (optional, share -> folder below `/mnt/user` or `/srv`) | in the background as unit `dahlia-app-<id>`; folders are kept on updates |
