@@ -47,8 +47,8 @@ Placeholders in environment, command and login: {TZ}, {PUID}, {PGID},
 install and kept in secrets.json, so they stay the same across updates.
 
 The web port is published on 127.0.0.1 only (a port from HOST_PORTS);
-nginx listens on public_port in the LAN and on https://<id>.<domain>
-(see domains.py) and proxies to it. Helpers publish nothing unless they
+nginx listens on public_port in the LAN and on https://<id>.local
+(mDNS alias, see domains.py) and proxies to it. Helpers publish nothing unless they
 list lan_ports; the services of a stack reach each other by service name
 on the stack's own network.
 
@@ -591,7 +591,7 @@ class Host:
     uid: int
     gid: int
     hostname: str = "dahlia"
-    domain: str = domains.DEFAULT_DOMAIN
+    domain: str = domains.APP_DOMAIN
     # GPU for apps with "gpu": /dev/dri exists, and the gids of render and video.
     dri: bool = False
     gpu_gids: tuple[int, ...] = ()
@@ -1132,8 +1132,6 @@ class Apps:
     def _host(self) -> Host:
         if self.host is None:
             self.host = Host.detect()
-            with contextlib.suppress(domains.DomainError):
-                self.host.domain = self.naming.settings().domain
         return self.host
 
     def _require_pool(self) -> None:

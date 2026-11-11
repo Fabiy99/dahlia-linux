@@ -4,7 +4,8 @@ Incoming connections are accepted only from local networks (private IPv4
 ranges, IPv6 ULA and link-local, the subnets of the server's own
 interfaces, plus networks the admin adds) and only on ports of enabled
 functions: SSH, the dashboard and app links on nginx, mDNS, SMB and
-WS-Discovery while shares exist, and the ports of installed apps.
+WS-Discovery while shares exist, NFS while a share is exported, and the
+ports of installed apps.
 Container ports Docker forwards (lan_ports) are dropped for other sources.
 
 WireGuard (vpn.py): while the tunnel is on, its UDP port is open from
@@ -50,6 +51,8 @@ BASE_PORTS = (Port(22, "tcp", "ssh"), Port(80, "tcp", "http"), Port(443, "tcp", 
               Port(5353, "udp", "mdns"))
 # smbd, plus wsdd so Windows lists the server under Network.
 SMB_PORTS = (Port(445, "tcp", "smb"), Port(5357, "tcp", "wsdd"), Port(3702, "udp", "wsdd"))
+# NFSv4 only: no rpcbind or mountd from the network.
+NFS_PORTS = (Port(2049, "tcp", "nfs"),)
 
 
 class FirewallError(ValueError):
@@ -101,12 +104,22 @@ def save_settings(settings: dict, path: Path = CONFIG) -> None:
 # --- what is open ---------------------------------------------------------------
 
 
-def shares_active(etc: Path) -> bool:
+def _shares(etc: Path) -> list:
     try:
         data = json.loads((etc / "dahlia/shares.json").read_text())
     except (OSError, ValueError):
-        return False
-    return isinstance(data, dict) and bool(data.get("shares"))
+        return []
+    shares = data.get("shares") if isinstance(data, dict) else None
+    return shares if isinstance(shares, list) else []
+
+
+def shares_active(etc: Path) -> bool:
+    return bool(_shares(etc))
+
+
+def nfs_active(etc: Path) -> bool:
+    return any(isinstance(s, dict) and s.get("nfs") is True and s.get("security") != "private"
+               for s in _shares(etc))
 
 
 def app_ports(apps_dir: Path) -> list[Port]:
@@ -145,6 +158,8 @@ def open_ports(etc: Path, apps_dir: Path) -> list[Port]:
     ports = list(BASE_PORTS)
     if shares_active(etc):
         ports += SMB_PORTS
+    if nfs_active(etc):
+        ports += NFS_PORTS
     seen = {(p.port, p.protocol) for p in ports}
     for p in app_ports(apps_dir):
         if (p.port, p.protocol) not in seen:

@@ -28,7 +28,7 @@ ETC_FILES = ("release", "storage.json", "apps.json", "spindown.json", "updates.j
              "schedules.json")
 # Other files, relative to the context's /etc, /var/lib/dahlia and /proc.
 ETC_OTHER = ("os-release", "snapraid.conf", "network/interfaces", "resolv.conf", "hosts",
-             "samba/smb.conf")
+             "samba/smb.conf", "exports.d/dahlia.exports")
 VAR_FILES = ("snapraid.json",)
 PROC_FILES = ("mdstat", "cmdline")
 COMMANDS = {

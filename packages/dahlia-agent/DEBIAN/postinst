@@ -56,6 +56,10 @@ case "$1" in
             if [ ! -e /etc/dahlia/shares.json ]; then
                 systemctl disable --now smbd.service nmbd.service >/dev/null 2>&1 || true
             fi
+            # nfs-server stays off until a share is exported over NFS.
+            if ! grep -q '"nfs": true' /etc/dahlia/shares.json 2>/dev/null; then
+                systemctl disable --now nfs-server.service >/dev/null 2>&1 || true
+            fi
             # NUT stays off until a UPS is set up in the dashboard.
             if [ ! -e /etc/dahlia/ups.json ]; then
                 systemctl disable --now nut-monitor.service nut-server.service \

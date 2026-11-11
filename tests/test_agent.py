@@ -548,32 +548,29 @@ def test_updates_apply_busy(ctx):
 
 
 def test_domains_get(ctx):
-    ctx.runner.answers[("dahlia-domains", "show")] = (0, '{"domain": "dahlia.home.arpa"}', "")
-    assert run(ctx, "domains.get")["result"] == {"domain": "dahlia.home.arpa"}
+    ctx.runner.answers[("dahlia-domains", "show")] = (0, '{"mdns_aliases": true}', "")
+    assert run(ctx, "domains.get")["result"] == {"mdns_aliases": True}
 
 
 def test_domains_set(ctx):
     ctx.runner.answers[("dahlia-domains", "set")] = (0, '{"ca_renewed": false}', "")
-    params = {"domain": "lab.home.arpa", "mdns_aliases": False}
-    assert run(ctx, "domains.set", params)["ok"]
-    assert ctx.runner.calls[-1] == [
-        "dahlia-domains", "set", "--domain", "lab.home.arpa", "--mdns", "off",
-    ]
+    assert run(ctx, "domains.set", {"mdns_aliases": False})["ok"]
+    assert ctx.runner.calls[-1] == ["dahlia-domains", "set", "--mdns", "off"]
 
 
-@pytest.mark.parametrize("domain", ["", "home", "Dahlia.home.arpa", "a..b", "-a.b", "a b.c",
-                                    "x.home.arpa.", "a.b.c.d.e.f.g"])
-def test_domains_set_rejects(ctx, domain):
-    reply = run(ctx, "domains.set", {"domain": domain, "mdns_aliases": True})
+def test_domains_set_rejects_domain(ctx):
+    # The app domain is gone; only the mDNS switch is left.
+    reply = run(ctx, "domains.set", {"domain": "lab.home.arpa", "mdns_aliases": True})
     assert err_code(reply) == protocol.INVALID_PARAMS
+    assert err_code(run(ctx, "domains.set", {"mdns_aliases": "yes"})) == protocol.INVALID_PARAMS
     assert not ctx.runner.calls
 
 
 def test_domains_set_error_passes_through(ctx):
-    ctx.runner.answers[("dahlia-domains", "set")] = (1, "", "dahlia-domains: use home.arpa\n")
-    reply = run(ctx, "domains.set", {"domain": "x.local", "mdns_aliases": True})
+    ctx.runner.answers[("dahlia-domains", "set")] = (1, "", "dahlia-domains: nginx broken\n")
+    reply = run(ctx, "domains.set", {"mdns_aliases": True})
     assert err_code(reply) == protocol.FAILED
-    assert "use home.arpa" in reply["error"]["message"]
+    assert "nginx broken" in reply["error"]["message"]
 
 
 # --- action list --------------------------------------------------------------

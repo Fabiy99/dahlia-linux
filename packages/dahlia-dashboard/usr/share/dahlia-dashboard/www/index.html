@@ -111,6 +111,7 @@
           <form id="login-form">
             <label><span data-i18n="field.username"></span><input name="username" autocomplete="username" required></label>
             <label><span data-i18n="field.password"></span><input name="password" type="password" autocomplete="current-password" required></label>
+            <label id="login-code" hidden><span data-i18n="login.code"></span><input name="code" autocomplete="one-time-code" spellcheck="false"></label>
             <button type="submit" data-i18n="login.submit"></button>
           </form>
         </div>
@@ -363,26 +364,15 @@
       </section>
 
       <section id="view-domains" hidden>
-        <div class="tiles two">
-          <article class="card">
-            <h2 data-i18n="domains.title"></h2>
-            <p class="hint" data-i18n="domains.hint"></p>
-            <form id="domains-form">
-              <label><span data-i18n="domains.domain"></span><input name="domain" required></label>
-              <label class="check"><input name="mdns_aliases" type="checkbox"><span data-i18n="domains.mdns"></span></label>
-              <p class="hint" data-i18n="domains.domain_hint"></p>
-              <button type="submit" data-i18n="common.save"></button>
-            </form>
-          </article>
-          <article class="card">
-            <h2 data-i18n="domains.dns_title"></h2>
-            <p class="hint" data-i18n="domains.dns_hint"></p>
-            <table>
-              <thead><tr><th data-i18n="domains.record"></th><th data-i18n="domains.target"></th></tr></thead>
-              <tbody id="dns-records"></tbody>
-            </table>
-          </article>
-        </div>
+        <article class="card">
+          <h2 data-i18n="domains.title"></h2>
+          <p class="hint" data-i18n="domains.hint"></p>
+          <form id="domains-form">
+            <label class="check"><input name="mdns_aliases" type="checkbox"><span data-i18n="domains.mdns"></span></label>
+            <p class="hint" data-i18n="domains.mdns_hint"></p>
+            <button type="submit" data-i18n="common.save"></button>
+          </form>
+        </article>
         <article class="card">
           <h2 data-i18n="domains.ca_title"></h2>
           <p class="hint" data-i18n="domains.ca_hint"></p>
@@ -617,6 +607,39 @@
               <button type="submit" data-i18n="account.submit"></button>
             </form>
           </article>
+          <article class="card" id="totp-card">
+            <h2 data-i18n="totp.title"></h2>
+            <p class="hint" data-i18n="totp.hint"></p>
+            <p id="totp-state"></p>
+            <form id="totp-begin-form">
+              <label><span data-i18n="account.old"></span><input name="password" type="password" autocomplete="current-password" required></label>
+              <button type="submit" class="primary" data-i18n="totp.enable"></button>
+            </form>
+            <div id="totp-setup" hidden>
+              <p class="hint" data-i18n="totp.scan"></p>
+              <div class="wg-peer">
+                <img id="totp-qr" alt="">
+                <div>
+                  <p data-i18n="totp.secret"></p>
+                  <code id="totp-secret" class="pubkey"></code>
+                </div>
+              </div>
+              <form id="totp-confirm-form">
+                <label><span data-i18n="totp.code"></span><input name="code" inputmode="numeric" autocomplete="one-time-code" required pattern="[0-9 ]{6,7}"></label>
+                <button type="submit" class="primary" data-i18n="totp.confirm"></button>
+              </form>
+            </div>
+            <div id="totp-recovery" hidden>
+              <p class="hint" data-i18n="totp.recovery_hint"></p>
+              <pre id="totp-codes"></pre>
+              <button type="button" id="totp-recovery-done" data-i18n="totp.recovery_done"></button>
+            </div>
+            <form id="totp-disable-form" hidden>
+              <label><span data-i18n="account.old"></span><input name="password" type="password" autocomplete="current-password" required></label>
+              <label><span data-i18n="totp.disable_code"></span><input name="code" autocomplete="one-time-code" required spellcheck="false"></label>
+              <button type="submit" class="danger" data-i18n="totp.disable"></button>
+            </form>
+          </article>
           <article class="card">
             <h2 data-i18n="account.server_title"></h2>
             <form id="hostname-form">
@@ -732,7 +755,10 @@
     </label>
     <p class="hint" id="share-security-hint"></p>
     <div id="share-users" class="field-group"></div>
+    <label class="check" id="share-nfs"><input name="nfs" type="checkbox"><span data-i18n="shares.nfs"></span></label>
+    <p class="hint" id="share-nfs-hint"></p>
     <label class="check"><input name="time_machine" type="checkbox"><span data-i18n="shares.time_machine"></span></label>
+    <label id="share-tm-size"><span data-i18n="shares.time_machine_size"></span><input name="time_machine_size" type="number" min="0" max="1000000" step="1"></label>
     <div class="dialog-actions">
       <button value="cancel" formnovalidate data-i18n="common.cancel"></button>
       <button value="ok" class="primary" data-i18n="common.save"></button>

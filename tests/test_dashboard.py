@@ -445,19 +445,19 @@ def test_domains_endpoints(env):
     client, agent, _ = logged_in(env)
     agent.calls.clear()
     assert client.get("/api/domains").json() == {"action": "domains.get"}
-    body = {"domain": "lab.home.arpa", "mdns_aliases": False}
+    body = {"mdns_aliases": False}
     assert client.post("/api/domains", json=body, headers=CSRF).status_code == 200
     assert agent.calls == [("domains.get", {}), ("domains.set", body)]
     # Without the CSRF header nothing reaches the agent.
     assert client.post("/api/domains", json=body).status_code == 403
-    assert client.post("/api/domains", json={"domain": "x"}, headers=CSRF).status_code == 422
+    assert client.post("/api/domains", json={}, headers=CSRF).status_code == 422
     assert len(agent.calls) == 2
 
 
 def test_domains_need_login(env):
     client, agent, _, _ = env
     assert client.get("/api/domains").status_code == 401
-    assert client.post("/api/domains", json={"domain": "a.b", "mdns_aliases": True},
+    assert client.post("/api/domains", json={"mdns_aliases": True},
                        headers=CSRF).status_code == 401
     assert agent.calls == []
 
@@ -563,7 +563,8 @@ def test_shares_endpoints(env):
     assert agent.calls == [
         ("shares.list", {}),
         ("shares.set", {"name": "media", "comment": "", "security": "private",
-                        "users": {"anna": "rw"}, "time_machine": False}),
+                        "users": {"anna": "rw"}, "time_machine": False,
+                        "time_machine_size": 0, "nfs": False}),
         ("shares.remove", {"name": "media"}),
         ("shares.user_add", {"name": "anna", "password": "geheim123"}),
         ("shares.user_password", {"name": "anna", "password": "neu12345"}),

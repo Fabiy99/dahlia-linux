@@ -39,7 +39,7 @@ def test_create_public_share(ctx):
     assert "_smb._tcp" in (ctx.etc / "avahi/services/dahlia-smb.service").read_text()
     saved = json.loads((ctx.etc / "dahlia/shares.json").read_text())["shares"]
     assert saved == [{"name": "media", "comment": "Filme", "security": "public", "users": {},
-                      "time_machine": False}]
+                      "time_machine": False, "time_machine_size": 0, "nfs": False}]
 
 
 def test_private_share_with_users_and_time_machine(ctx):
@@ -167,7 +167,7 @@ def test_list(ctx):
     ctx.runner.answers[("systemctl", "is-active")] = (3, "inactive\n", "")
     out = run(ctx, "shares.list")["result"]
     assert out == {"shares": [], "users": ["anna", "ben"], "pool_mounted": False,
-                   "running": False}
+                   "running": False, "nfs_running": False}
 
 
 def test_shares_reload_firewall(ctx):
@@ -177,3 +177,85 @@ def test_shares_reload_firewall(ctx):
     assert "445" in (ctx.run_dir / "firewall.nft").read_text()
     assert run(ctx, "shares.remove", {"name": "media"})["ok"]
     assert "445" not in (ctx.run_dir / "firewall.nft").read_text()
+
+
+DAHLIA = (0, "dahlia:x:1001:\n", "")
+
+
+def exports(ctx):
+    return (ctx.etc / "exports.d/dahlia.exports").read_text()
+
+
+def test_nfs_export_public_and_secure(ctx):
+    ctx.runner.answers[("getent", "group", "dahlia")] = DAHLIA
+    (ctx.pool / "docs").mkdir()
+    assert run(ctx, "shares.set", {"name": "media", "security": "public", "nfs": True})["ok"]
+    assert run(ctx, "shares.set", {"name": "docs", "security": "secure", "nfs": True,
+                                   "users": {"anna": "rw"}})["ok"]
+    lines = exports(ctx).splitlines()
+    media = next(ln for ln in lines if ln.startswith(f"{ctx.pool / 'media'} "))
+    docs = next(ln for ln in lines if ln.startswith(f"{ctx.pool / 'docs'} "))
+    assert f"192.168.0.0/16(rw,sync,no_subtree_check,all_squash,anonuid=65534,anongid=1001," \
+           f"fsid={smb.nfs_fsid('media')},sec=sys)" in media
+    assert "fd00::/7" not in media and "fc00::/7(rw," in media
+    assert "(ro," in docs and "(rw," not in docs
+    assert smb.nfs_fsid("media") != smb.nfs_fsid("docs") and smb.nfs_fsid("media") > 0
+    assert ["systemctl", "enable", "--now", "nfs-server.service"] in ctx.runner.calls
+    assert ["exportfs", "-ra"] in ctx.runner.calls
+    assert smb.load_shares(ctx)[0]["nfs"] is True
+    nft = (ctx.run_dir / "firewall.nft").read_text()
+    assert "2049" in nft
+
+
+def test_nfs_off_stops_server_and_closes_port(ctx):
+    ctx.runner.answers[("getent", "group", "dahlia")] = DAHLIA
+    run(ctx, "shares.set", {"name": "media", "security": "public", "nfs": True})
+    assert run(ctx, "shares.set", {"name": "media", "security": "public"})["ok"]
+    assert not (ctx.etc / "exports.d/dahlia.exports").exists()
+    assert ["systemctl", "disable", "--now", "nfs-server.service"] in ctx.runner.calls
+    nft = (ctx.run_dir / "firewall.nft").read_text()
+    assert "2049" not in nft and "445" in nft
+
+
+def test_nfs_removed_with_share(ctx):
+    ctx.runner.answers[("getent", "group", "dahlia")] = DAHLIA
+    run(ctx, "shares.set", {"name": "media", "security": "public", "nfs": True})
+    assert run(ctx, "shares.remove", {"name": "media"})["ok"]
+    assert not (ctx.etc / "exports.d/dahlia.exports").exists()
+
+
+def test_nfs_not_for_private(ctx):
+    reply = run(ctx, "shares.set", {"name": "media", "security": "private",
+                                    "users": {"anna": "rw"}, "nfs": True})
+    assert err_code(reply) == protocol.INVALID_PARAMS
+    assert not (ctx.etc / "exports.d").exists()
+
+
+def test_nfs_flag_of_private_share_in_file_is_ignored(ctx):
+    (ctx.etc / "dahlia").mkdir(parents=True)
+    (ctx.etc / "dahlia/shares.json").write_text(json.dumps({"shares": [
+        {"name": "media", "security": "private", "users": {"anna": "rw"}, "nfs": True}]}))
+    assert smb.load_shares(ctx)[0]["nfs"] is False
+
+
+def test_nfs_exports_follow_firewall_networks(ctx):
+    ctx.runner.answers[("getent", "group", "dahlia")] = DAHLIA
+    run(ctx, "shares.set", {"name": "media", "security": "public", "nfs": True})
+    assert "203.0.113.0/24" not in exports(ctx)
+    assert run(ctx, "settings.set_firewall",
+               {"enabled": True, "networks": ["203.0.113.0/24"]})["ok"]
+    assert "203.0.113.0/24(rw," in exports(ctx)
+
+
+def test_time_machine_size(ctx):
+    assert run(ctx, "shares.set", {"name": "media", "security": "public", "time_machine": True,
+                                   "time_machine_size": 500})["ok"]
+    assert "fruit:time machine max size = 500G\n" in conf(ctx)
+    assert smb.load_shares(ctx)[0]["time_machine_size"] == 500
+    # Without Time Machine the limit is dropped.
+    assert run(ctx, "shares.set", {"name": "media", "security": "public",
+                                   "time_machine_size": 500})["ok"]
+    assert "max size" not in conf(ctx)
+    assert smb.load_shares(ctx)[0]["time_machine_size"] == 0
+    assert err_code(run(ctx, "shares.set", {"name": "media", "security": "public",
+                                            "time_machine_size": -1})) == protocol.INVALID_PARAMS

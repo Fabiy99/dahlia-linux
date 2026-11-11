@@ -192,7 +192,7 @@ after every change.
   the subnets of the server's own interfaces (including the ISP's IPv6 prefix) and the
   extra networks entered by the admin (e.g. VPN).
 - Open ports: 22 (SSH), 80/443 (nginx), 5353/udp (mDNS); 445, 5357 and 3702/udp only
-  while shares exist; the port link and LAN ports of every installed app.
+  while shares exist; 2049 (NFS) while a share is exported over NFS; the port link and LAN ports of every installed app.
   Closed ports answer the LAN at once with `admin-prohibited`.
 - Forwarded (`forward`): ports Docker hands to containers via DNAT, only for local sources.
 
@@ -270,8 +270,8 @@ Protocol: one request per connection, one JSON line each way.
 | `vpn.tailscale_install`, `vpn.tailscale_up`, `vpn.tailscale_logout` | for `up`: `routes`, `exit_node` | install Tailscale, connect, log out |
 | `settings.firewall` / `settings.set_firewall` | `enabled`, `networks` (CIDR list, at most 20) | `/etc/dahlia/firewall.json`, `nft -c -f` and `nft -f` with `/run/dahlia/firewall.nft` |
 | `settings.schedules` / `settings.set_schedule` | `job`, `frequency`, `time`, `weekday`, `monthday` | drop-in `OnCalendar=` for the timers |
-| `shares.list` | – | shares, SMB users, whether `/mnt/user` is mounted |
-| `shares.set` / `shares.remove` | `name`, `comment`, `security` (`public`/`secure`/`private`), `users` (name → `rw`/`ro`), `time_machine` | generates `/etc/samba/smb.conf`, checks it with `testparm`, starts `smbd` |
+| `shares.list` | – | shares, SMB users, whether `/mnt/user` is mounted, whether `smbd` and `nfs-server` run |
+| `shares.set` / `shares.remove` | `name`, `comment`, `security` (`public`/`secure`/`private`), `users` (name → `rw`/`ro`), `time_machine`, `time_machine_size` (GB, 0 = no limit), `nfs` | generates `/etc/samba/smb.conf`, checks it with `testparm`, starts `smbd`; with `nfs` `/etc/exports.d/dahlia.exports`, `exportfs -ra`, `nfs-server` |
 | `shares.user_add` / `shares.user_password` / `shares.user_remove` | `name`, `password` | `useradd`/`userdel` (groups `dahlia`, `dahlia-smb`), `smbpasswd` via stdin |
 | `notify.get` | – | channels without secrets, switches, recent notifications |
 | `notify.set` | `channel` (`email`/`ntfy`/`gotify`), `settings` | `/etc/dahlia/notify.json` (0600); an empty password/token keeps the old one |
@@ -315,8 +315,8 @@ Protocol: one request per connection, one JSON line each way.
 | `apps.remove` | `id`, `delete_data` (optional) | remove the container, data only on request |
 | `files.browse` | `root` (`array` or `system`), `path` (relative to it) | subfolders for the folder picker, no hidden folders or symlinks, at most 500; plus which locations can be used |
 | `files.mkdir` | `root`, `path` | create a folder (group `dahlia`, 2775), not below `appdata` |
-| `domains.get` | - | domain, mDNS aliases, DNS records needed, certificates |
-| `domains.set` | `domain`, `mdns_aliases` | `dahlia-domains set`, new certificate and proxy |
+| `domains.get` | - | mDNS aliases, names in the certificates, certificates |
+| `domains.set` | `mdns_aliases` | `dahlia-domains set`, new app certificate and proxy |
 | `backup.get` | – | Target, last result, public SSH key, possible target disks (`/mnt/diskN`, `/mnt/cache`, `/mnt/user`, `/media/…`) |
 | `backup.set` | `target` (`{"type": "folder", "path": …}` or `{"type": "sftp", "host", "port", "user", "path"}`), `stop_apps`, `folders` (optional, more folders below `/mnt/user` or `/srv`) | `/etc/dahlia/backup.json`, creates password and SSH key, enables `dahlia-backup.timer` |
 | `backup.key` | – | Repository password |
@@ -351,6 +351,7 @@ SSH or the console.
 | Backend | FastAPI/uvicorn as `dahlia-ui` on `127.0.0.1:8080`, systemd hardening (`ProtectSystem=strict`, no capabilities) |
 | Frontend | static files in `/usr/share/dahlia-dashboard/www`, served by nginx, texts from `locales/de.json` and `locales/en.json` |
 | Accounts | `/var/lib/dahlia-dashboard/users.json` (0600), scrypt password hashes |
+| Second factor | optional TOTP (RFC 6238, SHA-1, 6 digits, 30 s, ±1 step), each code once; 10 recovery codes (SHA-256, each once); QR code via `qrencode` |
 | Sessions | random token in memory, cookie `HttpOnly`, `Secure`, `SameSite=Strict`; 2 h idle, 12 h at most |
 | Protection | changing requests need the header `X-Dahlia-Request`; 5 failures per IP within 5 minutes, then blocked |
 | Root actions | only through `dahlia-agent`; `dahlia-ui` is a member of the group `dahlia-agent` |
@@ -366,11 +367,11 @@ and tablets.
 | Disks | usage of `/mnt/user`, `/mnt/storage` and `/mnt/cache`; one card per physical disk with model, serial number, temperature, SMART state, last self-test (start a short/long test), disk test for blank disks and its filesystems (status, usage, add in a role, remove) |
 | Apps | installed apps as cards (state, addresses, updates, start/stop), catalog with search and categories, custom containers |
 | Docker | all containers (also foreign ones) with state, ports, CPU/RAM, start/stop/restart, logs; disk usage and cleanup |
-| Domains | domain, mDNS aliases, DNS records, CA download |
+| Addresses | mDNS aliases on/off, CA download and certificates |
 | Jobs | start mover, SnapRAID sync and scrub, state |
 | System log | journal filtered by level and service |
 | Updates | check, install |
-| Shares | SMB shares on `/mnt/user`, SMB users |
+| Shares | SMB and NFS shares on `/mnt/user`, Time Machine, SMB users |
 | Settings | time and time zone, network (DHCP/static), disk spindown, schedules for mover, SnapRAID, backup and SMART self-tests, notifications, UPS, remote access (WireGuard, Tailscale), dashboard password, server name |
 
 SMART self-tests and disk test (M23):
@@ -413,6 +414,23 @@ SMB shares (M9c):
   `dahlia`. The password only goes to `smbpasswd` via stdin.
 - Discovery: `wsdd` for Windows, an Avahi file (`_smb._tcp`, `_adisk._tcp` for Time
   Machine) for macOS. Without a share `smbd` and `wsdd` are off.
+- Time Machine: `fruit:time machine` per share, optionally with a size limit
+  (`fruit:time machine max size`). Several Macs on one share share the limit.
+
+NFS shares (M21):
+
+- A public or secure share can also be exported over NFS: public read-write, secure
+  read-only. Private shares never, since NFS has no login without Kerberos.
+- NFSv4 only (`/etc/nfs.conf.d/dahlia.conf`: `vers3=n`, `udp=n`), so 2049/tcp is enough;
+  rpcbind and mountd stay behind the firewall.
+- `/etc/exports.d/dahlia.exports` is generated from `shares.json`. Allowed are the same
+  networks as in the firewall: the private ranges and the extra networks entered there (a
+  change there rewrites the exports). Options: `all_squash`, `anonuid=65534` (nobody),
+  `anongid` = group `dahlia`, `sync`, `no_subtree_check` and a fixed `fsid` derived from the
+  name, because nfsd has no device number for mergerfs (FUSE). mergerfs already runs with
+  `inodecalc=path-hash` and `noforget` for this.
+- `nfs-server` runs only while a share is exported over NFS.
+- Mounting on Linux: `mount -t nfs4 dahlia.local:/mnt/user/<name> /mnt/target`.
 
 Settings (M9b):
 
@@ -433,6 +451,12 @@ computes the CPU usage from two samples.
 
 Forgotten password: `sudo rm /var/lib/dahlia-dashboard/users.json` and
 `sudo systemctl restart dahlia-dashboard` open the setup wizard with a new code.
+
+Two-factor login (M22): set up under Settings with the password, scan the QR code, confirm
+with a code. Only then is it on; other logged-in browsers are logged out. At login the form
+asks for the code only once the password is right. Wrong codes count as failed attempts.
+Turning it off needs password and code. Phone and recovery codes lost:
+`sudo dahlia-dashboard --disable-totp <account>`.
 
 ### Terminal (from milestone 12)
 
@@ -481,7 +505,7 @@ characters), made at install time and kept in `/var/lib/dahlia/apps/<id>/secrets
 
 | Topic | Implementation |
 | --- | --- |
-| Web port | Docker publishes it on `127.0.0.1:41000-41999`; nginx listens in the LAN on the template's public port (port link `http://<server>:<port>/`) and on 443 for `<id>.<domain>` and `<id>.local` |
+| Web port | Docker publishes it on `127.0.0.1:41000-41999`; nginx listens in the LAN on the template's public port (port link `http://<server>:<port>/`) and, with an mDNS alias, on 443 for `<id>.local` |
 | LAN ports | only if the template lists them; the dashboard shows them before installing |
 | Location | array `/mnt/user` or system SSD `/srv` (FHS: data served by this system). Chosen at install, `/srv` when there is no array. Apps from before 0.7 are on the array |
 | System SSD | On Btrfs, `/srv` is its own top-level subvolume `@srv` as on openSUSE, mounted by `srv.mount` (created by `/usr/lib/dahlia/system-data.sh` in the postinst). It is not part of the snapper snapshots of `/`: a rollback neither resets nor loses app data. On other filesystems a plain directory |
@@ -561,17 +585,15 @@ and start them under Apps.
 | Name | Path | Needs |
 | --- | --- | --- |
 | `https://<server>.local/` | dashboard, Avahi host name | nothing |
-| `https://<domain>/` | dashboard | DNS record `<domain>` pointing at the server |
-| `https://<app>.<domain>/` | app through nginx | DNS record `*.<domain>` pointing at the server |
 | `https://<app>.local/` | app through nginx, mDNS alias | mDNS aliases switched on |
 | `http://<server>.local:<port>/` | port link | nothing |
 
-The domain defaults to `dahlia.home.arpa` (RFC 8375) and is stored in
-`/etc/dahlia/domains.json`. Multi-level `.local` names (`jellyfin.dahlia.local`) are
-rejected because mDNS clients do not resolve them reliably. Create the DNS records in the
-local DNS, e.g. in AdGuard Home under Filters > DNS rewrites
-(`*.dahlia.home.arpa` -> IP of the server). The dashboard shows the records with the
-current address.
+Dahlia needs no DNS server or domain of its own (up to 1.0 there was
+`*.dahlia.home.arpa`; since 1.1 there is not, an old `domain` entry in
+`/etc/dahlia/domains.json` is ignored). There are no multi-level `.local` names
+(`jellyfin.dahlia.local`) because mDNS clients do not resolve them reliably. The placeholder
+`{DOMAIN}` in app templates stands for `local`, so `https://<app>.{DOMAIN}` is the app's mDNS
+alias.
 
 mDNS aliases: `dahlia-mdns.service` (unprivileged, user `dahlia-mdns`) publishes `<app>.local`
 for every app with a web UI via `avahi-publish` on the primary IPv4 address. When the
@@ -587,16 +609,16 @@ Certificates (`dahlia-domains`, part of `dahlia-agent`):
 | `/etc/dahlia/tls/apps.key`, `apps.crt` | certificate of the app proxies, 825 days |
 
 The CA carries name constraints (`nameConstraints`): it can only sign names under `.local`,
-`home.arpa`, the configured domain and private IPv4 addresses (10/8, 172.16/12,
-192.168/16). Importing it therefore does not make it trusted for any other website. The
-server certificate holds `<server>.local`, `<domain>`, `*.<domain>` and the server's
-private IPv4 addresses, the app certificate `*.<domain>` and the mDNS aliases. Installing or
+and private IPv4 addresses (10/8, 172.16/12, 192.168/16) (CAs from before 1.1 also
+`home.arpa`; they are kept so nobody has to import again). Importing it therefore does not
+make it trusted for any other website. The server certificate holds `<server>.local` and
+the server's private IPv4 addresses, the app certificate the mDNS aliases. Without aliases
+the app proxy listens on the port link only. Installing or
 removing an app therefore only changes the app certificate; a browser that accepted the
 server certificate once does not lose the dashboard. `dahlia-domains.timer` checks daily and
-after boot: a new address, a new app or less than 30 days left lead to a new certificate. A domain outside
-`home.arpa` needs a new CA; the dashboard then says that the CA must be imported again.
+after boot: a new address, a new app or less than 30 days left lead to a new certificate.
 
-Importing the CA: download `dahlia-ca.crt` in the dashboard under Domains and compare the
+Importing the CA: download `dahlia-ca.crt` in the dashboard under Addresses and compare the
 SHA-256 fingerprint with the one shown after login (console or SSH). Then on Windows run
 `certutil -addstore -f Root dahlia-ca.crt` (as administrator), on macOS use Keychain Access
 (System, "Always Trust"), on Debian/Ubuntu copy it to
@@ -605,7 +627,7 @@ uses its own store (Settings > Certificates > Import).
 
 ```sh
 dahlia-domains show
-dahlia-domains set --domain lab.home.arpa --mdns off
+dahlia-domains set --mdns off     # port links only
 dahlia-domains apply              # check certificate and proxy, renew only when needed
 ```
 

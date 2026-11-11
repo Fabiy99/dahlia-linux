@@ -537,7 +537,7 @@ const DOT_KIND = { ok: "ok", warn: "warn", crit: "crit", "": "" };
 function primaryUrl(app) {
   if (!app.public_port) return null;
   const urls = app.urls || {};
-  return urls.domain || urls.mdns || `http://${location.hostname}:${app.public_port}`;
+  return urls.mdns || `http://${location.hostname}:${app.public_port}`;
 }
 
 function renderOverviewApps(installed) {
@@ -1069,7 +1069,7 @@ function appLinks(app) {
   const list = el("div", "links");
   if (!app.public_port) return list;
   const urls = app.urls || {};
-  for (const href of [urls.domain, urls.mdns, `http://${location.hostname}:${app.public_port}`]) {
+  for (const href of [urls.mdns, `http://${location.hostname}:${app.public_port}`]) {
     if (href) list.append(link(href));
   }
   return list;
@@ -1748,17 +1748,7 @@ async function loadLog() {
 async function loadDomains() {
   const d = await api("GET", "domains");
   const form = document.getElementById("domains-form");
-  form.elements.domain.value = d.domain;
   form.elements.mdns_aliases.checked = d.mdns_aliases;
-
-  const rows = document.getElementById("dns-records");
-  rows.replaceChildren();
-  for (const name of d.dns_records) {
-    const tr = el("tr");
-    cell(tr, el("code", "", name));
-    cell(tr, d.address || t("domains.no_address"));
-    rows.append(tr);
-  }
 
   const dl = document.getElementById("tls-info");
   dl.replaceChildren();
@@ -2483,6 +2473,10 @@ function shareAddress(name) {
   return `\\\\${hostName}.local\\${name}`;
 }
 
+function nfsAddress(name) {
+  return `${hostName}.local:/mnt/user/${name}`;
+}
+
 async function loadShares() {
   const [data, info] = await Promise.all([api("GET", "shares"), api("GET", "system")]);
   sharesData = data;
@@ -2496,13 +2490,17 @@ async function loadShares() {
     const name = el("div", "cname");
     name.append(el("b", "", s.name));
     if (s.time_machine) name.append(badge(t("shares.time_machine_badge"), "accent"));
+    if (s.nfs) name.append(badge(t("shares.nfs_badge"), "accent"));
     if (!s.exists) name.append(badge(t("shares.missing"), "warn"));
     if (s.comment) name.append(el("small", "muted", s.comment));
     cell(tr, name);
     cell(tr, badge(t(`security.${s.security}`), SECURITY_KIND[s.security]));
     const users = Object.entries(s.users).map(([u, a]) => `${u} (${t(`access.${a}`)})`);
     cell(tr, users.join(", ") || "–").dataset.label = t("shares.users");
-    cell(tr, el("code", "", shareAddress(s.name))).dataset.label = t("shares.address");
+    const addr = el("div", "cname");
+    addr.append(el("code", "", shareAddress(s.name)));
+    if (s.nfs) addr.append(el("code", "", nfsAddress(s.name)));
+    cell(tr, addr).dataset.label = t("shares.address");
     const ops = el("div", "row-ops");
     ops.append(button("shares.edit", () => openShareDialog(s)),
                button("shares.remove", async () => {
@@ -2548,6 +2546,12 @@ function renderSecurityHint() {
   document.getElementById("share-security-hint").textContent = t(`security.${sec}_hint`);
   // Public shares give everyone write access; per-user rights do not apply.
   document.getElementById("share-users").hidden = sec === "public";
+  // NFS has no login: only public (read-write) and secure (read-only) shares.
+  document.getElementById("share-nfs").hidden = sec === "private";
+  const nfsHint = document.getElementById("share-nfs-hint");
+  nfsHint.hidden = sec === "private" || !f.elements.nfs.checked;
+  nfsHint.textContent = t(`shares.nfs_hint_${sec === "public" ? "rw" : "ro"}`);
+  document.getElementById("share-tm-size").hidden = !f.elements.time_machine.checked;
 }
 
 function openShareDialog(share) {
@@ -2561,6 +2565,8 @@ function openShareDialog(share) {
   f.elements.comment.value = share?.comment ?? "";
   f.elements.security.value = share?.security ?? "private";
   f.elements.time_machine.checked = share?.time_machine ?? false;
+  f.elements.time_machine_size.value = share?.time_machine_size || "";
+  f.elements.nfs.checked = share?.nfs ?? false;
   const box = document.getElementById("share-users");
   box.replaceChildren();
   if (!sharesData.users.length) box.append(el("p", "hint", t("shares.no_users")));
@@ -2589,7 +2595,9 @@ function openPasswordDialog(user) {
 function bindShares() {
   document.getElementById("share-new").addEventListener("click", () => openShareDialog(null));
   const form = document.getElementById("share-form");
-  form.elements.security.addEventListener("change", renderSecurityHint);
+  for (const name of ["security", "nfs", "time_machine"]) {
+    form.elements[name].addEventListener("change", renderSecurityHint);
+  }
   form.addEventListener("submit", (e) => {
     if (e.submitter?.value === "cancel") return;
     e.preventDefault();
@@ -2603,6 +2611,8 @@ function bindShares() {
       await api("POST", `shares/${encodeURIComponent(name)}`, {
         comment: f.comment.value.trim(), security: f.security.value,
         users: f.security.value === "public" ? {} : users, time_machine: f.time_machine.checked,
+        time_machine_size: f.time_machine.checked ? Number(f.time_machine_size.value) || 0 : 0,
+        nfs: f.security.value !== "private" && f.nfs.checked,
       });
       document.getElementById("share-dialog").close();
       say(t("shares.saved", { name }), "ok");
@@ -2644,7 +2654,7 @@ async function loadAccount() {
   document.querySelector("#hostname-form [name=hostname]").value = info.hostname;
   // Each card loads on its own; one failing part does not hide the others.
   await Promise.all([loadTime(), loadNetwork(), loadSpindown(), loadFirewall(), loadSchedules(),
-               loadNotify(), loadUps(), loadVpn()]
+               loadNotify(), loadUps(), loadVpn(), loadTotp()]
     .map((p) => p.catch(sayError)));
 }
 
@@ -2849,6 +2859,73 @@ async function loadVpn() {
   const data = await api("GET", "vpn");
   renderWireguard(data.wireguard);
   renderTailscale(data.tailscale);
+}
+
+// --- account: second factor ------------------------------------------------------
+
+async function loadTotp() {
+  const data = await api("GET", "account/totp");
+  const setupOpen = !document.getElementById("totp-setup").hidden ||
+    !document.getElementById("totp-recovery").hidden;
+  document.getElementById("totp-state").textContent = data.enabled
+    ? t("totp.on", { n: data.recovery_left }) : t("totp.off");
+  document.getElementById("totp-state").className = data.enabled ? "ok" : "muted";
+  document.getElementById("totp-begin-form").hidden = data.enabled || setupOpen;
+  document.getElementById("totp-disable-form").hidden = !data.enabled || setupOpen;
+}
+
+function clearTotpSetup() {
+  document.getElementById("totp-setup").hidden = true;
+  document.getElementById("totp-secret").textContent = "";
+  document.getElementById("totp-qr").removeAttribute("src");
+}
+
+function bindTotp() {
+  document.getElementById("totp-begin-form").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const f = formData(e.target);
+    guarded(e.submitter, async () => {
+      const res = await api("POST", "account/totp/begin", { password: f.password });
+      e.target.reset();
+      e.target.hidden = true;
+      const qr = document.getElementById("totp-qr");
+      qr.hidden = !res.qr_svg;
+      if (res.qr_svg) qr.src = `data:image/svg+xml;base64,${btoa(res.qr_svg)}`;
+      document.getElementById("totp-secret").textContent = res.secret.replace(/(.{4})/g, "$1 ").trim();
+      document.getElementById("totp-setup").hidden = false;
+      document.querySelector("#totp-confirm-form [name=code]").focus();
+    });
+  });
+  document.getElementById("totp-confirm-form").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const f = formData(e.target);
+    guarded(e.submitter, async () => {
+      const res = await api("POST", "account/totp/confirm", { code: f.code });
+      e.target.reset();
+      clearTotpSetup();
+      document.getElementById("totp-codes").textContent = res.recovery_codes.join("\n");
+      document.getElementById("totp-recovery").hidden = false;
+      say(t("totp.enabled"), "ok");
+      await loadTotp();
+    });
+  });
+  document.getElementById("totp-recovery-done").addEventListener("click", async () => {
+    // Shown once; drop the codes from the page.
+    document.getElementById("totp-codes").textContent = "";
+    document.getElementById("totp-recovery").hidden = true;
+    await loadTotp().catch(sayError);
+  });
+  document.getElementById("totp-disable-form").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const f = formData(e.target);
+    guarded(e.submitter, async () => {
+      if (!await ask(t("totp.disable_confirm"), "totp.disable", true)) return;
+      await api("POST", "account/totp/disable", { password: f.password, code: f.code });
+      e.target.reset();
+      say(t("totp.disabled"), "ok");
+      await loadTotp();
+    });
+  });
 }
 
 function showPeer(res) {
@@ -3138,14 +3215,27 @@ function bindForms() {
   document.getElementById("login-form").addEventListener("submit", (e) => {
     e.preventDefault();
     const f = formData(e.target);
+    const codeBox = document.getElementById("login-code");
     guarded(e.submitter, async () => {
-      await api("POST", "login", { username: f.username, password: f.password });
+      try {
+        await api("POST", "login", { username: f.username, password: f.password, code: f.code || "" });
+      } catch (err) {
+        // Password was right; the account also wants a code from the app.
+        if (err.key !== "error.totp_required") throw err;
+        codeBox.hidden = false;
+        codeBox.querySelector("input").focus();
+        say(t("login.code_needed"));
+        return;
+      }
       e.target.reset();
+      codeBox.hidden = true;
       say("");
       setLoggedIn(true);
       await open("overview");
     });
   });
+
+  bindTotp();
 
   document.getElementById("password-form").addEventListener("submit", (e) => {
     e.preventDefault();
@@ -3160,10 +3250,9 @@ function bindForms() {
 
   document.getElementById("domains-form").addEventListener("submit", (e) => {
     e.preventDefault();
-    const domain = e.target.elements.domain.value.trim().toLowerCase();
     const mdns = e.target.elements.mdns_aliases.checked;
     guarded(e.submitter, async () => {
-      const res = await api("POST", "domains", { domain, mdns_aliases: mdns });
+      const res = await api("POST", "domains", { mdns_aliases: mdns });
       await loadDomains();
       say(t(res.ca_renewed ? "domains.saved_new_ca" : "domains.saved"), "ok");
     });

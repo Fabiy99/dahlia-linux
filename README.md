@@ -101,19 +101,18 @@ Nach 1.0 (1.x):
 21. NFS-Freigaben, Time Machine über SMB
 22. Zwei-Faktor-Login (TOTP)
 23. Geplante SMART-Selbsttests, Platten-Test vor dem Einsatz
-24. Let's-Encrypt-Zertifikate per DNS-Challenge für eine eigene Domain
-25. SMB-/NFS-Freigaben anderer Geräte einbinden
-26. Verlaufsgrafiken (CPU, RAM, Netz, Temperaturen), Export nach InfluxDB
-27. API-Tokens für Home Assistant, Homepage usw.
-28. Eigene Firewall-Regeln
-29. Energiesparmodus (CPU-Governor), Liste der PCI- und USB-Geräte
-30. Gesundheitscheck mit Hinweisen
-31. Remote-Syslog, Platte per LED finden, Verlauf der Parity-Läufe, alle Apps starten/stoppen
-32. Bridge, VLAN, Bond, Wake-on-LAN
-33. SMB-Papierkorb
-34. Mehrere und nur-lesende Dashboard-Konten
-35. Dateimanager
-36. Verschlüsselung (LUKS)
+24. SMB-/NFS-Freigaben anderer Geräte einbinden
+25. Verlaufsgrafiken (CPU, RAM, Netz, Temperaturen), Export nach InfluxDB
+26. API-Tokens für Home Assistant, Homepage usw.
+27. Eigene Firewall-Regeln
+28. Energiesparmodus (CPU-Governor), Liste der PCI- und USB-Geräte
+29. Gesundheitscheck mit Hinweisen
+30. Remote-Syslog, Platte per LED finden, Verlauf der Parity-Läufe, alle Apps starten/stoppen
+31. Bridge, VLAN, Bond, Wake-on-LAN
+32. SMB-Papierkorb
+33. Mehrere und nur-lesende Dashboard-Konten
+34. Dateimanager
+35. Verschlüsselung (LUKS)
 
 Später: USB-Creator für Windows, Installationsanleitung.
 
@@ -224,19 +223,18 @@ After 1.0 (1.x):
 21. NFS shares, Time Machine over SMB
 22. Two-factor login (TOTP)
 23. Scheduled SMART self-tests, disk test before use
-24. Let's Encrypt certificates via DNS challenge for an own domain
-25. Mount SMB/NFS shares of other devices
-26. History graphs (CPU, RAM, network, temperatures), export to InfluxDB
-27. API tokens for Home Assistant, Homepage etc.
-28. Custom firewall rules
-29. Power saving (CPU governor), list of PCI and USB devices
-30. Health check with hints
-31. Remote syslog, find a disk by its LED, history of parity runs, start/stop all apps
-32. Bridge, VLAN, bond, Wake-on-LAN
-33. SMB recycle bin
-34. Multiple and read-only dashboard accounts
-35. File manager
-36. Encryption (LUKS)
+24. Mount SMB/NFS shares of other devices
+25. History graphs (CPU, RAM, network, temperatures), export to InfluxDB
+26. API tokens for Home Assistant, Homepage etc.
+27. Custom firewall rules
+28. Power saving (CPU governor), list of PCI and USB devices
+29. Health check with hints
+30. Remote syslog, find a disk by its LED, history of parity runs, start/stop all apps
+31. Bridge, VLAN, bond, Wake-on-LAN
+32. SMB recycle bin
+33. Multiple and read-only dashboard accounts
+34. File manager
+35. Encryption (LUKS)
 
 Later: USB creator for Windows, installation guide.
 
