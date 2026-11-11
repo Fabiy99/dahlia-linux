@@ -194,6 +194,32 @@ dahlia-firewall apply      # reload
 sudo dahlia-firewall disable   # escape hatch: remove the table
 ```
 
+### Remote access: WireGuard and Tailscale (from milestone 20)
+
+WireGuard: Dahlia runs the interface `dahlia-wg` with `wg-quick@dahlia-wg.service`.
+Settings and devices are kept in `/etc/dahlia/wireguard.json` (0600), the server key in
+`/etc/wireguard/dahlia-wg.key`; `/etc/wireguard/dahlia-wg.conf` is generated from both.
+For a device the server makes a key pair and a preshared key; the dashboard shows its
+configuration and QR code (`qrencode`) once, only the public key is kept. Added or removed
+devices are loaded with `wg syncconf`, without dropping the other tunnels.
+
+| Item | Implementation |
+| --- | --- |
+| Network | tunnel `10.253.0.0/24` (changeable while there are no devices, must not overlap a local network), server `.1`, devices from `.2` |
+| Routing | "only the home network": tunnel and the server's IPv4 subnets; "all traffic": `0.0.0.0/0, ::/0`. DNS for clients optional, e.g. AdGuard Home |
+| Firewall | UDP port (default 51820) open from the internet, masquerading of the tunnel network towards the LAN in `inet dahlia`, also with the firewall turned off. The tunnel counts as local (`10/8`) |
+| Forwarding | `/etc/sysctl.d/60-dahlia-forward.conf` (`net.ipv4.ip_forward = 1`). Docker sets the iptables chain `FORWARD` to DROP; `/usr/lib/dahlia/wireguard-forward.sh` (PostUp/PostDown) allows the tunnel in `DOCKER-USER` |
+| Router | forward the UDP port to the server; the address on the internet (dynamic DNS name or IP) is entered in the dashboard |
+
+Tailscale is not in Debian. "Install" starts `dahlia-tailscale-install.service`
+(`/usr/lib/dahlia/tailscale-install.sh`): key to
+`/usr/share/keyrings/tailscale-archive-keyring.gpg`, source
+`/etc/apt/sources.list.d/tailscale.list`, package `tailscale`, as in Tailscale's
+instructions. "Connect" starts `tailscale up` as `dahlia-tailscale-up.service` (10 minutes to
+log in); the dashboard reads the login link from `tailscale status --json`. Options: offer
+the server's IPv4 subnets as a route (approve it in the Tailscale admin console) and exit
+node. Tailscale addresses (`100.64/10`) count as local for the firewall.
+
 Debian's `nftables.service` stays off; its `/etc/nftables.conf` starts with
 `flush ruleset` and would delete Docker's rules as well.
 
@@ -223,6 +249,10 @@ Protocol: one request per connection, one JSON line each way.
 | `settings.network` / `settings.set_network` | `mode` (`dhcp`/`static`), `address` (CIDR), `gateway`, `dns` | `/etc/network/interfaces`, applied by `dahlia-network` with rollback |
 | `settings.confirm_network` | – | confirms the new network settings |
 | `settings.spindown` / `settings.set_spindown` | `default`, `disks` (serial → minutes) | `/etc/dahlia/spindown.json`, `hdparm -S` |
+| `vpn.status` | - | WireGuard (settings, devices with last handshake and traffic) and Tailscale (installed, state, login link, addresses) |
+| `vpn.wireguard_set` | `enabled`, `port`, `endpoint`, `route` (`lan`/`all`), `dns`, `subnet` | writes the configuration, loads firewall and interface |
+| `vpn.wireguard_add_peer`, `vpn.wireguard_remove_peer` | `name` | new device (configuration and QR code once) or remove it |
+| `vpn.tailscale_install`, `vpn.tailscale_up`, `vpn.tailscale_logout` | for `up`: `routes`, `exit_node` | install Tailscale, connect, log out |
 | `settings.firewall` / `settings.set_firewall` | `enabled`, `networks` (CIDR list, at most 20) | `/etc/dahlia/firewall.json`, `nft -c -f` and `nft -f` with `/run/dahlia/firewall.nft` |
 | `settings.schedules` / `settings.set_schedule` | `job`, `frequency`, `time`, `weekday`, `monthday` | drop-in `OnCalendar=` for the timers |
 | `shares.list` | – | shares, SMB users, whether `/mnt/user` is mounted |
@@ -320,7 +350,7 @@ and tablets.
 | System log | journal filtered by level and service |
 | Updates | check, install |
 | Shares | SMB shares on `/mnt/user`, SMB users |
-| Settings | time and time zone, network (DHCP/static), disk spindown, mover and SnapRAID schedules, notifications, UPS, dashboard password, server name |
+| Settings | time and time zone, network (DHCP/static), disk spindown, mover and SnapRAID schedules, notifications, UPS, remote access (WireGuard, Tailscale), dashboard password, server name |
 
 Notifications and UPS (M9d):
 

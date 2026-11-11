@@ -198,6 +198,32 @@ dahlia-firewall apply      # neu laden
 sudo dahlia-firewall disable   # Notausgang: Tabelle entfernen
 ```
 
+### Fernzugriff: WireGuard und Tailscale (ab Meilenstein 20)
+
+WireGuard: Dahlia betreibt das Interface `dahlia-wg` mit `wg-quick@dahlia-wg.service`.
+Einstellungen und Geräte liegen in `/etc/dahlia/wireguard.json` (0600), der Schlüssel des
+Servers in `/etc/wireguard/dahlia-wg.key`, daraus entsteht `/etc/wireguard/dahlia-wg.conf`.
+Für ein Gerät erzeugt der Server Schlüsselpaar und Preshared Key; Konfiguration und QR-Code
+(`qrencode`) zeigt das Dashboard einmal an, gespeichert wird nur der öffentliche Schlüssel.
+Neue oder entfernte Geräte lädt `wg syncconf`, ohne die anderen Tunnel zu trennen.
+
+| Punkt | Umsetzung |
+| --- | --- |
+| Netz | Tunnel `10.253.0.0/24` (änderbar, solange keine Geräte da sind, darf kein lokales Netz überlappen), Server `.1`, Geräte ab `.2` |
+| Routing | "nur das Heimnetz": Tunnel und die IPv4-Subnetze des Servers; "ganzer Verkehr": `0.0.0.0/0, ::/0`. DNS für Clients optional, z. B. AdGuard Home |
+| Firewall | UDP-Port (Standard 51820) offen aus dem Internet, Masquerading des Tunnelnetzes Richtung LAN in `inet dahlia`, auch bei abgeschalteter Firewall. Der Tunnel zählt als lokal (`10/8`) |
+| Weiterleitung | `/etc/sysctl.d/60-dahlia-forward.conf` (`net.ipv4.ip_forward = 1`). Docker setzt die iptables-Kette `FORWARD` auf DROP; `/usr/lib/dahlia/wireguard-forward.sh` (PostUp/PostDown) erlaubt den Tunnel in `DOCKER-USER` |
+| Router | UDP-Port an den Server weiterleiten; die Adresse im Internet (DynDNS-Name oder IP) trägt man im Dashboard ein |
+
+Tailscale ist nicht in Debian. "Installieren" startet `dahlia-tailscale-install.service`
+(`/usr/lib/dahlia/tailscale-install.sh`): Schlüssel nach
+`/usr/share/keyrings/tailscale-archive-keyring.gpg`, Quelle
+`/etc/apt/sources.list.d/tailscale.list`, Paket `tailscale`, wie in der Anleitung von
+Tailscale. "Verbinden" startet `tailscale up` als `dahlia-tailscale-up.service` (10 Minuten
+Zeit zum Anmelden); den Anmelde-Link liest das Dashboard aus `tailscale status --json`.
+Optionen: die IPv4-Subnetze des Servers als Route anbieten (in der Tailscale-Verwaltung
+freigeben) und Exit-Node. Tailscale-Adressen (`100.64/10`) zählen für die Firewall als lokal.
+
 Debians `nftables.service` bleibt aus; sein `/etc/nftables.conf` beginnt mit
 `flush ruleset` und würde auch Dockers Regeln löschen.
 
@@ -227,6 +253,10 @@ Protokoll: eine Anfrage pro Verbindung, je eine JSON-Zeile hin und zurück.
 | `settings.network` / `settings.set_network` | `mode` (`dhcp`/`static`), `address` (CIDR), `gateway`, `dns` | `/etc/network/interfaces`, Anwendung über `dahlia-network` mit Rückfall |
 | `settings.confirm_network` | – | bestätigt die neue Netzwerkeinstellung |
 | `settings.spindown` / `settings.set_spindown` | `default`, `disks` (Seriennummer → Minuten) | `/etc/dahlia/spindown.json`, `hdparm -S` |
+| `vpn.status` | - | WireGuard (Einstellungen, Geräte mit letztem Handshake und Daten) und Tailscale (installiert, Zustand, Anmelde-Link, Adressen) |
+| `vpn.wireguard_set` | `enabled`, `port`, `endpoint`, `route` (`lan`/`all`), `dns`, `subnet` | schreibt die Konfiguration, lädt Firewall und Interface |
+| `vpn.wireguard_add_peer`, `vpn.wireguard_remove_peer` | `name` | neues Gerät (Konfiguration und QR-Code einmal) bzw. entfernen |
+| `vpn.tailscale_install`, `vpn.tailscale_up`, `vpn.tailscale_logout` | bei `up`: `routes`, `exit_node` | Tailscale installieren, verbinden, abmelden |
 | `settings.firewall` / `settings.set_firewall` | `enabled`, `networks` (CIDR-Liste, höchstens 20) | `/etc/dahlia/firewall.json`, `nft -c -f` und `nft -f` mit `/run/dahlia/firewall.nft` |
 | `settings.schedules` / `settings.set_schedule` | `job`, `frequency`, `time`, `weekday`, `monthday` | Drop-in `OnCalendar=` für die Timer |
 | `shares.list` | – | Freigaben, SMB-Benutzer, ob `/mnt/user` eingehängt ist |
@@ -325,7 +355,7 @@ wird die Seitenleiste zum Menü, Tabellen werden zu Karten. Ein Web-App-Manifest
 | System-Log | Journal mit Filter nach Stufe und Dienst |
 | Updates | suchen, installieren |
 | Freigaben | SMB-Freigaben auf `/mnt/user`, SMB-Benutzer |
-| Einstellungen | Zeit und Zeitzone, Netzwerk (DHCP/fest), Platten-Spindown, Zeitpläne für Mover und SnapRAID, Benachrichtigungen, USV, Dashboard-Passwort, Servername |
+| Einstellungen | Zeit und Zeitzone, Netzwerk (DHCP/fest), Platten-Spindown, Zeitpläne für Mover und SnapRAID, Benachrichtigungen, USV, Fernzugriff (WireGuard, Tailscale), Dashboard-Passwort, Servername |
 
 Benachrichtigungen und USV (M9d):
 

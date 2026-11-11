@@ -457,3 +457,14 @@ code.pubkey { display: block; font-size: .78rem; overflow-wrap: anywhere; backgr
 /* Automatic updates */
 #auto-last { margin-top: 1rem; }
 #auto-notice .actions { margin-top: .5rem; }
+
+/* WireGuard peer dialog */
+.wg-peer { display: grid; grid-template-columns: minmax(0, 16rem) minmax(0, 1fr); gap: 1rem; align-items: start; }
+.wg-peer img { width: 100%; background: #fff; padding: .5rem; border-radius: .5rem; }
+.wg-peer pre { margin: 0; overflow-x: auto; font-size: .8rem; }
+@media (max-width: 40rem) { .wg-peer { grid-template-columns: 1fr; } }
+.vpn-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .6rem .8rem; }
+.vpn-grid .wide { grid-column: 1 / -1; }
+@media (max-width: 40rem) { .vpn-grid { grid-template-columns: 1fr; } }
+.vpn-grid input, .vpn-grid select { width: 100%; min-width: 0; max-width: none; }
+#wg-form { max-width: 48rem; }
