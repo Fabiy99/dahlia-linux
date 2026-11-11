@@ -204,6 +204,19 @@ def test_storage_set_option(ctx):
     assert ctx.runner.calls == [["dahlia-disk", "set-option", "scrub_percent", "12"]]
 
 
+def test_storage_settings(ctx):
+    ctx.runner.answers[("dahlia-disk", "settings")] = (0, '{"minfreespace": "50G"}', "")
+    assert run(ctx, "storage.settings")["result"] == {"settings": {"minfreespace": "50G"}}
+
+
+def test_storage_set_minfreespace(ctx):
+    for size in ("50", "0G", "50g", "1P", "50G; rm", "1234567G", 50):
+        reply = run(ctx, "storage.set_minfreespace", {"size": size})
+        assert err_code(reply) == protocol.INVALID_PARAMS, size
+    assert run(ctx, "storage.set_minfreespace", {"size": "100G"})["ok"]
+    assert ctx.runner.calls == [["dahlia-disk", "set-minfreespace", "100G"]]
+
+
 def test_storage_list_parses_json(ctx):
     ctx.runner.answers[("dahlia-disk", "list")] = (0, '[{"path": "/dev/sdb"}]', "")
     assert run(ctx, "storage.list")["result"] == {"disks": [{"path": "/dev/sdb"}]}
@@ -624,7 +637,9 @@ def test_action_list_is_fixed():
         "storage.import_status",
         "storage.list",
         "storage.remove",
+        "storage.set_minfreespace",
         "storage.set_option",
+        "storage.settings",
         "system.diagnostics",
         "system.hardware",
         "system.info",
