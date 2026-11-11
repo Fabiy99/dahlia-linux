@@ -24,6 +24,8 @@ Beide Fassungen inhaltlich gleich halten.
 - Web-UI (`dahlia-dashboard`) läuft unprivilegiert. Alles, was root braucht, geht über
   `dahlia-agent` (Unix-Socket, feste Aktionsliste, Parameter werden geprüft).
   Das UI bekommt keinen Docker-Socket und führt keine freien Shell-Befehle aus.
+  Einzige Shell: das Terminal (`dahlia-terminal`, unprivilegiert) startet `su -l <Benutzer>`;
+  ohne das Linux-Passwort dieses Kontos gibt es keine Shell.
 - Firewall: nftables, verwaltet von Dahlia. Docker veröffentlicht Ports nur auf 127.0.0.1.
 - Domains: Server `dahlia.local`; Apps über Port-Links, einstufige mDNS-Aliase oder
   `*.dahlia.home.arpa` per AdGuard. Keine mehrstufigen `.local`-Namen.

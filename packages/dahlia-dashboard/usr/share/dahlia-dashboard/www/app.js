@@ -269,7 +269,7 @@ function percent(used, size) {
 const TITLES = {
   overview: "nav.overview", storage: "storage.title", apps: "apps.title",
   domains: "nav.domains", jobs: "jobs.title", backup: "nav.backup", updates: "updates.title", account: "nav.account",
-  docker: "nav.docker", log: "nav.log", shares: "nav.shares",
+  docker: "nav.docker", log: "nav.log", shares: "nav.shares", terminal: "nav.terminal",
   setup: "setup.title", login: "login.title",
 };
 
@@ -309,6 +309,7 @@ const loaders = {
   shares: loadShares,
   log: loadLog,
   backup: loadBackup,
+  terminal: loadTerminal,
   jobs: loadJobs,
   updates: loadUpdateProgress,
   account: loadAccount,
@@ -1638,6 +1639,88 @@ async function applyUpdates() {
   await loadUpdateProgress();
 }
 
+// --- terminal ---------------------------------------------------------------------
+// xterm.js (vendor/xterm, MIT) is loaded on first use. The canvas renderer
+// needs no inline <style>, which the CSP forbids.
+
+let term = null;
+let termFit = null;
+let termSocket = null;
+
+function loadScript(src) {
+  return new Promise((resolve, reject) => {
+    const s = document.createElement("script");
+    s.src = src;
+    s.onload = resolve;
+    s.onerror = () => reject(new Error(src));
+    document.head.append(s);
+  });
+}
+
+async function loadTerminal() {
+  if (term) { termFit.fit(); return; }
+  const css = document.createElement("link");
+  css.rel = "stylesheet";
+  css.href = "/vendor/xterm/xterm.css";
+  document.head.append(css);
+  await loadScript("/vendor/xterm/xterm.js");
+  await Promise.all([loadScript("/vendor/xterm/addon-fit.js"), loadScript("/vendor/xterm/addon-canvas.js")]);
+  term = new window.Terminal({
+    cursorBlink: true, fontSize: 14, scrollback: 5000,
+    fontFamily: "ui-monospace, 'DejaVu Sans Mono', Menlo, Consolas, monospace",
+    theme: { background: "#14121a", foreground: "#ebe8f0", cursor: "#d873b8" },
+  });
+  termFit = new window.FitAddon.FitAddon();
+  term.loadAddon(termFit);
+  // Before open(), so the DOM renderer never starts.
+  term.loadAddon(new window.CanvasAddon.CanvasAddon());
+  term.open(document.getElementById("terminal"));
+  termFit.fit();
+  term.write(t("terminal.ready") + "\r\n");
+  const enc = new TextEncoder();
+  term.onData((d) => {
+    if (termSocket?.readyState === WebSocket.OPEN) termSocket.send(enc.encode(d));
+  });
+  term.onResize(({ cols, rows }) => {
+    if (termSocket?.readyState === WebSocket.OPEN) termSocket.send(JSON.stringify({ cols, rows }));
+  });
+  window.addEventListener("resize", () => { if (current === "terminal") termFit.fit(); });
+}
+
+function terminalConnected(on) {
+  document.getElementById("terminal-close").hidden = !on;
+  document.querySelector("#terminal-form [type=submit]").hidden = on;
+  document.querySelector("#terminal-form [name=user]").disabled = on;
+}
+
+function connectTerminal(user) {
+  closeTerminal();
+  term.reset();
+  const q = new URLSearchParams({ user, cols: term.cols, rows: term.rows });
+  const ws = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/api/terminal?${q}`);
+  ws.binaryType = "arraybuffer";
+  ws.onopen = () => { terminalConnected(true); term.focus(); };
+  ws.onmessage = (e) => {
+    if (typeof e.data === "string") {
+      const msg = JSON.parse(e.data);
+      if (msg.error) term.write(`\r\n${t(msg.error)}\r\n`);
+      return;
+    }
+    term.write(new Uint8Array(e.data));
+  };
+  ws.onclose = () => {
+    if (termSocket === ws) termSocket = null;
+    terminalConnected(false);
+    term.write(`\r\n\x1b[2m${t("terminal.closed")}\x1b[0m\r\n`);
+  };
+  termSocket = ws;
+}
+
+function closeTerminal() {
+  if (termSocket) termSocket.close();
+  termSocket = null;
+}
+
 // --- SMB shares ---------------------------------------------------------------------
 
 const SECURITY_KIND = { public: "warn", secure: "", private: "ok" };
@@ -2264,7 +2347,17 @@ function bindButtons() {
   document.getElementById("menu").addEventListener("click", () => {
     document.getElementById("sidebar").classList.toggle("open");
   });
+  document.getElementById("terminal-form").addEventListener("submit", (e) => {
+    e.preventDefault();
+    guarded(e.submitter, async () => {
+      await loadTerminal();
+      connectTerminal(e.target.elements.user.value.trim());
+    });
+  });
+  document.getElementById("terminal-close").addEventListener("click", closeTerminal);
+
   document.getElementById("logout").addEventListener("click", (e) => guarded(e.currentTarget, async () => {
+    closeTerminal();
     await api("POST", "logout");
     say("");
     showLogin();
