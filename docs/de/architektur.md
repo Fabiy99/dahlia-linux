@@ -257,7 +257,10 @@ Protokoll: eine Anfrage pro Verbindung, je eine JSON-Zeile hin und zurück.
 | --- | --- | --- |
 | `system.info` | - | Hostname, Version, Kernel, Uptime, Last, Speicher |
 | `system.stats` | - | CPU-Zähler, Speicher, Swap, Netzwerk, Belegung von `/` und `/mnt/*` |
-| `system.hardware` | - | Mainboard (DMI), CPU-Temperatur (hwmon), SMART je Platte mit `smartctl -n standby` (weckt keine schlafende Platte) |
+| `system.hardware` | - | Mainboard (DMI), CPU-Temperatur (hwmon), SMART je Platte mit `smartctl -n standby` (weckt keine schlafende Platte), laufender und letzter Selbsttest |
+| `disks.smart_test` | `device`, `kind` (`short`/`long`/`abort`) | `smartctl -t short\|long` bzw. `smartctl -X` |
+| `disks.burnin_start` | `device`, `confirm` (Plattenname) | Plattentest als `dahlia-burnin@<name>.service`, nur auf leeren Platten |
+| `disks.burnin_status`, `disks.burnin_stop`, `disks.burnin_clear` | bei `stop`/`clear`: `device` | Fortschritt und Ergebnis, abbrechen, Ergebnis löschen |
 | `system.log` | `lines`, `priority`, `unit` (optional) | `journalctl -n … -p …` |
 | `system.diagnostics` | – | Diagnosepaket nach `/run/dahlia-dashboard/diagnostics.tar.gz` (0600, Dashboard-Benutzer) |
 | `settings.time` / `settings.set_time` | `timezone`, `ntp` | `timedatectl set-timezone`, `set-ntp` |
@@ -365,7 +368,7 @@ wird die Seitenleiste zum Menü, Tabellen werden zu Karten. Ein Web-App-Manifest
 | Seite | Inhalt |
 | --- | --- |
 | Übersicht | System (Version, Kernel, CPU, Adresse, Neustart, Ausschalten), CPU- und RAM-Auslastung mit Verlauf, Netzwerk (Durchsatz je Schnittstelle), Belegung von System-SSD, Pools und jeder Platte unter `/mnt`, Platten mit Temperatur und SMART-Zustand, Apps mit Zustand, Aufgaben mit letztem Ergebnis |
-| Platten | Belegung von `/mnt/user`, `/mnt/storage` und `/mnt/cache`; je physische Platte eine Karte mit Modell, Seriennummer, Temperatur, SMART-Zustand und ihren Dateisystemen (Status, Belegung, hinzufügen in einer Rolle, entfernen) |
+| Platten | Belegung von `/mnt/user`, `/mnt/storage` und `/mnt/cache`; je physische Platte eine Karte mit Modell, Seriennummer, Temperatur, SMART-Zustand, letztem Selbsttest (Kurz-/Langtest starten), Plattentest bei leeren Platten und ihren Dateisystemen (Status, Belegung, hinzufügen in einer Rolle, entfernen) |
 | Apps | installierte Apps als Karten (Zustand, Adressen, Updates, Start/Stopp), Katalog mit Suche und Kategorien, eigene Container |
 | Docker | alle Container (auch fremde) mit Zustand, Ports, CPU/RAM, Start/Stopp/Neustart, Logs; Platzbedarf und Aufräumen |
 | Adressen | mDNS-Aliase an/aus, CA-Download und Zertifikate |
@@ -373,13 +376,29 @@ wird die Seitenleiste zum Menü, Tabellen werden zu Karten. Ein Web-App-Manifest
 | System-Log | Journal mit Filter nach Stufe und Dienst |
 | Updates | suchen, installieren |
 | Freigaben | SMB- und NFS-Freigaben auf `/mnt/user`, Time Machine, SMB-Benutzer |
-| Einstellungen | Zeit und Zeitzone, Netzwerk (DHCP/fest), Platten-Spindown, Zeitpläne für Mover und SnapRAID, Benachrichtigungen, USV, Fernzugriff (WireGuard, Tailscale), Dashboard-Passwort, Servername |
+| Einstellungen | Zeit und Zeitzone, Netzwerk (DHCP/fest), Platten-Spindown, Zeitpläne für Mover, SnapRAID, Backup und SMART-Selbsttests, Benachrichtigungen, USV, Fernzugriff (WireGuard, Tailscale), Dashboard-Passwort, Servername |
+
+SMART-Selbsttests und Plattentest (M23):
+
+- Selbsttests laufen in der Platte selbst, sie bleibt dabei nutzbar. `dahlia-smart-short.timer`
+  (wöchentlich, Samstag 05:00) und `dahlia-smart-long.timer` (Standard aus, ein Langtest einer
+  großen HDD dauert einen Tag) starten `dahlia-smart-test@short|long.service`, das den Test auf
+  jeder Platte anstößt. Zeiten unter Einstellungen → Zeitpläne. Ein Kurztest weckt schlafende
+  Platten.
+- Ergebnis aus dem Selbsttest-Protokoll (ATA und NVMe): laufend mit Restprozent, letzter Test
+  mit Art, Ergebnis und Betriebsstunden. Ein fehlgeschlagener Test geht als kritische Meldung
+  raus.
+- Plattentest vor dem Einsatz: nur für Platten ohne Partition und Dateisystem (Status `empty`),
+  `confirm` wiederholt den Namen. `/usr/lib/dahlia/disk-burnin.sh` liest SMART, schreibt mit
+  `badblocks -w` vier Muster über die ganze Platte und liest sie zurück, liest SMART erneut.
+  Bestanden heißt: keine defekten Blöcke, kein SMART-Zähler gewachsen. Dateien unter
+  `/var/lib/dahlia/burnin`. Solange er läuft, lässt sich die Platte nicht formatieren.
 
 Benachrichtigungen und USV (M9d):
 
 - Kanäle: E-Mail (SMTP mit STARTTLS oder TLS), ntfy, Gotify. Zugangsdaten stehen in
   `/etc/dahlia/notify.json` (root, 0600); das Dashboard sieht nur, ob eines gesetzt ist.
-- `dahlia-notify.timer` prüft alle 10 Minuten SMART, Plattentemperatur (ab 55 °C HDD,
+- `dahlia-notify.timer` prüft alle 10 Minuten SMART (auch einen fehlgeschlagenen Selbsttest), Plattentemperatur (ab 55 °C HDD,
   70 °C SSD) und Belegung (ab 90 %, kritisch ab 97 %). Gemeldet wird nur eine Änderung,
   ein behobenes Problem als "Resolved". Zustand in `/var/lib/dahlia/notify-state.json`.
 - Mover, SnapRAID-Sync/-Scrub und Update haben `OnFailure=dahlia-notify-failure@%n`;

@@ -811,6 +811,18 @@
   </form>
 </dialog>
 
+<dialog id="burnin-dialog">
+  <form id="burnin-form" method="dialog">
+    <h2 id="burnin-title"></h2>
+    <p class="hint" id="burnin-warning"></p>
+    <label><span id="burnin-confirm-label"></span><input name="confirm" autocomplete="off" required></label>
+    <div class="dialog-actions">
+      <button value="cancel" formnovalidate data-i18n="common.cancel"></button>
+      <button value="ok" class="danger" data-i18n="burnin.start_now"></button>
+    </div>
+  </form>
+</dialog>
+
 <dialog id="install-dialog" class="wide-dialog">
   <form id="install-form" method="dialog">
     <h2 id="install-title"></h2>

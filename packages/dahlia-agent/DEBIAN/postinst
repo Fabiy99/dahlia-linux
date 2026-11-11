@@ -28,6 +28,13 @@ case "$1" in
         chmod 0755 /var/lib/dahlia
         chmod 0700 /var/lib/dahlia/apps
         systemctl enable dahlia-firewall.service >/dev/null 2>&1 || true
+        # Weekly short SMART self-test: on once for new and upgraded systems,
+        # after that the schedule in the dashboard decides (settings.set_schedule).
+        if [ ! -e /var/lib/dahlia/smart-timers-set ]; then
+            systemctl enable dahlia-smart-short.timer >/dev/null 2>&1 || true
+            mkdir -p /var/lib/dahlia
+            touch /var/lib/dahlia/smart-timers-set
+        fi
         systemctl enable dahlia-agent.socket dahlia-apps.service dahlia-mdns.service \
             dahlia-domains.timer dahlia-apps-catalog.timer dahlia-spindown.service dahlia-notify.timer >/dev/null 2>&1 || true
         # Local CA, server certificate, app proxies. nginx may not be
@@ -41,6 +48,9 @@ case "$1" in
             # A running agent keeps the old code until restarted.
             systemctl try-restart dahlia-agent.service || true
             systemctl start dahlia-agent.socket dahlia-domains.timer dahlia-apps-catalog.timer dahlia-notify.timer || true
+            if systemctl is-enabled --quiet dahlia-smart-short.timer; then
+                systemctl start dahlia-smart-short.timer || true
+            fi
             systemctl restart dahlia-mdns.service || true
             # Samba stays off until the first share is created in the dashboard.
             if [ ! -e /etc/dahlia/shares.json ]; then

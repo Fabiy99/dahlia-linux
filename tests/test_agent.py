@@ -142,7 +142,7 @@ def test_storage_format_runs_dahlia_disk(ctx):
     params = {"device": "/dev/sdb", "filesystem": "xfs", "confirm": "sdb"}
     reply = run(ctx, "storage.format", params)
     assert reply["result"]["uuid"] == "1234-ABCD"
-    assert ctx.runner.calls == [["dahlia-disk", "format", "/dev/sdb", "--fs", "xfs", "--json"]]
+    assert ctx.runner.calls[-1] == ["dahlia-disk", "format", "/dev/sdb", "--fs", "xfs", "--json"]
     assert run(ctx, "storage.format", {"device": "/dev/nvme0n1", "filesystem": "btrfs",
                                        "confirm": "nvme0n1"})["ok"]
 
@@ -594,6 +594,11 @@ def test_action_list_is_fixed():
         "backup.restore",
         "backup.set",
         "backup.snapshots",
+        "disks.burnin_clear",
+        "disks.burnin_start",
+        "disks.burnin_status",
+        "disks.burnin_stop",
+        "disks.smart_test",
         "docker.container",
         "docker.disk",
         "docker.list",

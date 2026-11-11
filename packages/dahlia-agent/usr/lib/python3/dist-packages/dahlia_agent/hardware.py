@@ -37,6 +37,61 @@ def list_disks(ctx: Context) -> list[dict]:
     return disks
 
 
+def _test_kind(name: str) -> str:
+    name = name.lower()
+    if "short" in name:
+        return "short"
+    if "extended" in name or "long" in name:
+        return "long"
+    return "other"
+
+
+def _ata_result(value: int) -> str:
+    # Upper nibble of the ATA self-test status byte.
+    code = value >> 4
+    if code == 0:
+        return "passed"
+    if code in (1, 2):
+        return "aborted"
+    if code == 15:
+        return "running"
+    return "failed"
+
+
+def _nvme_result(value: int) -> str:
+    if value == 0:
+        return "passed"
+    if value in (1, 2, 3):
+        return "aborted"
+    return "failed"
+
+
+def self_test(data: dict) -> dict:
+    """Running self-test and the newest finished one, for ATA and NVMe."""
+    running, remaining, last = False, None, None
+    ata = data.get("ata_smart_data", {}).get("self_test", {}).get("status", {})
+    if "value" in ata and ata["value"] >> 4 == 15:
+        running, remaining = True, ata.get("remaining_percent")
+    table = data.get("ata_smart_self_test_log", {}).get("standard", {}).get("table") or []
+    for row in table:
+        result = _ata_result(row.get("status", {}).get("value", 0))
+        if result != "running":
+            last = {"kind": _test_kind(row.get("type", {}).get("string", "")), "result": result,
+                    "hours": row.get("lifetime_hours")}
+            break
+    nvme = data.get("nvme_self_test_log", {})
+    if nvme.get("current_self_test_operation", {}).get("value"):
+        running = True
+        done = nvme.get("current_self_test_completion_percent")
+        remaining = 100 - done if isinstance(done, int) else None
+    for row in nvme.get("table") or []:
+        last = {"kind": _test_kind(row.get("self_test_code", {}).get("string", "")),
+                "result": _nvme_result(row.get("self_test_result", {}).get("value", 0)),
+                "hours": row.get("power_on_hours")}
+        break
+    return {"running": running, "remaining": remaining, "last": last}
+
+
 def smart_summary(data: dict) -> dict:
     """The few values a NAS shows per disk, from smartctl -j output."""
     status = data.get("smart_status", {})
@@ -65,6 +120,7 @@ def smart_summary(data: dict) -> dict:
         "power_on_hours": data.get("power_on_time", {}).get("hours"),
         "wear_percent": nvme.get("percentage_used"),
         "warnings": warnings,
+        "self_test": self_test(data),
     }
 
 

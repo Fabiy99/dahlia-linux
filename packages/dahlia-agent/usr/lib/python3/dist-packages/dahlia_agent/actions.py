@@ -99,9 +99,12 @@ JOBS = {
     "snapraid-scrub": "dahlia-snapraid-scrub.service",
     "update": "dahlia-update.service",
     "backup": "dahlia-backup.service",
+    "smart-short": "dahlia-smart-test@short.service",
+    "smart-long": "dahlia-smart-test@long.service",
 }
 # Jobs job.start may start. Updates go through updates.apply.
-STARTABLE_JOBS = ("mover", "snapraid-sync", "snapraid-scrub", "backup")
+STARTABLE_JOBS = ("mover", "snapraid-sync", "snapraid-scrub", "backup", "smart-short",
+                  "smart-long")
 
 
 @dataclass(frozen=True)
@@ -419,6 +422,10 @@ def storage_format(ctx: Context, device: str, filesystem: str, confirm: str):
     """Partition and format a blank or imported disk. confirm repeats the disk name."""
     if confirm != device.removeprefix("/dev/"):
         raise AgentError(INVALID_PARAMS, f"confirm must be '{device.removeprefix('/dev/')}'")
+    from .disktest import burnin_running
+
+    if burnin_running(ctx, device):
+        raise AgentError(FAILED, f"the disk test of {device} is still running")
     out = dahlia_disk(ctx, "format", device, "--fs", filesystem, "--json", timeout=900)
     return json.loads(out)
 
@@ -1092,6 +1099,7 @@ from . import (  # noqa: E402, F401
     backup,
     containers,
     diagnostics,
+    disktest,
     hardware,
     network,
     notify,

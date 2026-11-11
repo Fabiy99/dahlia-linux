@@ -1,0 +1,6 @@
+[Unit]
+Description=Dahlia SMART %i self-test on all disks
+
+[Service]
+Type=oneshot
+ExecStart=/usr/lib/dahlia/smart-test.sh %i
