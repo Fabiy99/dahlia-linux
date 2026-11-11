@@ -56,7 +56,7 @@ Einmal-Code geschützt, der auf tty1 und in `/etc/motd` steht (ab Meilenstein 5)
 
 | Paket | Inhalt |
 | --- | --- |
-| `dahlia-base` | Konfiguration, nftables-Regeln, Gruppe `dahlia` (GID 1000), zieht alle Dahlia-Pakete nach |
+| `dahlia-base` | Konfiguration, Gruppe `dahlia` (GID 1000), zieht alle Dahlia-Pakete nach |
 | `dahlia-agent` | root-Dienst auf `/run/dahlia/agent.sock`, feste Aktionsliste |
 | `dahlia-dashboard` | FastAPI-Backend als `dahlia-ui` hinter nginx, Frontend in Vanilla HTML/CSS/JS |
 | `dahlia-storage` | disk-manager, Mover, SnapRAID-Wrapper, Health-Checks |
@@ -145,7 +145,39 @@ Timer: Mover 03:00, SnapRAID-Sync 04:30, Scrub sonntags 06:00 (8 %, Blöcke ält
   Apps sind über nginx erreichbar. Apps, die LAN-Ports brauchen, sind im App-Template
   markiert.
 - Die Firewall (nftables) öffnet Ports nur für aktivierte Funktionen und nur fürs lokale
-  Subnetz.
+  Netz, siehe [Firewall](#firewall-ab-meilenstein-10).
+
+### Firewall (ab Meilenstein 10)
+
+`dahlia-agent` verwaltet genau eine Tabelle, `inet dahlia`. Sie wird aus dem erzeugt, was
+in Benutzung ist, und als Ganzes in einer Transaktion ersetzt; andere Tabellen (Docker)
+bleiben unberührt. `dahlia-firewall.service` lädt sie beim Booten vor dem Netzwerk,
+`/etc/network/if-up.d/dahlia-firewall` nach jedem Interface-Start, Apps und Freigaben nach
+jeder Änderung.
+
+- Eingehend (`input`, Policy drop): bestehende Verbindungen, `lo`, ICMPv6, DHCP und Ping
+  aus dem LAN. Neue Verbindungen nur von lokalen Quellen: private IPv4-Netze
+  (`10/8`, `172.16/12`, `192.168/16`, `100.64/10`, `169.254/16`), `fc00::/7`, `fe80::/10`,
+  die Subnetze der eigenen Interfaces (auch das IPv6-Präfix des Providers) und die
+  zusätzlich eingetragenen Netze (z. B. VPN).
+- Offene Ports: 22 (SSH), 80/443 (nginx), 5353/udp (mDNS); 445, 5357 und 3702/udp nur,
+  solange Freigaben existieren; der Port-Link und die LAN-Ports jeder installierten App.
+  Geschlossene Ports antworten dem LAN sofort mit `admin-prohibited`.
+- Weitergeleitet (`forward`): Ports, die Docker per DNAT an Container gibt, nur für lokale
+  Quellen.
+
+Einstellungen in `/etc/dahlia/firewall.json` (`enabled`, `networks`), im Dashboard unter
+Einstellungen. Das geladene Regelwerk liegt in `/run/dahlia/firewall.nft`.
+
+```
+dahlia-firewall status     # Einstellungen, lokale Netze, offene Ports (JSON)
+dahlia-firewall show       # Regelwerk, das apply laden würde
+dahlia-firewall apply      # neu laden
+sudo dahlia-firewall disable   # Notausgang: Tabelle entfernen
+```
+
+Debians `nftables.service` bleibt aus; sein `/etc/nftables.conf` beginnt mit
+`flush ruleset` und würde auch Dockers Regeln löschen.
 
 ### dahlia-agent (ab Meilenstein 4)
 
@@ -172,6 +204,7 @@ Protokoll: eine Anfrage pro Verbindung, je eine JSON-Zeile hin und zurück.
 | `settings.network` / `settings.set_network` | `mode` (`dhcp`/`static`), `address` (CIDR), `gateway`, `dns` | `/etc/network/interfaces`, Anwendung über `dahlia-network` mit Rückfall |
 | `settings.confirm_network` | – | bestätigt die neue Netzwerkeinstellung |
 | `settings.spindown` / `settings.set_spindown` | `default`, `disks` (Seriennummer → Minuten) | `/etc/dahlia/spindown.json`, `hdparm -S` |
+| `settings.firewall` / `settings.set_firewall` | `enabled`, `networks` (CIDR-Liste, höchstens 20) | `/etc/dahlia/firewall.json`, `nft -c -f` und `nft -f` mit `/run/dahlia/firewall.nft` |
 | `settings.schedules` / `settings.set_schedule` | `job`, `frequency`, `time`, `weekday`, `monthday` | Drop-in `OnCalendar=` für die Timer |
 | `shares.list` | – | Freigaben, SMB-Benutzer, ob `/mnt/user` eingehängt ist |
 | `shares.set` / `shares.remove` | `name`, `comment`, `security` (`public`/`secure`/`private`), `users` (Name → `rw`/`ro`), `time_machine` | erzeugt `/etc/samba/smb.conf`, prüft mit `testparm`, startet `smbd` |
@@ -195,9 +228,10 @@ Protokoll: eine Anfrage pro Verbindung, je eine JSON-Zeile hin und zurück.
 | `job.start` | `job` (mover, snapraid-sync, snapraid-scrub) | startet die Unit, kehrt sofort zurück |
 | `job.status` | `job` (dazu `update`) | Zustand und letztes Ergebnis |
 | `updates.check` | - | `apt-get update`, Liste der Upgrades |
-| `updates.apply` | - | `apt-get full-upgrade` über die Unit `dahlia-update.service` |
+| `updates.apply` | - | `apt-get full-upgrade` über die Unit `dahlia-update.service`; die geplanten Pakete (Simulation) in `/run/dahlia/update.json` |
 | `updates.auto` | - | Schalter und Neustart-Einstellungen, letzter Lauf von unattended-upgrades, ausstehender Neustart |
 | `updates.set_auto` | `enabled`, `reboot`, `reboot_time` (`HH:MM`) | `20auto-upgrades`, `52dahlia-auto-reboot`, `/etc/dahlia/updates.json` |
+| `updates.progress` | - | Zustand, Prozent, je Paket wartet/geladen/eingerichtet/fertig aus der apt-Ausgabe im Journal dieses Laufs; das Dashboard zeigt es auf der Update-Seite |
 | `apps.catalog` | `refresh` (optional) | App-Katalog und sein Stand, mit `refresh` vorher herunterladen |
 | `apps.list` | - | installierte Apps mit Container-Zustand, Version, verfügbarem Update |
 | `apps.install`, `apps.update` | `id`, bei `install` `location` (optional, `/mnt/user` oder `/srv`) und `folders` (optional, Freigabe -> Ordner unter `/mnt/user` oder `/srv`) | im Hintergrund als Unit `dahlia-app-<id>`; die Ordner bleiben bei Updates erhalten |
@@ -342,6 +376,7 @@ Vorlage unter `login` nennt.
 | Container | `no-new-privileges`, Log-Treiber `local` mit 3 x 10 MB; Hauptdienst `dahlia-<id>`, Hilfsdienste `dahlia-<id>-<dienst>` |
 | Stack | eigenes Docker-Netz je App, Dienste erreichen sich über den Dienstnamen; Hilfsdienste veröffentlichen keine Ports |
 | Katalog | `catalog.json` (alle Vorlagen in einer Datei), sonst `index.json` und `apps/<id>.yaml`; Vorlagen mit neuerem Schema werden übersprungen |
+| Logos | `catalog.json` nennt unter `icons` je App `icons/<id>.svg` oder `.png` mit SHA-256. Der Agent lädt nur geänderte Logos, prüft Hash, Größe (64 KB) und Dateityp und legt sie in `/var/lib/dahlia/apps-catalog/icons/`; nginx liefert sie als `/app-icons/` mit `sandbox`-CSP aus. Ohne Logo zeigt das Dashboard den Anfangsbuchstaben |
 | Updates | `dahlia-apps-catalog.timer` lädt den Katalog alle 6 Stunden; weicht die Vorlage einer installierten App ab, zeigt das Dashboard "Update auf <Version>" und "Alle aktualisieren". Alte Images werden danach gelöscht |
 
 ```sh
