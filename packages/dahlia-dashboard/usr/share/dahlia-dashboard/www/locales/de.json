@@ -606,5 +606,8 @@
   "parity.force": "Trotzdem synchronisieren",
   "parity.force_confirm": "Die {n} gelöschten Dateien sind danach auch aus der Parity weg und lassen sich nicht mehr wiederherstellen. Trotzdem synchronisieren?",
   "parity.interrupted": "Ein Sync wurde unterbrochen. Starte ihn erneut, damit die Parity vollständig ist.",
-  "parity.fix_failed": "Die letzte Reparatur ist fehlgeschlagen: {text}"
+  "parity.fix_failed": "Die letzte Reparatur ist fehlgeschlagen: {text}",
+  "apps.gpu_used": "Nutzt die Grafikkarte (/dev/dri) für Video und KI.",
+  "apps.gpu_none": "Kann eine Grafikkarte nutzen; keine gefunden, läuft auf der CPU.",
+  "overview.gpu": "Grafik"
 }

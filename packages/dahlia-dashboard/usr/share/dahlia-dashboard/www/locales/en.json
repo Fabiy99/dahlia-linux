@@ -606,5 +606,8 @@
   "parity.force": "Sync anyway",
   "parity.force_confirm": "The {n} deleted files will then be gone from the parity as well and cannot be restored. Sync anyway?",
   "parity.interrupted": "A sync was interrupted. Run it again so the parity is complete.",
-  "parity.fix_failed": "The last repair failed: {text}"
+  "parity.fix_failed": "The last repair failed: {text}",
+  "apps.gpu_used": "Uses the GPU (/dev/dri) for video and AI.",
+  "apps.gpu_none": "Can use a GPU; none found, runs on the CPU.",
+  "overview.gpu": "Graphics"
 }

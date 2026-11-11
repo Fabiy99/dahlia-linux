@@ -374,7 +374,14 @@ installiert, aktualisiert und entfernt. Je Dienst gibt es nur: Image mit fester 
 LAN-Ports, Volumes unter `appdata` oder einer Freigabe, Umgebungsvariablen, `command`,
 `user` und `depends_on`. Dazu kommen Kategorie, Beschreibung, Hinweise, Webseite und
 Zugangsdaten für das Dashboard. Alles andere wird abgelehnt, also auch `privileged`,
-Host-Netzwerk, Geräte und Capabilities. `schema: 1` (ein Container) wird weiter gelesen.
+Host-Netzwerk, freie Geräte und Capabilities. `schema: 1` (ein Container) wird weiter gelesen.
+
+Grafikkarte (ab Meilenstein 11): `schema: 3` erlaubt zusätzlich `gpu: true` an einem Dienst.
+Hat der Server einen Render-Knoten (`/dev/dri/renderD*`, Intel oder AMD), bekommt der
+Container `/dev/dri` und die Gruppen `render` und `video`, z. B. für VA-API/Quick Sync in
+Jellyfin oder Immich. Ohne GPU läuft die App auf der CPU. NVIDIA braucht das Container-Toolkit
+von NVIDIA und wird nicht unterstützt. Ältere Dahlia-Versionen überspringen Vorlagen mit
+`schema: 3`. `system.hardware` meldet die Grafikgeräte (`gpus`).
 
 Platzhalter in Umgebung, `command` und Zugangsdaten: `{TZ}`, `{PUID}`, `{PGID}`,
 `{HOSTNAME}`, `{DOMAIN}` und `{SECRET_<NAME>}`. Secrets sind Zufallswerte (32 Hex-Zeichen),
