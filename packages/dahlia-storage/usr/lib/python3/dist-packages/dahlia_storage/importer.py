@@ -35,6 +35,8 @@ MOUNT_OPTIONS = {
     "exfat": ("exfat", "ro"),
 }
 PROGRESS_RE = re.compile(r"^\s*([\d,.]+)\s+(\d+)%")
+# Filesystem housekeeping at the top of the source, not user data.
+SKIP = ("lost+found", "System Volume Information", "$RECYCLE.BIN")
 # Keep 2 % of the pool free on top of the data.
 SPACE_MARGIN = 0.98
 
@@ -108,8 +110,12 @@ def parse_progress(line: str) -> tuple[int, int] | None:
 def rsync_copy(source: str, target: str, group: str | None = "dahlia") -> list[str]:
     # Files land in group 'dahlia' like every share; owner and Windows ACLs are not copied.
     chown = [f"--chown=root:{group}"] if group else []
-    return ["rsync", "-rltpH", *chown, "--chmod=D2775,Fug+rw,Fo+r,Fo-w",
+    return ["rsync", "-rltpH", *chown, "--chmod=D2775,Fug+rw,Fo+r,Fo-w", *excludes(),
             "--info=progress2", "--no-inc-recursive", f"{source}/", f"{target}/"]
+
+
+def excludes() -> list[str]:
+    return [f"--exclude=/{name}" for name in SKIP]
 
 
 def share_group() -> str | None:
@@ -121,7 +127,7 @@ def share_group() -> str | None:
 
 
 def rsync_verify(source: str, target: str) -> list[str]:
-    return ["rsync", "-rlt", "--checksum", "--dry-run", "--itemize-changes",
+    return ["rsync", "-rlt", "--checksum", "--dry-run", "--itemize-changes", *excludes(),
             "--out-format=%i %n", f"{source}/", f"{target}/"]
 
 

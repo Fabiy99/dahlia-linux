@@ -1,6 +1,7 @@
 """dahlia-disk import: checks before copying and parsing of rsync output."""
 
 import shutil
+import subprocess
 import sys
 
 import pytest
@@ -106,3 +107,18 @@ def test_run_import_copies_and_verifies(tmp_path, monkeypatch):
     with pytest.raises(importer.ImportError_):
         importer.run_import(dev, str(pool / "old"))
     assert importer.read_json(importer.STATUS_PATH)["phase"] == "failed"
+
+
+@pytest.mark.skipif(shutil.which("rsync") is None, reason="rsync not installed")
+def test_housekeeping_folders_are_not_copied(tmp_path):
+    src, dst = tmp_path / "src", tmp_path / "dst"
+    for d in ("lost+found", "System Volume Information", "$RECYCLE.BIN", "Fotos/lost+found"):
+        (src / d).mkdir(parents=True)
+    (src / "Fotos/a.jpg").write_text("a")
+    dst.mkdir()
+    importer.run_with_progress(importer.rsync_copy(str(src), str(dst), None), lambda b, p: None)
+    assert sorted(p.name for p in dst.iterdir()) == ["Fotos"]
+    # Only top-level housekeeping is skipped; a user folder of that name stays.
+    assert (dst / "Fotos/lost+found").is_dir()
+    res = subprocess.run(importer.rsync_verify(str(src), str(dst)), capture_output=True, text=True)
+    assert res.returncode == 0 and importer.differences(res.stdout) == []

@@ -88,7 +88,9 @@ weekly `scrub`. Mover and SnapRAID share a lock and never run at the same time.
 
 `dahlia-disk` from the `dahlia-storage` package implements the layout. `add` never
 formats; only `format` creates a filesystem: on a blank disk, or on one whose data `import`
-has copied to `/mnt/user` and verified.
+has copied to `/mnt/user` and verified. `import` skips `lost+found`,
+`System Volume Information` and `$RECYCLE.BIN` at the top level. A disk without a readable
+signature that is mounted anyway, or with several signatures, never counts as blank.
 State lives in `/etc/dahlia/storage.json`; everything else is generated from it.
 
 ```sh

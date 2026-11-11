@@ -66,6 +66,10 @@ def run_lsblk() -> dict:
     return enrich(json.loads(out), blkid_probe)
 
 
+BLKID_AMBIVALENT = 8
+AMBIVALENT = "ambivalent"
+
+
 def blkid_probe(path: str) -> dict[str, str]:
     """Read the filesystem signature straight from the device.
 
@@ -75,6 +79,9 @@ def blkid_probe(path: str) -> dict[str, str]:
     res = subprocess.run(
         ["blkid", "-p", "-o", "export", path], check=False, capture_output=True, text=True
     )
+    # Exit code 8: several signatures, blkid will not say which one is real.
+    if res.returncode == BLKID_AMBIVALENT:
+        return {"TYPE": AMBIVALENT}
     values = {}
     for line in res.stdout.splitlines():
         key, sep, value = line.partition("=")
@@ -144,9 +151,15 @@ def classify(
         has_foreign = _tree_has_foreign(top)
         children = top.get("children") or []
 
-        # Whole disk without partition table and without filesystem: blank.
+        # Whole disk without partition table and without filesystem: blank,
+        # unless something has it mounted (a signature blkid cannot read).
         if not children and not top.get("fstype"):
-            status, reason = ("system", "system disk") if is_system else ("empty", "no filesystem")
+            if is_system:
+                status, reason = "system", "system disk"
+            elif tree_mounts:
+                status, reason = "mounted", "mounted outside Dahlia"
+            else:
+                status, reason = "empty", "no filesystem"
             result.append(_device(top, top, status, reason))
             continue
 
@@ -167,6 +180,8 @@ def _decide(node: dict, is_system: bool, has_foreign: bool, registered: set[str]
         return "registered", "already managed by Dahlia"
     if _tree_mountpoints(node):
         return "mounted", "mounted outside Dahlia"
+    if fstype == AMBIVALENT:
+        return "foreign", "more than one signature on the device"
     if fstype in FOREIGN_SIGNATURES or has_foreign:
         return "foreign", f"member of {fstype or 'RAID/LVM/LUKS/ZFS'}"
     if not fstype:

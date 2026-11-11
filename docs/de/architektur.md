@@ -90,7 +90,9 @@ gleichzeitig.
 
 `dahlia-disk` aus dem Paket `dahlia-storage` setzt das Layout um. `add` formatiert nie;
 nur `format` legt ein Dateisystem an: auf einer leeren Platte oder auf einer, deren Daten
-`import` nach `/mnt/user` kopiert und geprüft hat.
+`import` nach `/mnt/user` kopiert und geprüft hat. `import` lässt `lost+found`,
+`System Volume Information` und `$RECYCLE.BIN` auf oberster Ebene aus. Eine Platte ohne
+lesbare Signatur, die trotzdem eingehängt ist, oder mit mehreren Signaturen gilt nie als leer.
 Zustand liegt in `/etc/dahlia/storage.json`, alles andere wird daraus erzeugt.
 
 ```sh

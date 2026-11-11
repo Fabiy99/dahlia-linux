@@ -158,13 +158,19 @@ function say(text, kind) {
   if (kind !== "error") setTimeout(() => toast.remove(), 7000);
 }
 
+function errorText(err) {
+  if (err instanceof ApiError) return err.detail ? `${t(err.key)} (${err.detail})` : t(err.key);
+  console.error(err);
+  return t("error.network");
+}
+
 function sayError(err) {
-  if (err instanceof ApiError) {
-    say(err.detail ? `${t(err.key)} (${err.detail})` : t(err.key), "error");
-  } else {
-    console.error(err);
-    say(t("error.network"), "error");
-  }
+  say(errorText(err), "error");
+}
+
+// Error handler for a tile that loads on its own: the reason replaces "Loading ...".
+function tileError(id) {
+  return (err) => document.getElementById(id).replaceChildren(el("p", "empty", errorText(err)));
 }
 
 // Replaces window.confirm; resolves to true for OK.
@@ -545,14 +551,14 @@ async function loadOverview() {
   api("GET", "apps").then((data) => {
     renderOverviewApps(data.installed);
     updateAppsBadge(data.installed);
-  }).catch(sayError);
-  api("GET", "jobs").then(renderOverviewJobs).catch(sayError);
+  }).catch(tileError("overview-apps"));
+  api("GET", "jobs").then(renderOverviewJobs).catch(tileError("overview-jobs"));
   api("GET", "hardware").then((hw) => {
     renderOverviewDisks(hw);
     const board = [hw.board.board_vendor, hw.board.board_name].filter(Boolean).join(" ")
       || [hw.board.sys_vendor, hw.board.product_name].filter(Boolean).join(" ");
     if (board) fact(dl, "overview.board", board);
-  }).catch(sayError);
+  }).catch(tileError("overview-disks"));
 }
 
 function renderOverviewDisks(hw) {
