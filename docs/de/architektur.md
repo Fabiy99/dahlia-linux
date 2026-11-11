@@ -279,6 +279,7 @@ Protokoll: eine Anfrage pro Verbindung, je eine JSON-Zeile hin und zurück.
 | `apps.catalog` | `refresh` (optional) | App-Katalog und sein Stand, mit `refresh` vorher herunterladen |
 | `apps.list` | - | installierte Apps mit Container-Zustand, Version, verfügbarem Update |
 | `apps.install`, `apps.update` | `id`, bei `install` `location` (optional, `/mnt/user` oder `/srv`) und `folders` (optional, Freigabe -> Ordner unter `/mnt/user` oder `/srv`) | im Hintergrund als Unit `dahlia-app-<id>`; die Ordner bleiben bei Updates erhalten |
+| `apps.custom_install`, `apps.custom_update` | `id`, `spec` (Formular, siehe Apps), bei `install` `location` | eigener Container; der Agent legt `spec` unter `/run/dahlia/apps-custom/<id>.json` ab, `dahlia-apps` prüft jedes Feld |
 | `apps.job` | `id` | Zustand der letzten Installation bzw. Aktualisierung |
 | `apps.start`, `apps.stop` | `id` | starten bzw. stoppen, gilt auch für den nächsten Boot |
 | `apps.remove` | `id`, `delete_data` (optional) | Container entfernen, Daten nur auf Wunsch |
@@ -334,7 +335,7 @@ wird die Seitenleiste zum Menü, Tabellen werden zu Karten. Ein Web-App-Manifest
 | --- | --- |
 | Übersicht | System (Version, Kernel, CPU, Adresse, Neustart, Ausschalten), CPU- und RAM-Auslastung mit Verlauf, Netzwerk (Durchsatz je Schnittstelle), Belegung von System-SSD, Pools und jeder Platte unter `/mnt`, Platten mit Temperatur und SMART-Zustand, Apps mit Zustand, Aufgaben mit letztem Ergebnis |
 | Platten | Belegung von `/mnt/user`, `/mnt/storage` und `/mnt/cache`; je physische Platte eine Karte mit Modell, Seriennummer, Temperatur, SMART-Zustand und ihren Dateisystemen (Status, Belegung, hinzufügen in einer Rolle, entfernen) |
-| Apps | installierte Apps als Karten (Zustand, Adressen, Updates, Start/Stopp), Katalog mit Suche und Kategorien |
+| Apps | installierte Apps als Karten (Zustand, Adressen, Updates, Start/Stopp), Katalog mit Suche und Kategorien, eigene Container |
 | Docker | alle Container (auch fremde) mit Zustand, Ports, CPU/RAM, Start/Stopp/Neustart, Logs; Platzbedarf und Aufräumen |
 | Domains | Domain, mDNS-Aliase, DNS-Einträge, CA-Download |
 | Aufgaben | Mover, SnapRAID-Sync und -Scrub starten, Zustand |
@@ -479,7 +480,22 @@ dahlia-apps updates                # Apps mit neuerer Vorlage im Katalog
 dahlia-apps update jellyfin
 dahlia-apps remove jellyfin [--delete-data]
 dahlia-apps check app.yaml        # Vorlage prüfen
+dahlia-apps install kuma --spec kuma.json [--location /srv]   # eigener Container
+dahlia-apps update kuma [--spec kuma.json]
 ```
+
+Eigene Container (ab Meilenstein 19): Für ein Image, das nicht im Katalog ist, gibt es unter
+Apps "Eigener Container". Das Formular fragt Kennung, Name, Image mit fester Version,
+optional Web-Port und Port im Netzwerk, weitere LAN-Ports, Ordner (App-Daten unter
+`<Ort>/appdata/<id>/` oder ein Ordner aus dem Ordner-Dialog), Umgebungsvariablen mit den
+Platzhaltern oben und GPU ab. `dahlia-apps` baut daraus eine Vorlage mit nur dem Dienst
+`app` und prüft sie wie jede Katalog-Vorlage, es gibt also auch hier kein `privileged`,
+kein Host-Netz und keine freien Geräte. Ordner werden zu den Freigaben `folder1`,
+`folder2` usw. Das Formular liegt in `/var/lib/dahlia/apps/<id>/custom.json` (0600),
+`state.json` trägt `"custom": true`. Eigene Container nehmen nie eine Vorlage aus dem
+Katalog, auch wenn dort später eine App mit derselben Kennung auftaucht; eine Kennung aus dem
+Katalog ist bei der Installation nicht erlaubt. "Bearbeiten" ändert das Formular und
+installiert neu (Daten und Secrets bleiben), "Update" lädt das Image neu.
 
 ## Backup (ab Meilenstein 13)
 

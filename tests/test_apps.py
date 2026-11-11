@@ -838,3 +838,138 @@ def test_has_gpu(tmp_path):
     assert not apps.has_gpu(tmp_path / "dri")
     (tmp_path / "dri/renderD128").touch()
     assert apps.has_gpu(tmp_path / "dri")
+
+
+# --- custom containers --------------------------------------------------------
+
+
+def kuma(**changes):
+    spec = {
+        "name": "Uptime Kuma",
+        "image": "louislam/uptime-kuma:1.23.16",
+        "web_port": 3001,
+        "public_port": 8030,
+        "lan_ports": [{"container": 5353, "host": 5354, "protocol": "udp"}],
+        "volumes": [{"container": "/app/data", "appdata": "data"}],
+        "environment": {"TZ": "{TZ}", "ADMIN_PASSWORD": "{SECRET_ADMIN}"},
+    }
+    for k, v in changes.items():
+        if v is None:
+            spec.pop(k, None)
+        else:
+            spec[k] = v
+    return spec
+
+
+def test_custom_template_is_a_checked_template():
+    text, folders = apps.custom_template("kuma", kuma(volumes=[
+        {"container": "/app/data", "appdata": "data"},
+        {"container": "/media", "folder": "/mnt/user/Filme", "readonly": True},
+    ]))
+    t = parse_template(text, "kuma")
+    assert t.schema == 2 and t.category == "other" and t.name == "Uptime Kuma"
+    assert t.web_port == 3001 and t.public_port == 8030
+    assert [v.share for v in t.volumes] == [None, "folder1"]
+    assert folders == {"folder1": "/mnt/user/Filme"}
+    assert t.services["app"].environment["ADMIN_PASSWORD"] == "{SECRET_ADMIN}"
+    gpu_text, _ = apps.custom_template("kuma", kuma(gpu=True))
+    assert parse_template(gpu_text).schema == 3 and parse_template(gpu_text).gpu
+
+
+@pytest.mark.parametrize("changes,message", [
+    ({"image": "louislam/uptime-kuma:latest"}, "latest"),
+    ({"image": "louislam/uptime-kuma"}, "name:tag"),
+    ({"public_port": None}, "go together"),
+    ({"public_port": 443}, "reserved"),
+    ({"privileged": True}, "unknown fields"),
+    ({"volumes": [{"container": "/x", "appdata": "a", "folder": "/mnt/user/b"}]}, "exactly one"),
+    ({"volumes": [{"container": "/proc/x", "appdata": "a"}]}, "system path"),
+    ({"volumes": [{"container": "/x", "appdata": "a", "devices": ["/dev/sda"]}]}, "unknown"),
+    ({"environment": {"A": "{NOPE}"}}, "unknown placeholder"),
+    ({"environment": {"BAD KEY": "x"}}, "invalid"),
+    ({"lan_ports": [{"container": 1, "host": 22}]}, "reserved"),
+    ({"gpu": "yes"}, "true or false"),
+    ({"name": "x" * 41}, "name is invalid"),
+    ({"lan_ports": {"container": 1}}, "must be lists"),
+])
+def test_custom_template_rejects(changes, message):
+    with pytest.raises(AppError, match=message):
+        apps.custom_template("kuma", kuma(**changes))
+
+
+def test_custom_install_list_and_edit(env):
+    (env.paths.pool / "Filme").mkdir()
+    spec = kuma(volumes=[{"container": "/app/data", "appdata": "data"},
+                         {"container": "/media", "folder": f"{env.paths.pool}/Filme"}])
+    env.install("kuma", location=str(env.paths.pool), spec=spec)
+    d = env.paths.apps / "kuma"
+    state = json.loads((d / "state.json").read_text())
+    assert state["custom"] is True and state["folders"] == {"folder1": f"{env.paths.pool}/Filme"}
+    assert json.loads((d / "custom.json").read_text()) == spec
+    app = json.loads((d / "compose.json").read_text())["services"]["app"]
+    assert {v["target"]: v["source"] for v in app["volumes"]} == {
+        "/app/data": str(env.paths.pool / "appdata/kuma/data"),
+        "/media": str(env.paths.pool / "Filme")}
+    assert "privileged" not in app and app["security_opt"] == ["no-new-privileges:true"]
+    secret = app["environment"]["ADMIN_PASSWORD"]
+
+    listed = env.list()[0]
+    assert listed["custom"] == spec and listed["update"] is None
+    # A catalog template with the same id later on is never applied.
+    (env.paths.catalog / "kuma.yaml").write_text(WHOAMI.replace("whoami", "kuma"))
+    assert env.updates() == [] and env.list()[0]["update"] is None
+    env.update("kuma")
+    assert "uptime-kuma" in (d / "app.yaml").read_text()
+
+    (env.paths.pool / "Serien").mkdir()
+    edited = kuma(image="louislam/uptime-kuma:1.23.17", lan_ports=[],
+                  volumes=[{"container": "/app/data", "appdata": "data"},
+                           {"container": "/tv", "folder": f"{env.paths.pool}/Serien"}])
+    env.docker.calls.clear()
+    env.update("kuma", spec=edited)
+    app = json.loads((d / "compose.json").read_text())["services"]["app"]
+    assert app["image"] == "louislam/uptime-kuma:1.23.17"
+    sources = {v["target"]: v["source"] for v in app["volumes"]}
+    assert sources["/tv"] == str(env.paths.pool / "Serien")
+    assert app["environment"]["ADMIN_PASSWORD"] == secret
+    assert json.loads((d / "state.json").read_text())["folders"] == {
+        "folder1": f"{env.paths.pool}/Serien"}
+    assert json.loads((d / "custom.json").read_text()) == edited
+    assert env.docker.removed == ["louislam/uptime-kuma:1.23.16"]
+    assert env.docker.calls[0] == ("kuma", ("pull",))
+
+    env.remove("kuma")
+    assert not d.exists()
+
+
+def test_custom_install_checks(env):
+    with pytest.raises(AppError, match="catalog app"):
+        env.install("whoami", spec=kuma())
+    with pytest.raises(AppError, match="not a folder"):
+        env.precheck("install", "kuma", spec=kuma(volumes=[{"container": "/x",
+                                                            "folder": "/etc"}]))
+    env.install("whoami")
+    with pytest.raises(AppError, match="used by another app"):
+        env.install("kuma", spec=kuma(public_port=8099))
+    with pytest.raises(AppError, match="cannot be edited"):
+        env.update("whoami", spec=kuma())
+    assert env.precheck("install", "kuma", spec=kuma()) == {"id": "kuma", "ok": True}
+
+
+def test_custom_without_web_port_drops_host_port(env):
+    env.install("kuma", spec=kuma())
+    env.update("kuma", spec=kuma(web_port=None, public_port=None))
+    assert json.loads((env.paths.apps / "kuma/state.json").read_text())["host_port"] is None
+    assert not (env.naming.paths.nginx / "dahlia-app-kuma.conf").exists()
+
+
+def test_cli_spec(env, tmp_path, monkeypatch, capsys):
+    f = tmp_path / "spec.json"
+    f.write_text(json.dumps(kuma()))
+    monkeypatch.setattr(apps, "Apps", lambda: env)
+    assert apps.main(["precheck", "install", "kuma", "--spec", str(f)]) == 0
+    assert apps.main(["install", "kuma", "--spec", str(f)]) == 0
+    assert json.loads((env.paths.apps / "kuma/state.json").read_text())["custom"] is True
+    f.write_text("[1]")
+    assert apps.main(["update", "kuma", "--spec", str(f)]) == 1
+    assert "JSON object" in capsys.readouterr().err

@@ -286,6 +286,7 @@
         <div class="section-head">
           <h2 data-i18n="apps.installed"></h2>
           <button id="apps-update-all" class="primary" hidden></button>
+          <button id="apps-custom" data-i18n="custom.add"></button>
         </div>
         <div id="apps-installed" class="app-grid"></div>
 
@@ -755,6 +756,46 @@
     <div class="dialog-actions">
       <button value="cancel" formnovalidate data-i18n="common.cancel"></button>
       <button value="ok" id="install-ok" class="primary" data-i18n="apps.install"></button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="custom-dialog" class="wide-dialog">
+  <form id="custom-form" method="dialog">
+    <h2 id="custom-title"></h2>
+    <p class="hint" data-i18n="custom.hint"></p>
+    <div class="custom-grid">
+      <label><span data-i18n="custom.id"></span>
+        <input name="id" autocomplete="off" required pattern="[a-z][a-z0-9\-]{1,30}"></label>
+      <label><span data-i18n="custom.name"></span>
+        <input name="name" autocomplete="off" required maxlength="40"></label>
+      <label class="wide"><span data-i18n="custom.image"></span>
+        <input name="image" autocomplete="off" required data-i18n-placeholder="custom.image_placeholder"></label>
+      <label><span data-i18n="custom.web_port"></span>
+        <input name="web_port" type="number" min="1" max="65535"></label>
+      <label><span data-i18n="custom.public_port"></span>
+        <input name="public_port" type="number" min="1" max="65535"></label>
+    </div>
+    <p class="hint" data-i18n="custom.web_hint"></p>
+    <div id="custom-location-box">
+      <h3 data-i18n="install.location"></h3>
+      <div id="custom-location" class="places"></div>
+    </div>
+    <h3 data-i18n="custom.lan_ports"></h3>
+    <div id="custom-ports" class="custom-rows"></div>
+    <button type="button" id="custom-add-port" data-i18n="custom.add_port"></button>
+    <h3 data-i18n="custom.volumes"></h3>
+    <p class="hint" id="custom-volumes-hint"></p>
+    <div id="custom-volumes" class="custom-rows"></div>
+    <button type="button" id="custom-add-volume" data-i18n="custom.add_volume"></button>
+    <h3 data-i18n="custom.environment"></h3>
+    <p class="hint" data-i18n="custom.environment_hint"></p>
+    <div id="custom-env" class="custom-rows"></div>
+    <button type="button" id="custom-add-env" data-i18n="custom.add_env"></button>
+    <label class="check" id="custom-gpu-box"><input name="gpu" type="checkbox"><span data-i18n="custom.gpu"></span></label>
+    <div class="dialog-actions">
+      <button value="cancel" formnovalidate data-i18n="common.cancel"></button>
+      <button value="ok" id="custom-ok" class="primary"></button>
     </div>
   </form>
 </dialog>
