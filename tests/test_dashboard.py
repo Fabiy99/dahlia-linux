@@ -540,6 +540,30 @@ def test_auto_updates_endpoints(env):
     assert agent.calls == [("updates.auto", {}), ("updates.set_auto", body)]
 
 
+def test_parity_endpoints(env):
+    client, agent, _ = logged_in(env)
+    agent.calls.clear()
+    assert client.get("/api/parity").json() == {"action": "parity.get"}
+    assert client.post("/api/parity/sync", json={}, headers=CSRF).status_code == 200
+    assert client.post("/api/parity/sync", json={"force": True}, headers=CSRF).status_code == 200
+    assert client.post("/api/parity/fix", json={"what": "disk2"}, headers=CSRF).status_code == 200
+    opts = {"snapraid_delete_threshold": 20, "scrub_percent": 10, "scrub_older_than_days": 7}
+    assert client.post("/api/parity/settings", json=opts, headers=CSRF).json() == opts
+    assert agent.calls == [
+        ("parity.get", {}),
+        ("parity.sync", {"force": False}),
+        ("parity.sync", {"force": True}),
+        ("parity.fix", {"what": "disk2"}),
+        ("storage.set_option", {"name": "snapraid_delete_threshold", "value": 20}),
+        ("storage.set_option", {"name": "scrub_percent", "value": 10}),
+        ("storage.set_option", {"name": "scrub_older_than_days", "value": 7}),
+    ]
+    assert client.post("/api/parity/fix", json={"what": "bad"}).status_code == 403
+    assert client.post("/api/parity/settings", json={"scrub_percent": 5},
+                       headers=CSRF).status_code == 422
+    assert len(agent.calls) == 7
+
+
 def test_backup_endpoints(env):
     client, agent, _ = logged_in(env)
     agent.calls.clear()

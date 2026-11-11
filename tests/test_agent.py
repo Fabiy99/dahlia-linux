@@ -358,6 +358,43 @@ def test_job_start_busy(ctx):
     assert err_code(run(ctx, "job.start", {"job": "snapraid-sync"})) == protocol.BUSY
 
 
+def test_parity_get(ctx):
+    ctx.runner.answers[("dahlia-snapraid", "status", "--json")] = (
+        0, json.dumps({"configured": True, "problems": [], "status": {"bad": 0}}), "")
+    info = run(ctx, "parity.get")["result"]
+    assert info["configured"] and info["status"] == {"bad": 0}
+    assert set(info["jobs"]) == {"sync", "scrub", "mover", "repair"}
+    assert ["systemctl", "show", "dahlia-parity.service"] in [c[:3] for c in ctx.runner.calls]
+
+
+def test_parity_sync_plain_and_forced(ctx):
+    assert run(ctx, "parity.sync")["ok"]
+    assert ctx.runner.calls[-1] == ["systemctl", "start", "--no-block",
+                                    "dahlia-snapraid-sync.service"]
+    assert run(ctx, "parity.sync", {"force": True})["result"]["force"]
+    cmd = ctx.runner.calls[-1]
+    assert cmd[:3] == ["systemd-run", "--unit", "dahlia-parity.service"]
+    assert cmd[-3:] == ["/usr/sbin/dahlia-snapraid", "sync", "--force"]
+    assert "OnFailure=dahlia-notify-failure@dahlia-parity.service.service" in cmd
+
+
+def test_parity_fix(ctx):
+    assert run(ctx, "parity.fix", {"what": "disk2"})["ok"]
+    assert ctx.runner.calls[-1][-4:] == ["/usr/sbin/dahlia-snapraid", "fix", "--disk", "2"]
+    assert run(ctx, "parity.fix", {"what": "bad"})["ok"]
+    assert ctx.runner.calls[-1][-3:] == ["/usr/sbin/dahlia-snapraid", "fix", "--bad"]
+    for what in ("disk0", "disk", "d2", "disk2;reboot", "all"):
+        assert err_code(run(ctx, "parity.fix", {"what": what})) == protocol.INVALID_PARAMS
+
+
+def test_parity_refuses_while_a_job_runs(ctx):
+    ctx.runner.answers[("systemctl", "show")] = (0, RUNNING, "")
+    assert err_code(run(ctx, "parity.fix", {"what": "bad"})) == protocol.BUSY
+    assert err_code(run(ctx, "parity.sync", {"force": True})) == protocol.BUSY
+    assert err_code(run(ctx, "parity.sync")) == protocol.BUSY
+    assert not any(c[0] == "systemd-run" for c in ctx.runner.calls)
+
+
 def test_job_status(ctx):
     status = run(ctx, "job.status", {"job": "update"})["result"]
     assert status["job"] == "update"
@@ -561,6 +598,9 @@ def test_action_list_is_fixed():
         "notify.set",
         "notify.set_events",
         "notify.test",
+        "parity.fix",
+        "parity.get",
+        "parity.sync",
         "settings.confirm_network",
         "settings.firewall",
         "settings.network",

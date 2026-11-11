@@ -6,7 +6,8 @@
 # active, mergerfs pools grow and shrink at runtime, SnapRAID config.
 # Then a Btrfs RAID1 cache: new files land on it, dahlia-mover moves them
 # to the data disks without changing the path; dahlia-snapraid syncs and
-# stops above the delete threshold.
+# stops above the delete threshold, scrub finds damaged blocks, fix repairs
+# them and rebuilds a replaced data disk from the parity.
 #
 # Must run as root on a disposable machine (CI runner or test VM) with the
 # dahlia-storage package installed.
@@ -194,6 +195,41 @@ if dahlia-snapraid sync; then fail "sync ran although 2 files were removed (thre
 dahlia-snapraid sync --force
 dahlia-snapraid sync | grep -q "parity is up to date" || fail "forced sync did not update parity"
 dahlia-snapraid scrub
+
+step "parity status: files covered, last runs recorded"
+dahlia-snapraid status --json > "$WORK/parity.json"
+jq -e '.configured and .status.bad == 0 and .status.files > 0' "$WORK/parity.json" >/dev/null \
+    || fail "unexpected parity status: $(cat "$WORK/parity.json")"
+jq -e '.runs.sync.result == "no_changes" and .runs.scrub.result == "ok"' "$WORK/parity.json" \
+    >/dev/null || fail "runs not recorded: $(jq -c .runs "$WORK/parity.json")"
+
+step "scrub finds a silently damaged file, fix --bad repairs it"
+dahlia-disk set-option scrub_percent 100
+dahlia-disk set-option scrub_older_than_days 0
+damaged=/mnt/disk2/shares/media/d2.bin
+stamp="$(stat -c %y "$damaged")"
+printf 'broken' | dd of="$damaged" bs=1 seek=4096 conv=notrunc status=none
+touch -d "$stamp" "$damaged"
+if dahlia-snapraid scrub; then fail "scrub did not report the damaged block"; fi
+dahlia-snapraid status --json | jq -e '.status.bad > 0' >/dev/null || fail "status shows no bad blocks"
+dahlia-snapraid fix --bad
+check_data d2 /mnt/disk2
+dahlia-snapraid status --json | jq -e '.status.bad == 0' >/dev/null || fail "bad blocks left"
+
+step "replace a failed data disk: new disk gets the same number, fix rebuilds it"
+dahlia-disk remove "$(uuid_of d2)"
+truncate -s 400M "$WORK/new2.img"
+new2="$(losetup --find --show "$WORK/new2.img")"; LOOPS+=("$new2")
+mkfs.ext4 -q -L new2 "$new2"
+udevadm trigger --action=change "$new2"; udevadm settle
+dahlia-disk add "$(blkid -s UUID -o value "$new2")" --role data
+mountpoint -q /mnt/disk2 || fail "replacement is not /mnt/disk2"
+dahlia-snapraid fix --disk 2
+check_data d2 /mnt/disk2
+check_data d2 /mnt/user
+jq -e '.fix.result == "ok" and .fix.what == "d2" and .fix.unrecoverable == 0' \
+    /var/lib/dahlia/snapraid.json >/dev/null || fail "fix not recorded"
+dahlia-snapraid sync | grep -q "parity is up to date" || fail "sync after fix found changes"
 
 step "remove a data disk: leaves pool at runtime, data stays on the disk"
 dahlia-disk remove "$(uuid_of d3)"
