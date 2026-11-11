@@ -129,5 +129,19 @@ step "settings.time"
 call settings.time | jq -e '.timezones | index("Europe/Berlin")' >/dev/null || fail "no time zones"
 expect_error invalid_params settings.set_time '{"timezone": "Mars/Base", "ntp": true}'
 
+step "firewall: table inet dahlia loaded, settings change it"
+nft list table inet dahlia >/dev/null || fail "table inet dahlia not loaded by the postinst"
+nft list set inet dahlia tcp_ports | grep -qw 443 || fail "port 443 not open"
+call settings.set_firewall '{"enabled": true, "networks": ["198.51.100.0/24"]}' >/dev/null \
+    || fail "settings.set_firewall failed"
+nft list set inet dahlia local4 | grep -q '198.51.100.0/24' || fail "extra network not loaded"
+expect_error invalid_params settings.set_firewall '{"enabled": true, "networks": ["0.0.0.0/0"]}'
+call settings.set_firewall '{"enabled": false}' >/dev/null
+if nft list table inet dahlia >/dev/null 2>&1; then fail "table still loaded when disabled"; fi
+call settings.set_firewall '{"enabled": true}' >/dev/null
+nft list table inet dahlia >/dev/null || fail "table not loaded again"
+call settings.firewall | jq -e '.enabled and (.ports | map(.port) | index(22))' >/dev/null \
+    || fail "settings.firewall does not show port 22"
+
 echo
 echo "agent integration test passed"

@@ -172,6 +172,7 @@ details summary { cursor: pointer; color: var(--muted); font-size: .85rem; }
 /* avatars */
 .avatar { width: 2.4rem; height: 2.4rem; border-radius: 9px; display: grid; place-content: center; flex: none;
           font-weight: 700; color: #fff; font-size: 1.05rem; }
+img.avatar { object-fit: contain; padding: .2rem; background: #fff; border: 1px solid var(--line); }
 .app-mini .avatar { width: 2rem; height: 2rem; font-size: .9rem; border-radius: 7px; }
 
 /* apps */
@@ -416,3 +417,17 @@ code.pubkey { display: block; font-size: .78rem; overflow-wrap: anywhere; backgr
               border: 1px solid var(--line); border-radius: 6px; padding: .5rem; user-select: all; }
 #backup-snapshots .ops { display: flex; gap: .4rem; flex-wrap: wrap; }
 #backup-snapshots select { min-width: 0; max-width: 14rem; }
+
+/* update progress */
+#update-progress { gap: .45rem; margin: 1rem 0; justify-items: stretch; border-color: var(--info); }
+#update-progress.ok { border-color: var(--ok); }
+#update-progress.bad { border-color: var(--danger); }
+#update-progress .hint { margin: 0; }
+#view-updates table:has(#updates:empty) { display: none; }
+#update-progress .mono { font-family: ui-monospace, monospace; overflow-wrap: anywhere; }
+.update-lists { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr)); }
+.update-list ul { list-style: none; margin: .4rem 0 0; padding: 0; max-height: 16rem; overflow-y: auto; }
+.update-list li { padding: .15rem 0; font-size: .9rem; overflow-wrap: anywhere; }
+.update-list li::before { content: "○"; display: inline-block; width: 1.2rem; color: var(--muted); }
+.update-list li.downloaded::before, .update-list li.unpacked::before { content: "◐"; color: var(--info); }
+.update-list li.done::before { content: "✓"; color: var(--ok); }

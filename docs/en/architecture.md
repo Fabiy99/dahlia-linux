@@ -55,7 +55,7 @@ code printed on tty1 and in `/etc/motd` (from milestone 5).
 
 | Package | Contents |
 | --- | --- |
-| `dahlia-base` | Configuration, nftables rules, group `dahlia` (GID 1000), pulls in all Dahlia packages |
+| `dahlia-base` | Configuration, group `dahlia` (GID 1000), pulls in all Dahlia packages |
 | `dahlia-agent` | Root service on `/run/dahlia/agent.sock`, fixed action list |
 | `dahlia-dashboard` | FastAPI backend as `dahlia-ui` behind nginx, vanilla HTML/CSS/JS frontend |
 | `dahlia-storage` | disk-manager, mover, SnapRAID wrapper, health checks |
@@ -142,7 +142,38 @@ Timers: mover 03:00, SnapRAID sync 04:30, scrub Sundays 06:00 (8 %, blocks older
 - Docker publishes container ports on `127.0.0.1` only (`daemon.json`: `"ip"`). Apps are
   reached through nginx. Apps that need LAN ports are flagged in their app template.
 - The firewall (nftables) opens ports only for enabled features and only for the local
-  subnet.
+  network, see [Firewall](#firewall-from-milestone-10).
+
+### Firewall (from milestone 10)
+
+`dahlia-agent` manages exactly one table, `inet dahlia`. It is generated from what is in
+use and replaced as a whole in one transaction; other tables (Docker) are left alone.
+`dahlia-firewall.service` loads it at boot before the network,
+`/etc/network/if-up.d/dahlia-firewall` after every interface comes up, apps and shares
+after every change.
+
+- Incoming (`input`, policy drop): established connections, `lo`, ICMPv6, DHCP and ping
+  from the LAN. New connections only from local sources: private IPv4 ranges
+  (`10/8`, `172.16/12`, `192.168/16`, `100.64/10`, `169.254/16`), `fc00::/7`, `fe80::/10`,
+  the subnets of the server's own interfaces (including the ISP's IPv6 prefix) and the
+  extra networks entered by the admin (e.g. VPN).
+- Open ports: 22 (SSH), 80/443 (nginx), 5353/udp (mDNS); 445, 5357 and 3702/udp only
+  while shares exist; the port link and LAN ports of every installed app.
+  Closed ports answer the LAN at once with `admin-prohibited`.
+- Forwarded (`forward`): ports Docker hands to containers via DNAT, only for local sources.
+
+Settings in `/etc/dahlia/firewall.json` (`enabled`, `networks`), in the dashboard under
+Settings. The loaded ruleset is `/run/dahlia/firewall.nft`.
+
+```
+dahlia-firewall status     # settings, local networks, open ports (JSON)
+dahlia-firewall show       # ruleset apply would load
+dahlia-firewall apply      # reload
+sudo dahlia-firewall disable   # escape hatch: remove the table
+```
+
+Debian's `nftables.service` stays off; its `/etc/nftables.conf` starts with
+`flush ruleset` and would delete Docker's rules as well.
 
 ### dahlia-agent (from milestone 4)
 
@@ -169,6 +200,7 @@ Protocol: one request per connection, one JSON line each way.
 | `settings.network` / `settings.set_network` | `mode` (`dhcp`/`static`), `address` (CIDR), `gateway`, `dns` | `/etc/network/interfaces`, applied by `dahlia-network` with rollback |
 | `settings.confirm_network` | – | confirms the new network settings |
 | `settings.spindown` / `settings.set_spindown` | `default`, `disks` (serial → minutes) | `/etc/dahlia/spindown.json`, `hdparm -S` |
+| `settings.firewall` / `settings.set_firewall` | `enabled`, `networks` (CIDR list, at most 20) | `/etc/dahlia/firewall.json`, `nft -c -f` and `nft -f` with `/run/dahlia/firewall.nft` |
 | `settings.schedules` / `settings.set_schedule` | `job`, `frequency`, `time`, `weekday`, `monthday` | drop-in `OnCalendar=` for the timers |
 | `shares.list` | – | shares, SMB users, whether `/mnt/user` is mounted |
 | `shares.set` / `shares.remove` | `name`, `comment`, `security` (`public`/`secure`/`private`), `users` (name → `rw`/`ro`), `time_machine` | generates `/etc/samba/smb.conf`, checks it with `testparm`, starts `smbd` |
@@ -192,7 +224,8 @@ Protocol: one request per connection, one JSON line each way.
 | `job.start` | `job` (mover, snapraid-sync, snapraid-scrub, backup) | starts the unit, returns at once |
 | `job.status` | `job` (plus `update`) | State and last result |
 | `updates.check` | - | `apt-get update`, list of upgrades |
-| `updates.apply` | - | `apt-get full-upgrade` through the unit `dahlia-update.service` |
+| `updates.apply` | - | `apt-get full-upgrade` through the unit `dahlia-update.service`; the planned packages (simulation) in `/run/dahlia/update.json` |
+| `updates.progress` | - | state, percent, per package waiting/downloaded/setting up/done from the apt output in this run's journal; shown on the dashboard's update page |
 | `apps.catalog` | `refresh` (optional) | App catalog and its age, `refresh` downloads it first |
 | `apps.list` | - | installed apps with container state, version, available update |
 | `apps.install`, `apps.update` | `id`, for `install` `location` (optional, `/mnt/user` or `/srv`) and `folders` (optional, share -> folder below `/mnt/user` or `/srv`) | in the background as unit `dahlia-app-<id>`; folders are kept on updates |
@@ -338,6 +371,7 @@ characters), made at install time and kept in `/var/lib/dahlia/apps/<id>/secrets
 | Containers | `no-new-privileges`, log driver `local` with 3 x 10 MB; main service `dahlia-<id>`, helpers `dahlia-<id>-<service>` |
 | Stack | own Docker network per app, services reach each other by service name; helpers publish no ports |
 | Catalog | `catalog.json` (all templates in one file), otherwise `index.json` and `apps/<id>.yaml`; templates with a newer schema are skipped |
+| Logos | `catalog.json` lists `icons/<id>.svg` or `.png` with its SHA-256 per app under `icons`. The agent downloads only changed logos, checks hash, size (64 KB) and file type and stores them in `/var/lib/dahlia/apps-catalog/icons/`; nginx serves them as `/app-icons/` with a `sandbox` CSP. Without a logo the dashboard shows the first letter |
 | Updates | `dahlia-apps-catalog.timer` downloads the catalog every 6 hours; when an installed app's template differs, the dashboard shows "Update to <version>" and "Update all". Old images are deleted afterwards |
 
 ```sh

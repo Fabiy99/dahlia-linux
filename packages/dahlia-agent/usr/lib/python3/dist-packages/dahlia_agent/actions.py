@@ -595,13 +595,89 @@ def updates_check(ctx: Context):
 UPDATE_CMD = ["systemctl", "start", "--no-block", "dahlia-update.service"]
 
 
+# apt-get -q output of the running update, per package.
+GET_RE = re.compile(r"^Get:\d+ \S+ \S+ \S+ ([a-z0-9][a-z0-9+.-]*) ")
+UNPACK_RE = re.compile(r"^Unpacking ([a-z0-9][a-z0-9+.-]*)(?::\S+)? \(")
+SETUP_RE = re.compile(r"^Setting up ([a-z0-9][a-z0-9+.-]*)(?::\S+)? \(")
+STEPS = ("waiting", "downloaded", "unpacked", "done")
+START_GRACE = 120  # seconds the unit may take to show up as started
+
+
+def update_plan_file(ctx: Context) -> Path:
+    return ctx.run_dir / "update.json"
+
+
+def update_invocation(ctx: Context) -> str:
+    out = ctx.runner.run(["systemctl", "show", "-p", "InvocationID", "--value", JOBS["update"]])
+    value = out.stdout.strip()
+    return value if re.fullmatch(r"[0-9a-f]{32}", value) else ""
+
+
 @action("updates.apply", mutating=True)
 def updates_apply(ctx: Context):
-    """Install all pending upgrades as job 'update'. snapper snapshots before and after."""
+    """Install all pending upgrades as job 'update'. snapper snapshots before and after.
+
+    The packages apt will install are kept in /run/dahlia/update.json, so
+    updates.progress can show what is done and what is still open.
+    """
     if is_running(ctx, JOBS["update"]):
         raise AgentError(BUSY, "an update is already running")
+    out = ctx.runner.run(["apt-get", "-s", "-q", "full-upgrade"], timeout=120, env=APT_ENV)
+    # The run before this one: until systemd has a new invocation, the update is starting.
+    plan = {"packages": [p["name"] for p in parse_simulation(out.stdout)],
+            "started": int(ctx.clock()), "previous": update_invocation(ctx)}
     ctx.runner.run(UPDATE_CMD)
-    return {"job": "update", "started": True}
+    ctx.run_dir.mkdir(parents=True, exist_ok=True)
+    update_plan_file(ctx).write_text(json.dumps(plan) + "\n")
+    return {"job": "update", "started": True, "packages": len(plan["packages"])}
+
+
+def update_steps(log: str, names: list[str]) -> dict[str, str]:
+    """Step of each planned package from the apt-get output: waiting, downloaded, unpacked, done."""
+    steps = dict.fromkeys(names, "waiting")
+    for line in log.splitlines():
+        for regex, step in ((GET_RE, "downloaded"), (UNPACK_RE, "unpacked"), (SETUP_RE, "done")):
+            m = regex.match(line)
+            if m and m.group(1) in steps and STEPS.index(step) > STEPS.index(steps[m.group(1)]):
+                steps[m.group(1)] = step
+    return steps
+
+
+@action("updates.progress", mutating=False)
+def updates_progress(ctx: Context):
+    """State of the last update: running/done/failed, percent, done and open packages."""
+    state = unit_state(ctx, JOBS["update"])
+    try:
+        plan = json.loads(update_plan_file(ctx).read_text())
+        names = [n for n in plan["packages"] if isinstance(n, str)]
+    except (OSError, ValueError, KeyError, TypeError):
+        return {"state": "none"}
+    invocation = update_invocation(ctx)
+    log = ""
+    if invocation and invocation != plan.get("previous"):
+        log = ctx.runner.run(["journalctl", f"_SYSTEMD_INVOCATION_ID={invocation}", "-o", "cat",
+                              "--no-pager"], timeout=30).stdout
+    steps = update_steps(log, names)
+    waiting = invocation == plan.get("previous")
+    if is_active(state) or (waiting and ctx.clock() - plan.get("started", 0) < START_GRACE):
+        status = "running"
+    elif waiting:
+        status = "failed"  # systemd never started it
+    elif state["result"] == "success" and state["started"]:
+        status = "done"
+    else:
+        status = "failed"
+    total = len(names) * (len(STEPS) - 1)
+    reached = sum(STEPS.index(v) for v in steps.values())
+    percent = 100 if status == "done" or not total else reached * 100 // total
+    lines = [ln for ln in log.splitlines() if ln.strip()]
+    return {
+        "state": status,
+        "percent": percent,
+        "started": plan.get("started"),
+        "packages": [{"name": n, "step": steps[n]} for n in names],
+        "last": lines[-1] if lines else "",
+    }
 
 
 # --- apps ---------------------------------------------------------------------
