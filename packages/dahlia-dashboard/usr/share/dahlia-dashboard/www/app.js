@@ -60,13 +60,54 @@ class ApiError extends Error {
   }
 }
 
+// nginx answers 502-504 while the dashboard restarts (package update); a
+// network error means nginx itself reloads. GET requests wait for the
+// server instead of failing; other requests are not repeated.
+const RESTARTING = new Set([502, 503, 504]);
+let reconnecting = null;
+let serverRestarted = false;
+
+function waitForServer() {
+  if (reconnecting) return reconnecting;
+  const notice = document.getElementById("reconnect");
+  notice.hidden = false;
+  reconnecting = (async () => {
+    const until = Date.now() + 120000;
+    while (Date.now() < until) {
+      await new Promise((r) => setTimeout(r, 2000));
+      try {
+        const res = await fetch("/api/state", { credentials: "same-origin", cache: "no-store" });
+        if (!RESTARTING.has(res.status)) {
+          serverRestarted = true;
+          return true;
+        }
+      } catch (_) { /* still down */ }
+    }
+    return false;
+  })().finally(() => {
+    notice.hidden = true;
+    reconnecting = null;
+  });
+  return reconnecting;
+}
+
 async function api(method, path, body) {
   const opts = { method, headers: { "X-Dahlia-Request": "1" }, credentials: "same-origin" };
   if (body !== undefined) {
     opts.headers["Content-Type"] = "application/json";
     opts.body = JSON.stringify(body);
   }
-  const res = await fetch(`/api/${path}`, opts);
+  let res = null;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      res = await fetch(`/api/${path}`, opts);
+    } catch (_) {
+      res = null;
+    }
+    const down = res === null || RESTARTING.has(res.status);
+    if (!down || method !== "GET" || attempt > 0 || !await waitForServer()) break;
+  }
+  if (res === null) throw new ApiError(0, "error.network");
   let data = {};
   try { data = await res.json(); } catch (_) { /* empty or non-JSON body */ }
   if (!res.ok) {
@@ -1896,6 +1937,8 @@ async function loadUpdateProgress() {
   if (updateWasRunning && !running) {
     say(t(data.state === "done" ? "updates.finished" : "updates.failed"),
         data.state === "done" ? "ok" : "error");
+    // The dashboard restarted during the update: load the new UI.
+    if (serverRestarted) setTimeout(() => location.reload(), 2000);
   }
   updateWasRunning = running;
   if (running && current === "updates") {

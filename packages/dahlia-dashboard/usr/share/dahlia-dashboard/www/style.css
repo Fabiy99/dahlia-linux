@@ -235,6 +235,11 @@ tbody tr:hover td { background: var(--card-2); }
 .auth-card h2 { font-size: 1.25rem; }
 
 /* toasts and dialog */
+.reconnect { position: fixed; top: .8rem; left: 50%; transform: translateX(-50%); z-index: 60;
+             background: var(--card); border: 1px solid var(--line); border-left: 4px solid var(--info);
+             border-radius: 8px; padding: .6rem .9rem; box-shadow: 0 6px 24px rgb(0 0 0 / 18%);
+             font-size: .92rem; max-width: calc(100vw - 2rem); }
+.reconnect[hidden] { display: none; }
 .toasts { position: fixed; right: 1.2rem; bottom: 1.2rem; display: grid; gap: .5rem; z-index: 50; max-width: min(28rem, calc(100vw - 2rem)); }
 .toast { background: var(--card); border: 1px solid var(--line); border-left: 4px solid var(--info);
          border-radius: 8px; padding: .7rem .9rem; box-shadow: 0 6px 24px rgb(0 0 0 / 18%);

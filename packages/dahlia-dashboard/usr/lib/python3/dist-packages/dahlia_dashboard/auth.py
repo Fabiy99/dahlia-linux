@@ -2,7 +2,7 @@
 
 Accounts are separate from Linux users. They live in users.json in the state
 directory (owner dahlia-ui, mode 0600) with scrypt password hashes.
-Sessions are random tokens kept in memory; a restart logs everyone out.
+Sessions are random tokens; sessions.json keeps their hashes over a restart.
 """
 
 import hashlib
@@ -113,42 +113,101 @@ class Session:
 
 
 class SessionStore:
-    def __init__(self, max_age: int = 12 * 3600, idle: int = 2 * 3600, clock=time.monotonic):
+    """Login sessions, kept in memory and, with a path, in a file.
+
+    The file lets sessions survive a restart of the dashboard (package
+    update). It holds SHA-256 hashes of the tokens, never the tokens, so a
+    copy of it (backup, diagnostics) does not log anyone in. Times are wall
+    clock seconds. last_seen is written at most every SAVE_EVERY seconds.
+    """
+
+    SAVE_EVERY = 60
+
+    def __init__(self, max_age: int = 12 * 3600, idle: int = 2 * 3600, clock=time.time,
+                 path: Path | None = None):
         self.max_age = max_age
         self.idle = idle
         self.clock = clock
+        self.path = path
         self.sessions: dict[str, Session] = {}
         self.lock = threading.Lock()
+        self.saved = 0.0
+        self._load()
+
+    @staticmethod
+    def _key(token: str) -> str:
+        return hashlib.sha256(token.encode()).hexdigest()
+
+    def _expired(self, s: Session, now: float) -> bool:
+        return now - s.created > self.max_age or now - s.last_seen > self.idle
+
+    def _load(self) -> None:
+        if self.path is None:
+            return
+        try:
+            data = json.loads(self.path.read_text())
+            now = self.clock()
+            for key, v in data.get("sessions", {}).items():
+                s = Session(str(v["username"]), float(v["created"]), float(v["last_seen"]))
+                if not self._expired(s, now):
+                    self.sessions[key] = s
+        except FileNotFoundError:
+            pass
+        except (ValueError, TypeError, KeyError, AttributeError):
+            # A damaged file only costs a new login.
+            self.sessions = {}
+
+    def _save(self) -> None:
+        if self.path is None:
+            return
+        data = {"sessions": {k: vars(s) for k, s in self.sessions.items()}}
+        tmp = self.path.with_name(self.path.name + ".tmp")
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w") as f:
+            json.dump(data, f)
+        tmp.replace(self.path)
+        self.saved = self.clock()
 
     def create(self, username: str) -> str:
         token = secrets.token_urlsafe(32)
         now = self.clock()
         with self.lock:
-            self.sessions[token] = Session(username, now, now)
+            for k in [k for k, s in self.sessions.items() if self._expired(s, now)]:
+                del self.sessions[k]
+            self.sessions[self._key(token)] = Session(username, now, now)
+            self._save()
         return token
 
     def get(self, token: str | None) -> Session | None:
         if not token:
             return None
         now = self.clock()
+        key = self._key(token)
         with self.lock:
-            s = self.sessions.get(token)
+            s = self.sessions.get(key)
             if s is None:
                 return None
-            if now - s.created > self.max_age or now - s.last_seen > self.idle:
-                del self.sessions[token]
+            if self._expired(s, now):
+                del self.sessions[key]
+                self._save()
                 return None
             s.last_seen = now
+            if now - self.saved >= self.SAVE_EVERY:
+                self._save()
             return s
 
     def drop(self, token: str | None) -> None:
         with self.lock:
-            self.sessions.pop(token or "", None)
+            if self.sessions.pop(self._key(token or ""), None) is not None:
+                self._save()
 
     def drop_user(self, username: str, keep: str | None = None) -> None:
+        keep_key = self._key(keep) if keep else None
         with self.lock:
-            for t in [t for t, s in self.sessions.items() if s.username == username and t != keep]:
-                del self.sessions[t]
+            for k in [k for k, s in self.sessions.items()
+                      if s.username == username and k != keep_key]:
+                del self.sessions[k]
+            self._save()
 
 
 class RateLimiter:

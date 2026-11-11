@@ -497,14 +497,17 @@ Certificates (`dahlia-domains`, part of `dahlia-agent`):
 | File | Content |
 | --- | --- |
 | `/etc/dahlia/tls/ca.key`, `ca.crt` | local CA, EC P-256, 20 years; key readable by root only |
-| `/etc/dahlia/tls/server.key`, `server.crt` | server certificate for nginx, 825 days |
+| `/etc/dahlia/tls/server.key`, `server.crt` | certificate of the server (dashboard), 825 days |
+| `/etc/dahlia/tls/apps.key`, `apps.crt` | certificate of the app proxies, 825 days |
 
 The CA carries name constraints (`nameConstraints`): it can only sign names under `.local`,
 `home.arpa`, the configured domain and private IPv4 addresses (10/8, 172.16/12,
 192.168/16). Importing it therefore does not make it trusted for any other website. The
-server certificate holds `<server>.local`, `<domain>`, `*.<domain>`, the mDNS aliases and
-the server's private IPv4 addresses. `dahlia-domains.timer` checks daily and after boot: a
-new address, a new app or less than 30 days left lead to a new certificate. A domain outside
+server certificate holds `<server>.local`, `<domain>`, `*.<domain>` and the server's
+private IPv4 addresses, the app certificate `*.<domain>` and the mDNS aliases. Installing or
+removing an app therefore only changes the app certificate; a browser that accepted the
+server certificate once does not lose the dashboard. `dahlia-domains.timer` checks daily and
+after boot: a new address, a new app or less than 30 days left lead to a new certificate. A domain outside
 `home.arpa` needs a new CA; the dashboard then says that the CA must be imported again.
 
 Importing the CA: download `dahlia-ca.crt` in the dashboard under Domains and compare the

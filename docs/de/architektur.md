@@ -507,15 +507,18 @@ Zertifikate (`dahlia-domains`, Teil von `dahlia-agent`):
 | Datei | Inhalt |
 | --- | --- |
 | `/etc/dahlia/tls/ca.key`, `ca.crt` | lokale CA, EC P-256, 20 Jahre; Schlüssel nur für root lesbar |
-| `/etc/dahlia/tls/server.key`, `server.crt` | Server-Zertifikat für nginx, 825 Tage |
+| `/etc/dahlia/tls/server.key`, `server.crt` | Zertifikat des Servers (Dashboard), 825 Tage |
+| `/etc/dahlia/tls/apps.key`, `apps.crt` | Zertifikat der App-Proxys, 825 Tage |
 
 Die CA hat Namensbeschränkungen (`nameConstraints`): sie kann nur Namen unter `.local`,
 `home.arpa`, der eigenen Domain und private IPv4-Adressen (10/8, 172.16/12, 192.168/16)
 signieren. Wer sie importiert, vertraut ihr also für keine anderen Websites. Das
-Server-Zertifikat enthält `<server>.local`, `<domain>`, `*.<domain>`, die mDNS-Aliase und
-die privaten IPv4-Adressen des Servers. `dahlia-domains.timer` prüft täglich und nach dem
-Boot: neue Adresse, neue App, weniger als 30 Tage Restlaufzeit führen zu einem neuen
-Zertifikat. Eine Domain außerhalb von `home.arpa` braucht eine neue CA; das Dashboard sagt
+Server-Zertifikat enthält `<server>.local`, `<domain>`, `*.<domain>` und die privaten
+IPv4-Adressen des Servers, das App-Zertifikat `*.<domain>` und die mDNS-Aliase. Apps
+installieren oder entfernen ändert so nur das App-Zertifikat; ein Browser, der das
+Server-Zertifikat einmal akzeptiert hat, verliert das Dashboard nicht. `dahlia-domains.timer`
+prüft täglich und nach dem Boot: neue Adresse, neue App, weniger als 30 Tage Restlaufzeit
+führen zu einem neuen Zertifikat. Eine Domain außerhalb von `home.arpa` braucht eine neue CA; das Dashboard sagt
 dann, dass die CA neu importiert werden muss.
 
 CA importieren: im Dashboard unter Domains `dahlia-ca.crt` herunterladen und den
