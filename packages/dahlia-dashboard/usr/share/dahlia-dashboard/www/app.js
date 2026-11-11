@@ -949,6 +949,7 @@ function renderInstalled(installed) {
     const head = cardHead(app, `${tv("category", app.category)} · ${app.version}`);
     head.append(badge(tv("app_status", app.status), STATUS_KIND[app.status] ?? ""));
     if (app.gpu && gpuAvailable) head.append(badge("GPU", "info"));
+    if (app.custom) head.append(badge(t("custom.badge"), "info"));
     card.append(head);
 
     const notes = app.notes && (app.notes[lang] || app.notes.en);
@@ -980,6 +981,7 @@ function renderInstalled(installed) {
     }
     ops.append(iconButton("updates", "apps.update", () => appJob(app.id, "update", app.name),
                           app.update ? "primary" : ""));
+    if (app.custom) ops.append(iconButton("docker", "custom.edit", () => customEdit(app)));
     const remove = iconButton("trash", "apps.remove", async () => {
       if (!await ask(t("apps.confirm_remove", { name: app.name }), "apps.remove", true)) return;
       const deleteData = await ask(t("apps.confirm_delete_data", {
@@ -1199,6 +1201,199 @@ async function installDialog(app) {
       resolve({ location, folders });
     }, { once: true });
   });
+}
+
+// --- custom containers ----------------------------------------------------------
+
+function removeRowButton(row) {
+  const b = el("button", "icon-btn", "✕");
+  b.type = "button";
+  b.title = t("custom.remove_row");
+  b.setAttribute("aria-label", b.title);
+  b.addEventListener("click", () => row.remove());
+  return b;
+}
+
+function input(type, value, attrs) {
+  const i = el("input");
+  i.type = type;
+  i.autocomplete = "off";
+  if (value !== undefined && value !== null) i.value = String(value);
+  for (const [k, v] of Object.entries(attrs || {})) i.setAttribute(k, v);
+  return i;
+}
+
+function portRow(p) {
+  const row = el("div", "custom-row");
+  const container = input("number", p?.container, { min: 1, max: 65535, required: "" });
+  container.placeholder = t("custom.container_port");
+  const host = input("number", p?.host, { min: 1, max: 65535, required: "" });
+  host.placeholder = t("custom.host_port");
+  const proto = el("select");
+  for (const v of ["tcp", "udp"]) {
+    const o = el("option", "", v.toUpperCase());
+    o.value = v;
+    proto.append(o);
+  }
+  proto.value = p?.protocol || "tcp";
+  row.append(container, host, proto, removeRowButton(row));
+  row.read = () => ({ container: Number(container.value), host: Number(host.value),
+                      protocol: proto.value });
+  return row;
+}
+
+// Container path, then app data subfolder or a folder from the picker.
+function volumeRow(v, locationOf) {
+  const row = el("div", "custom-row");
+  const container = input("text", v?.container, { required: "", pattern: "/.*" });
+  container.placeholder = t("custom.container_path");
+  const kind = el("select");
+  for (const k of ["appdata", "folder"]) {
+    const o = el("option", "", t(`custom.kind_${k}`));
+    o.value = k;
+    kind.append(o);
+  }
+  kind.value = v?.folder ? "folder" : "appdata";
+  const sub = input("text", v?.appdata ?? "data", { pattern: "[a-z0-9][a-z0-9._\\-]{0,63}" });
+  let folder = null;
+  if (v?.folder) {
+    const root = [ARRAY, SYSTEM].find((r) => v.folder.startsWith(`${r}/`)) || ARRAY;
+    folder = { root, path: v.folder.slice(root.length + 1) };
+  }
+  const shown = el("code");
+  const pick = el("button", "", t("install.change"));
+  pick.type = "button";
+  pick.addEventListener("click", async () => {
+    const picked = await pickFolder(folder || { root: locationOf(), path: "" });
+    if (picked) { folder = picked; update(); }
+  });
+  const ro = el("label", "check");
+  const roBox = input("checkbox");
+  roBox.checked = Boolean(v?.readonly);
+  ro.append(roBox, el("span", "", t("install.readonly")));
+  const update = () => {
+    const isFolder = kind.value === "folder";
+    sub.hidden = isFolder;
+    sub.required = !isFolder;
+    shown.hidden = pick.hidden = !isFolder;
+    shown.textContent = folder ? fullPath(folder.root, folder.path) : t("custom.no_folder");
+  };
+  kind.addEventListener("change", update);
+  update();
+  row.append(container, kind, sub, shown, pick, ro, removeRowButton(row));
+  row.read = () => {
+    const out = { container: container.value.trim() };
+    if (kind.value === "folder") {
+      if (!folder) throw new ApiError(400, "custom.folder_missing");
+      out.folder = fullPath(folder.root, folder.path);
+    } else {
+      out.appdata = sub.value.trim();
+    }
+    if (roBox.checked) out.readonly = true;
+    return out;
+  };
+  return row;
+}
+
+function envRow(key, value) {
+  const row = el("div", "custom-row");
+  const k = input("text", key, { required: "", pattern: "[A-Za-z_][A-Za-z0-9_]{0,63}" });
+  k.placeholder = t("custom.env_key");
+  const v = input("text", value);
+  v.placeholder = t("custom.env_value");
+  row.append(k, v, removeRowButton(row));
+  row.read = () => [k.value.trim(), v.value];
+  return row;
+}
+
+// New custom container (app null) or the form of an installed one.
+// Resolves with {id, spec, location} or null.
+async function customDialog(app) {
+  const dlg = document.getElementById("custom-dialog");
+  const form = document.getElementById("custom-form");
+  const spec = app?.custom || {};
+  form.reset();
+  form.elements.id.value = app?.id || "";
+  form.elements.id.readOnly = Boolean(app);
+  form.elements.name.value = spec.name || "";
+  form.elements.image.value = spec.image || "";
+  form.elements.web_port.value = spec.web_port ?? "";
+  form.elements.public_port.value = spec.public_port ?? "";
+  form.elements.gpu.checked = Boolean(spec.gpu);
+  document.getElementById("custom-gpu-box").hidden = !gpuAvailable && !spec.gpu;
+  document.getElementById("custom-title").textContent =
+    app ? t("custom.edit_title", { name: app.name }) : t("custom.add");
+  document.getElementById("custom-ok").textContent = t(app ? "custom.apply" : "apps.install");
+
+  let location = app?.location || SYSTEM;
+  const locBox = document.getElementById("custom-location-box");
+  locBox.hidden = Boolean(app);
+  const volHint = document.getElementById("custom-volumes-hint");
+  const setLocation = (root) => {
+    location = root;
+    volHint.textContent = t("install.appdata", { path: fullPath(location, "appdata/<id>") });
+  };
+  if (!app) {
+    const pool = await api("GET", `files?root=${encodeURIComponent(ARRAY)}&path=`);
+    location = pool.mounted ? ARRAY : SYSTEM;
+    const pick = (root) => {
+      setLocation(root);
+      placeButtons(document.getElementById("custom-location"), location,
+                   { [SYSTEM]: true, [ARRAY]: pool.mounted }, pick);
+    };
+    pick(location);
+  } else {
+    setLocation(location);
+  }
+
+  const ports = document.getElementById("custom-ports");
+  const volumes = document.getElementById("custom-volumes");
+  const env = document.getElementById("custom-env");
+  ports.replaceChildren(...(spec.lan_ports || []).map(portRow));
+  volumes.replaceChildren(...(spec.volumes || []).map((v) => volumeRow(v, () => location)));
+  env.replaceChildren(...Object.entries(spec.environment || {}).map(([k, v]) => envRow(k, v)));
+  document.getElementById("custom-add-port").onclick = () => ports.append(portRow());
+  document.getElementById("custom-add-volume").onclick =
+    () => volumes.append(volumeRow(null, () => location));
+  document.getElementById("custom-add-env").onclick = () => env.append(envRow("", ""));
+
+  dlg.returnValue = "";
+  dlg.showModal();
+  return new Promise((resolve, reject) => {
+    dlg.addEventListener("close", () => {
+      if (dlg.returnValue !== "ok") { resolve(null); return; }
+      try {
+        const f = form.elements;
+        const out = { name: f.name.value.trim(), image: f.image.value.trim() };
+        if (f.web_port.value || f.public_port.value) {
+          out.web_port = Number(f.web_port.value);
+          out.public_port = Number(f.public_port.value);
+        }
+        out.lan_ports = [...ports.children].map((r) => r.read());
+        out.volumes = [...volumes.children].map((r) => r.read());
+        out.environment = Object.fromEntries([...env.children].map((r) => r.read()));
+        if (f.gpu.checked) out.gpu = true;
+        resolve({ id: f.id.value.trim(), spec: out, location });
+      } catch (err) {
+        reject(err);
+      }
+    }, { once: true });
+  });
+}
+
+async function customInstall(btn) {
+  await guarded(btn, async () => {
+    const choice = await customDialog(null);
+    if (!choice) return;
+    await appJob(choice.id, "install", choice.spec.name,
+                 { spec: choice.spec, location: choice.location });
+  });
+}
+
+async function customEdit(app) {
+  const choice = await customDialog(app);
+  if (!choice) return;
+  await appJob(app.id, "update", choice.spec.name, { spec: choice.spec });
 }
 
 function renderCatalog() {
@@ -2690,6 +2885,8 @@ function bindButtons() {
   }
   document.getElementById("storage-refresh").addEventListener("click", (e) => guarded(e.currentTarget, loadStorage));
   document.getElementById("apps-search").addEventListener("input", renderCatalog);
+  const custom = document.getElementById("apps-custom");
+  custom.addEventListener("click", () => customInstall(custom));
   document.getElementById("apps-category").addEventListener("change", renderCatalog);
   const refresh = document.getElementById("apps-refresh");
   refresh.addEventListener("click", () => guarded(refresh, async () => {

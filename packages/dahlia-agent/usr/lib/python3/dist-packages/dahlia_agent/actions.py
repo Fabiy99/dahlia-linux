@@ -853,6 +853,49 @@ def apps_install(ctx: Context, id: str, folders: dict, location: str):
     return start_app_job(ctx, id, "install", extra)
 
 
+MAX_SPEC = 64 * 1024
+
+
+def write_spec(ctx: Context, app_id: str, spec: dict) -> Path:
+    """The form of a custom container, for dahlia-apps --spec. dahlia-apps
+    checks every field; here only the size."""
+    text = json.dumps(spec)
+    if len(text) > MAX_SPEC:
+        raise AgentError(INVALID_PARAMS, "'spec' is too large")
+    d = ctx.run_dir / "apps-custom"
+    d.mkdir(mode=0o700, parents=True, exist_ok=True)
+    path = d / f"{app_id}.json"
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text(text)
+    tmp.chmod(0o600)
+    tmp.replace(path)
+    return path
+
+
+@action(
+    "apps.custom_install",
+    mutating=True,
+    params={"id": Param(str, pattern=APP_ID_RE),
+            "spec": Param(dict),
+            "location": Param(str, required=False, default="", choices=("", *ROOTS))},
+)
+def apps_custom_install(ctx: Context, id: str, spec: dict, location: str):
+    """Install a custom container (image, ports, folders, variables) in the background."""
+    path = write_spec(ctx, id, spec)
+    extra = ["--spec", str(path)] + (["--location", location] if location else [])
+    return start_app_job(ctx, id, "install", extra)
+
+
+@action(
+    "apps.custom_update",
+    mutating=True,
+    params={"id": Param(str, pattern=APP_ID_RE), "spec": Param(dict)},
+)
+def apps_custom_update(ctx: Context, id: str, spec: dict):
+    """Apply the changed form of a custom container and pull its image, in the background."""
+    return start_app_job(ctx, id, "update", ["--spec", str(write_spec(ctx, id, spec))])
+
+
 # --- folder picker ------------------------------------------------------------
 
 
