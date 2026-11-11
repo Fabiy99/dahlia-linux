@@ -33,8 +33,8 @@ from .auth import AuthError, RateLimiter, Session, SessionStore, UserStore
 COOKIE = "dahlia_session"
 CSRF_HEADER = "x-dahlia-request"
 
-JOBS = ("mover", "snapraid-sync", "snapraid-scrub", "update")
-STARTABLE_JOBS = ("mover", "snapraid-sync", "snapraid-scrub")
+JOBS = ("mover", "snapraid-sync", "snapraid-scrub", "update", "backup")
+STARTABLE_JOBS = ("mover", "snapraid-sync", "snapraid-scrub", "backup")
 APP_OPS = ("install", "update", "start", "stop", "remove")
 CONTAINER_OPS = ("start", "stop", "restart")
 
@@ -150,6 +150,17 @@ class NetworkBody(BaseModel):
     address: str = ""
     gateway: str = ""
     dns: str = ""
+
+
+class BackupBody(BaseModel):
+    target: dict
+    stop_apps: bool = True
+    folders: list[str] = []
+
+
+class RestoreBody(BaseModel):
+    snapshot: str
+    what: str
 
 
 class SpindownBody(BaseModel):
@@ -589,6 +600,29 @@ def create_app(cfg: Config | None = None) -> FastAPI:
     @app.post("/api/shares/{name}/remove", dependencies=changing)
     def shares_remove(name: str):
         return agent("shares.remove", {"name": name})
+
+    # --- backup ---------------------------------------------------------------
+
+    @app.get("/api/backup", dependencies=authed)
+    def backup_get():
+        return agent("backup.get")
+
+    @app.post("/api/backup", dependencies=changing)
+    def backup_set(body: BackupBody):
+        return agent("backup.set", body.model_dump())
+
+    @app.post("/api/backup/key", dependencies=changing)
+    def backup_key():
+        # POST with the CSRF header: the password is not a GET a foreign page could embed.
+        return agent("backup.key")
+
+    @app.get("/api/backup/snapshots", dependencies=authed)
+    def backup_snapshots():
+        return agent("backup.snapshots")
+
+    @app.post("/api/backup/restore", dependencies=changing)
+    def backup_restore(body: RestoreBody):
+        return agent("backup.restore", body.model_dump())
 
     # --- domains --------------------------------------------------------------
 

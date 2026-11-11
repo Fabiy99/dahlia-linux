@@ -268,7 +268,7 @@ function percent(used, size) {
 
 const TITLES = {
   overview: "nav.overview", storage: "storage.title", apps: "apps.title",
-  domains: "nav.domains", jobs: "jobs.title", updates: "updates.title", account: "nav.account",
+  domains: "nav.domains", jobs: "jobs.title", backup: "nav.backup", updates: "updates.title", account: "nav.account",
   docker: "nav.docker", log: "nav.log", shares: "nav.shares", terminal: "nav.terminal",
   setup: "setup.title", login: "login.title",
 };
@@ -308,6 +308,7 @@ const loaders = {
   docker: loadDocker,
   shares: loadShares,
   log: loadLog,
+  backup: loadBackup,
   terminal: loadTerminal,
   jobs: loadJobs,
   updates: loadUpdateProgress,
@@ -1382,7 +1383,7 @@ async function loadDomains() {
 
 // --- jobs -----------------------------------------------------------------------
 
-const STARTABLE = ["mover", "snapraid-sync", "snapraid-scrub"];
+const STARTABLE = ["mover", "snapraid-sync", "snapraid-scrub", "backup"];
 
 async function loadJobs() {
   const jobs = await api("GET", "jobs");
@@ -1407,6 +1408,140 @@ async function loadJobs() {
     }
     tbody.append(tr);
   }
+}
+
+// --- backup -----------------------------------------------------------------------
+
+let backupApps = [];
+let backupTimer = null;
+
+function renderBackupType() {
+  const f = document.getElementById("backup-form");
+  const sftp = f.elements.type.value === "sftp";
+  document.getElementById("backup-sftp").hidden = !sftp;
+  document.getElementById("backup-folder").hidden = sftp;
+  for (const n of ["host", "user", "spath"]) f.elements[n].required = sftp;
+}
+
+async function loadBackup() {
+  clearTimeout(backupTimer);
+  const [data, list] = await Promise.all([api("GET", "backup"), api("GET", "apps")]);
+  backupApps = list.installed.map((a) => ({ id: a.id, name: a.name }));
+  const f = document.getElementById("backup-form");
+  const target = data.target || { type: "folder" };
+  f.elements.type.value = target.type;
+  const paths = data.candidates.map((c) => c.path);
+  if (target.type === "folder" && target.path && !paths.includes(target.path)) {
+    data.candidates.unshift({ path: target.path, mount: target.path, avail: null, missing: true });
+  }
+  const byPath = new Map(data.candidates.map((c) => [c.path, c]));
+  fillOptions(f.elements.path, [...byPath.keys()], (path) => {
+    const c = byPath.get(path);
+    return c.missing ? `${path} (${t("backup.not_mounted")})`
+      : `${path} (${t("backup.free", { size: formatBytes(c.avail || 0) })})`;
+  });
+  if (target.type === "folder" && target.path) f.elements.path.value = target.path;
+  if (target.type === "sftp") {
+    f.elements.host.value = target.host;
+    f.elements.port.value = target.port;
+    f.elements.user.value = target.user;
+    f.elements.spath.value = target.path;
+  }
+  f.elements.stop_apps.checked = data.stop_apps;
+  const key = document.getElementById("backup-pubkey");
+  key.hidden = !data.public_key;
+  key.textContent = data.public_key || "";
+  renderBackupType();
+
+  const dl = document.getElementById("backup-state");
+  dl.replaceChildren();
+  const last = data.last || {};
+  fact(dl, "backup.target", data.target ? (data.target.type === "sftp"
+    ? `sftp://${data.target.user}@${data.target.host}:${data.target.port}/${data.target.path}`
+    : data.target.path) : t("backup.none"));
+  fact(dl, "backup.last", last.started ? new Date(last.started).toLocaleString(lang) : t("jobs.never"));
+  if (last.result) fact(dl, "jobs.result", tv("job_result", last.result === "success" ? "success" : "exit-code"));
+  if (last.snapshot) fact(dl, "backup.id", last.snapshot.slice(0, 8));
+  if (last.added !== undefined && last.added !== null) fact(dl, "backup.added", formatBytes(last.added));
+  if (last.error) fact(dl, "backup.error", last.error);
+  if (last.warning) fact(dl, "backup.error", last.warning);
+  const running = ["active", "activating"].includes(data.job.active);
+  const restoring = ["active", "activating"].includes(data.restore.active);
+  if (running) fact(dl, "jobs.state", t("backup.running"));
+  if (restoring) fact(dl, "jobs.state", t("backup.restoring"));
+  document.getElementById("backup-run").disabled = !data.target || running;
+  document.getElementById("backup-key").disabled = !data.target;
+  document.getElementById("backup-list").disabled = !data.target;
+  if ((running || restoring) && current === "backup") {
+    backupTimer = setTimeout(() => loadBackup().catch(sayError), 4000);
+  }
+}
+
+async function loadSnapshots() {
+  const { snapshots } = await api("GET", "backup/snapshots");
+  const card = document.getElementById("backup-snapshots-card");
+  const tbody = document.getElementById("backup-snapshots");
+  card.hidden = false;
+  tbody.replaceChildren();
+  for (const s of [...snapshots].reverse()) {
+    const tr = el("tr");
+    cell(tr, new Date(s.time).toLocaleString(lang));
+    cell(tr, el("code", "", s.id));
+    const sel = el("select");
+    fillOptions(sel, ["config", ...backupApps.map((a) => a.id)],
+      (v) => (v === "config" ? t("backup.what_config") : backupApps.find((a) => a.id === v).name));
+    const go = iconButton("reboot", "backup.restore", async () => {
+      const what = sel.value;
+      const name = what === "config" ? t("backup.what_config") : backupApps.find((a) => a.id === what).name;
+      if (!await ask(t("backup.restore_confirm", { what: name, time: new Date(s.time).toLocaleString(lang) }),
+                     "backup.restore", true)) return;
+      await api("POST", "backup/restore", { snapshot: s.id, what });
+      say(t("backup.restore_started", { what: name }), "ok");
+      await loadBackup();
+    });
+    const box = el("div", "ops");
+    box.append(sel, go);
+    cell(tr, box);
+    tbody.append(tr);
+  }
+  if (!snapshots.length) {
+    const tr = el("tr");
+    const td = cell(tr, t("backup.no_snapshots"));
+    td.colSpan = 3;
+    tbody.append(tr);
+  }
+}
+
+function bindBackup() {
+  const f = document.getElementById("backup-form");
+  f.elements.type.addEventListener("change", renderBackupType);
+  f.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const el_ = f.elements;
+    const target = el_.type.value === "sftp"
+      ? { type: "sftp", host: el_.host.value.trim(), port: Number(el_.port.value) || 22,
+          user: el_.user.value.trim(), path: el_.spath.value.trim() }
+      : { type: "folder", path: el_.path.value };
+    guarded(e.submitter, async () => {
+      if (!target.path) { say(t("backup.choose_target"), "error"); return; }
+      await api("POST", "backup", { target, stop_apps: el_.stop_apps.checked });
+      say(t("backup.saved"), "ok");
+      await loadBackup();
+    });
+  });
+  const run = document.getElementById("backup-run");
+  run.addEventListener("click", () => guarded(run, async () => {
+    await api("POST", "jobs/backup/start");
+    say(t("backup.started"), "ok");
+    await loadBackup();
+  }));
+  const key = document.getElementById("backup-key");
+  key.addEventListener("click", () => guarded(key, async () => {
+    const { password } = await api("POST", "backup/key");
+    await ask(t("backup.key_text", { password }), "common.ok");
+  }));
+  const list = document.getElementById("backup-list");
+  list.addEventListener("click", () => guarded(list, loadSnapshots));
 }
 
 // --- updates --------------------------------------------------------------------
@@ -1764,7 +1899,7 @@ async function loadAccount() {
 
 // --- settings: time, network, spindown, schedules ---------------------------------
 
-const SCHEDULE_JOBS = ["mover", "snapraid-sync", "snapraid-scrub"];
+const SCHEDULE_JOBS = ["mover", "snapraid-sync", "snapraid-scrub", "backup"];
 const FREQUENCIES = ["off", "hourly", "daily", "weekly", "monthly"];
 const WEEKDAYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
 let netTimer = null;
@@ -2310,6 +2445,7 @@ async function start() {
   bindImport();
   bindFolderPicker();
   bindNotifyUps();
+  bindBackup();
   try {
     const state = await api("GET", "state");
     if (state.setup_required) show("setup");

@@ -1,0 +1,14 @@
+[Unit]
+Description=Dahlia backup of app data and configuration
+Documentation=https://github.com/Fabiy99/dahlia-linux
+After=dahlia-storage.target network-online.target docker.service
+Wants=network-online.target
+
+# Started by dahlia-backup.timer or job.start backup. Settings in
+# /etc/dahlia/backup.json, see dahlia_agent/backup.py.
+[Service]
+Type=oneshot
+ExecStart=/usr/sbin/dahlia-backup run
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7

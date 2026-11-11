@@ -412,6 +412,12 @@ form.inline-form { max-width: none; grid-template-columns: repeat(auto-fit, minm
   table.shares .row-ops { justify-content: flex-start; margin-top: .3rem; }
 }
 
+/* backup */
+code.pubkey { display: block; font-size: .78rem; overflow-wrap: anywhere; background: var(--card-2);
+              border: 1px solid var(--line); border-radius: 6px; padding: .5rem; user-select: all; }
+#backup-snapshots .ops { display: flex; gap: .4rem; flex-wrap: wrap; }
+#backup-snapshots select { min-width: 0; max-width: 14rem; }
+
 /* terminal */
 .terminal-card { display: grid; gap: .6rem; }
 #terminal { height: min(70vh, 40rem); min-height: 16rem; background: #14121a; border-radius: 8px;

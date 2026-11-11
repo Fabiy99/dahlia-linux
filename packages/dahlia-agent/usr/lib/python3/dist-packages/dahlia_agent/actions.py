@@ -96,9 +96,10 @@ JOBS = {
     "snapraid-sync": "dahlia-snapraid-sync.service",
     "snapraid-scrub": "dahlia-snapraid-scrub.service",
     "update": "dahlia-update.service",
+    "backup": "dahlia-backup.service",
 }
 # Jobs job.start may start. Updates go through updates.apply.
-STARTABLE_JOBS = ("mover", "snapraid-sync", "snapraid-scrub")
+STARTABLE_JOBS = ("mover", "snapraid-sync", "snapraid-scrub", "backup")
 
 
 @dataclass(frozen=True)
@@ -962,6 +963,7 @@ def agent_actions(ctx: Context):
 
 # Actions in their own modules; importing them registers them.
 from . import (  # noqa: E402, F401
+    backup,
     containers,
     diagnostics,
     hardware,
