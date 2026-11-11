@@ -307,6 +307,24 @@ rechnet das Frontend aus zwei Messungen.
 Passwort vergessen: `sudo rm /var/lib/dahlia-dashboard/users.json` und
 `sudo systemctl restart dahlia-dashboard` öffnen den Einrichtungsassistenten mit neuem Code.
 
+### Terminal (ab Meilenstein 12)
+
+Die Seite Terminal im Dashboard ist eine Shell im Browser (xterm.js, MIT, unter
+`www/vendor/xterm`, Canvas-Renderer wegen der CSP). Ablauf:
+
+1. Browser → `wss://<server>/api/terminal` (nginx mit Upgrade-Headern). Das Backend prüft
+   die Dashboard-Sitzung und dass `Origin` der eigene Server ist.
+2. Backend → Unix-Socket `/run/dahlia-terminal/terminal.sock` (Gruppe `dahlia-ui`, 0660).
+3. `dahlia-terminal.service` läuft als `dahlia-term` ohne Rechte und startet je Sitzung
+   `su -l <Benutzer>` in einem Pseudo-Terminal. `su` fragt das Linux-Passwort; Root-Rechte
+   gibt es danach mit `sudo` wie bei SSH. Erlaubt sind nur Konten ab UID 1000 mit
+   Login-Shell, voreingestellt `dahlia-admin`.
+
+Höchstens 4 Sitzungen, Trennung nach 15 Minuten ohne Eingabe. Beginn und Ende jeder
+Sitzung (Linux-Konto, Dashboard-Konto, IP) stehen im Journal von `dahlia-terminal`.
+Ein Update von `dahlia-dashboard` startet das Backend neu und trennt offene Sitzungen;
+Paket-Updates daher über die Update-Seite oder in `tmux`/`screen`.
+
 ### Apps (ab Meilenstein 6)
 
 Apps sind Docker-Container aus App-Vorlagen. Der Katalog liegt im Repo

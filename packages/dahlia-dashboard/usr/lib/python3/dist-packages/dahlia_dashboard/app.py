@@ -8,13 +8,17 @@ translates the key via locales/*.json; detail is the untranslated message
 from the agent or the system, shown as additional information.
 """
 
+import asyncio
+import contextlib
+import json
 import threading
+import urllib.parse
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Annotated
 
-from fastapi import Depends, FastAPI, Request, Response
+from fastapi import Depends, FastAPI, Request, Response, WebSocket, WebSocketDisconnect
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -58,6 +62,7 @@ class Config:
     state_dir: Path = Path("/var/lib/dahlia-dashboard")
     run_dir: Path = Path("/run/dahlia-dashboard")
     agent_socket: str = "/run/dahlia/agent.sock"
+    terminal_socket: str = "/run/dahlia-terminal/terminal.sock"
     secure_cookie: bool = True
     agent_call: AgentCall | None = None
     sessions: SessionStore = field(default_factory=SessionStore)
@@ -558,6 +563,65 @@ def create_app(cfg: Config | None = None) -> FastAPI:
     @app.post("/api/domains", dependencies=changing)
     def domains_set(body: DomainsBody):
         return agent("domains.set", {"domain": body.domain, "mdns_aliases": body.mdns_aliases})
+
+    # --- terminal -------------------------------------------------------------
+
+    @app.websocket("/api/terminal")
+    async def terminal(ws: WebSocket):
+        """Relay between xterm.js and dahlia-terminal (see terminal.py)."""
+        from .terminal import frame
+
+        session = sessions.get(ws.cookies.get(COOKIE))
+        # A WebSocket is not covered by CORS: only pages of this server may open one.
+        # nginx passes $host, which has no port; compare host names only.
+        origin = urllib.parse.urlsplit(ws.headers.get("origin", "")).hostname
+        host = urllib.parse.urlsplit("//" + ws.headers.get("host", "")).hostname
+        if session is None or not origin or origin != host:
+            await ws.close(code=4401)
+            return
+        await ws.accept()
+        q = ws.query_params
+        hello = {
+            "user": q.get("user", "dahlia-admin"),
+            "cols": int(q["cols"]) if q.get("cols", "").isdigit() else 80,
+            "rows": int(q["rows"]) if q.get("rows", "").isdigit() else 24,
+            "by": session.username,
+            "ip": ws.headers.get("x-forwarded-for") or (ws.client.host if ws.client else ""),
+        }
+        try:
+            reader, writer = await asyncio.open_unix_connection(cfg.terminal_socket)
+        except OSError:
+            await ws.send_text(json.dumps({"error": "terminal.unavailable"}))
+            await ws.close()
+            return
+        writer.write(json.dumps(hello).encode() + b"\n")
+
+        async def to_browser():
+            while data := await reader.read(65536):
+                await ws.send_bytes(data)
+
+        async def to_terminal():
+            while True:
+                msg = await ws.receive()
+                if msg["type"] == "websocket.disconnect":
+                    return
+                if msg.get("bytes"):
+                    writer.write(frame(b"d", msg["bytes"]))
+                elif msg.get("text"):
+                    writer.write(frame(b"r", msg["text"].encode()[:256]))
+                await writer.drain()
+
+        tasks = [asyncio.create_task(to_browser()), asyncio.create_task(to_terminal())]
+        try:
+            with contextlib.suppress(WebSocketDisconnect):
+                await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+        finally:
+            for task in tasks:
+                task.cancel()
+            writer.close()
+            if ws.client_state.name == "CONNECTED":
+                with contextlib.suppress(RuntimeError):
+                    await ws.close()
 
     @app.exception_handler(HTTPException)
     def http_error(_request: Request, exc: HTTPException):
