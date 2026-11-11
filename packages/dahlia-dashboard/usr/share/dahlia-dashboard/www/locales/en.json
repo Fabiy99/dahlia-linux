@@ -534,5 +534,8 @@
   "folder.missing": "This folder does not exist yet; it is created on install.",
   "install.location": "Location",
   "location.system": "System SSD",
-  "location.array": "Array (data disks)"
+  "location.array": "Array (data disks)",
+  "apps.gpu_used": "Uses the GPU (/dev/dri) for video and AI.",
+  "apps.gpu_none": "Can use a GPU; none found, runs on the CPU.",
+  "overview.gpu": "Graphics"
 }

@@ -567,6 +567,9 @@ async function loadOverview() {
     const board = [hw.board.board_vendor, hw.board.board_name].filter(Boolean).join(" ")
       || [hw.board.sys_vendor, hw.board.product_name].filter(Boolean).join(" ");
     if (board) fact(dl, "overview.board", board);
+    const gpu = (hw.gpus || []).filter((g) => g.render)
+      .map((g) => [g.vendor, g.driver && `(${g.driver})`].filter(Boolean).join(" ")).join(", ");
+    if (gpu) fact(dl, "overview.gpu", gpu);
   }).catch(tileError("overview-disks"));
 }
 
@@ -843,6 +846,7 @@ async function loadStorage() {
 // --- apps -----------------------------------------------------------------------
 
 let catalogApps = [];
+let gpuAvailable = false;
 
 // Install and update run in the background on the server; poll until done.
 async function waitForAppJob(id) {
@@ -900,6 +904,7 @@ function renderInstalled(installed) {
     const card = el("article", "app-card");
     const head = cardHead(app, `${tv("category", app.category)} · ${app.version}`);
     head.append(badge(tv("app_status", app.status), STATUS_KIND[app.status] ?? ""));
+    if (app.gpu && gpuAvailable) head.append(badge("GPU", "info"));
     card.append(head);
 
     const notes = app.notes && (app.notes[lang] || app.notes.en);
@@ -1169,6 +1174,7 @@ function renderCatalog() {
     card.append(el("div", "desc", app.description[lang] || app.description.en || ""));
     const extra = helpers(app);
     if (extra) card.append(el("div", "hint", t("apps.with_services", { services: extra })));
+    if (app.gpu) card.append(el("div", "hint", t(gpuAvailable ? "apps.gpu_used" : "apps.gpu_none")));
     const ops = el("div", "ops");
     if (app.website) ops.append(link(app.website, t("apps.website")));
     if (app.installed) {
@@ -1208,6 +1214,7 @@ function fillCategories() {
 
 async function loadApps() {
   const data = await api("GET", "apps");
+  gpuAvailable = data.gpu_available;
   renderInstalled(data.installed);
   catalogApps = data.catalog;
   fillCategories();

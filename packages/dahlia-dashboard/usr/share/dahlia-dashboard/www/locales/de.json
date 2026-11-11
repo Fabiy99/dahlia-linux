@@ -534,5 +534,8 @@
   "folder.missing": "Den Ordner gibt es noch nicht; er wird bei der Installation angelegt.",
   "install.location": "Speicherort",
   "location.system": "System-SSD",
-  "location.array": "Array (Datenplatten)"
+  "location.array": "Array (Datenplatten)",
+  "apps.gpu_used": "Nutzt die Grafikkarte (/dev/dri) für Video und KI.",
+  "apps.gpu_none": "Kann eine Grafikkarte nutzen; keine gefunden, läuft auf der CPU.",
+  "overview.gpu": "Grafik"
 }

@@ -119,15 +119,37 @@ def board_info(sys_root: Path) -> dict:
     return out
 
 
+GPU_VENDORS = {"0x8086": "Intel", "0x1002": "AMD", "0x10de": "NVIDIA"}
+
+
+def gpus(sys_root: Path) -> list[dict]:
+    """Graphics devices with a DRM driver; render = usable by apps (/dev/dri/renderD*)."""
+    out = []
+    for card in sorted((sys_root / "class/drm").glob("card[0-9]*")):
+        if "-" in card.name:  # connectors such as card0-HDMI-A-1
+            continue
+        dev = card / "device"
+        try:
+            vendor = (dev / "vendor").read_text().strip()
+        except OSError:
+            vendor = ""
+        driver = (dev / "driver").resolve().name if (dev / "driver").exists() else None
+        render = sorted(p.name for p in (dev / "drm").glob("renderD*"))
+        out.append({"card": card.name, "vendor": GPU_VENDORS.get(vendor, vendor or None),
+                    "driver": driver, "render": render[0] if render else None})
+    return out
+
+
 @action("system.hardware", mutating=False)
 def system_hardware(ctx: Context):
-    """Board, CPU temperature and SMART state of every disk."""
+    """Board, CPU temperature, graphics devices and SMART state of every disk."""
     disks = []
     for d in list_disks(ctx):
         disks.append({**d, **read_smart(ctx, d["path"])})
     return {
         "board": board_info(ctx.sys),
         "cpu_temperature": cpu_temperature(ctx.sys),
+        "gpus": gpus(ctx.sys),
         "disks": disks,
     }
 
