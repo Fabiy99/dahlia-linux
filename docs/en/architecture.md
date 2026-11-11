@@ -313,8 +313,15 @@ service `app` plus helpers such as a database or Redis. They are installed, upda
 removed together. Per service there is only: an image with a fixed version, LAN ports,
 volumes under `appdata` or a share, environment variables, `command`, `user` and
 `depends_on`. On top come category, description, notes, website and a login shown in the
-dashboard. Everything else is rejected, including `privileged`, host networking, devices
-and capabilities. `schema: 1` (one container) is still read.
+dashboard. Everything else is rejected, including `privileged`, host networking, arbitrary
+devices and capabilities. `schema: 1` (one container) is still read.
+
+GPU (from milestone 11): `schema: 3` also allows `gpu: true` on a service. If the server has
+a render node (`/dev/dri/renderD*`, Intel or AMD), the container gets `/dev/dri` and the
+groups `render` and `video`, e.g. for VA-API/Quick Sync in Jellyfin or Immich. Without a GPU
+the app runs on the CPU. NVIDIA needs NVIDIA's container toolkit and is not supported. Older
+Dahlia versions skip `schema: 3` templates. `system.hardware` reports the graphics devices
+(`gpus`).
 
 Placeholders in environment, `command` and login: `{TZ}`, `{PUID}`, `{PGID}`,
 `{HOSTNAME}`, `{DOMAIN}` and `{SECRET_<NAME>}`. Secrets are random values (32 hex

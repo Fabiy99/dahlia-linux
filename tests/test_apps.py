@@ -111,7 +111,7 @@ def test_parse_ok():
 @pytest.mark.parametrize(
     ("changes", "message"),
     [
-        ({"schema": 3}, "schema"),
+        ({"schema": 4}, "schema"),
         ({"id": "Bad_ID"}, "id"),
         ({"image": "traefik/whoami"}, "image"),
         ({"image": "traefik/whoami:latest"}, "latest"),
@@ -691,7 +691,7 @@ def test_refresh_from_bundle_skips_newer_schema(env, tmp_path):
     src = tmp_path / "src"
     src.mkdir()
     bundle = {"format": 1, "apps": {"notes": STACK, "whoami": WHOAMI,
-                                    "future": "schema: 3\nid: future\n"}}
+                                    "future": "schema: 4\nid: future\n"}}
     (src / "catalog.json").write_text(json.dumps(bundle))
     env.paths.config.write_text(json.dumps({"catalog": f"file://{src}/"}))
     listed = env.catalog(refresh=True)
@@ -730,3 +730,47 @@ def test_cli_quiet_refresh(env, tmp_path, monkeypatch, capsys):
     out = capsys.readouterr().out
     assert out.strip() == ("dahlia-apps: catalog has 1 apps, 1 updates available: "
                            "whoami v1.11.0 -> v1.12.0")
+
+
+# --- GPU ----------------------------------------------------------------------
+
+
+def gpu_stack(schema=3):
+    return STACK.replace("schema: 2", f"schema: {schema}").replace(
+        "    image: example/notes:2.1.0\n", "    image: example/notes:2.1.0\n    gpu: true\n")
+
+
+def test_gpu_needs_schema_3():
+    with pytest.raises(AppError, match="gpu needs schema 3"):
+        apps.parse_template(gpu_stack(2))
+    t = apps.parse_template(gpu_stack())
+    assert t.schema == 3 and t.gpu and t.services["app"].gpu
+    assert not any(s.gpu for n, s in t.services.items() if n != "app")
+    assert t.summary()["gpu"] is True
+
+
+def test_gpu_must_be_bool():
+    with pytest.raises(AppError, match="gpu must be true or false"):
+        apps.parse_template(gpu_stack().replace("gpu: true", "gpu: /dev/mem"))
+
+
+def test_compose_gpu(env):
+    t = apps.parse_template(gpu_stack())
+    sec = {"SECRET_DB": "d" * 32, "SECRET_ADMIN": "a" * 32, "SECRET_CACHE": "c" * 32}
+    with_gpu = Host("Europe/Berlin", 1001, 1002, dri=True, gpu_gids=(993, 44))
+    svc = apps.compose(t, 41005, env.paths, with_gpu, sec)["services"]
+    assert svc["app"]["devices"] == ["/dev/dri:/dev/dri"]
+    assert svc["app"]["group_add"] == ["993", "44"]
+    assert all("devices" not in v for k, v in svc.items() if k != "app")
+    # No GPU in the server: the app runs on the CPU.
+    svc = apps.compose(t, 41005, env.paths, Host("Europe/Berlin", 1001, 1002), sec)["services"]
+    assert "devices" not in svc["app"] and "group_add" not in svc["app"]
+
+
+def test_has_gpu(tmp_path):
+    assert not apps.has_gpu(tmp_path / "dri")
+    (tmp_path / "dri").mkdir()
+    (tmp_path / "dri/card0").touch()
+    assert not apps.has_gpu(tmp_path / "dri")
+    (tmp_path / "dri/renderD128").touch()
+    assert apps.has_gpu(tmp_path / "dri")
