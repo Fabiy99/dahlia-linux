@@ -276,6 +276,66 @@ def test_session_expiry():
     assert alive is None
 
 
+def test_sessions_survive_restart(tmp_path):
+    path = tmp_path / "sessions.json"
+    now = [1000.0]
+    store = auth.SessionStore(max_age=100, idle=10, clock=lambda: now[0], path=path)
+    token = store.create("a")
+    other = store.create("b")
+    assert path.stat().st_mode & 0o777 == 0o600
+    # Only hashes on disk.
+    assert token not in path.read_text() and other not in path.read_text()
+    store.drop(other)
+    now[0] = 1005
+    again = auth.SessionStore(max_age=100, idle=10, clock=lambda: now[0], path=path)
+    assert again.get(token).username == "a"
+    assert again.get(other) is None
+    now[0] = 1100
+    assert auth.SessionStore(max_age=100, idle=10, clock=lambda: now[0], path=path).get(
+        token) is None
+
+
+def test_sessions_last_seen_saved_now_and_then(tmp_path):
+    path = tmp_path / "sessions.json"
+    now = [0.0]
+    store = auth.SessionStore(max_age=1000, idle=100, clock=lambda: now[0], path=path)
+    token = store.create("a")
+    for t in range(10, 200, 10):
+        now[0] = t
+        assert store.get(token)
+    # The last write is at most SAVE_EVERY seconds old, so a restart keeps the session.
+    again = auth.SessionStore(max_age=1000, idle=100, clock=lambda: now[0], path=path)
+    assert again.get(token)
+
+
+def test_sessions_damaged_file(tmp_path):
+    path = tmp_path / "sessions.json"
+    path.write_text("{not json")
+    store = auth.SessionStore(path=path)
+    assert store.sessions == {}
+    token = store.create("a")
+    assert auth.SessionStore(path=path).get(token)
+
+
+def test_password_change_drops_saved_sessions(tmp_path):
+    path = tmp_path / "sessions.json"
+    store = auth.SessionStore(path=path)
+    keep = store.create("a")
+    gone = store.create("a")
+    store.drop_user("a", keep=keep)
+    again = auth.SessionStore(path=path)
+    assert again.get(keep) and again.get(gone) is None
+
+
+def test_login_survives_dashboard_restart(env):
+    client, agent, cfg = logged_in(env)
+    cookie = client.cookies.get("dahlia_session")
+    restarted = TestClient(create_app(cfg))
+    restarted.cookies.set("dahlia_session", cookie)
+    assert restarted.get("/api/apps").status_code == 200
+    assert (cfg.state_dir / "sessions.json").exists()
+
+
 def test_setup_code_format(tmp_path):
     code = setupcode.prepare(tmp_path)
     assert re.fullmatch(r"[2-9A-HJKMNP-Z]{5}-[2-9A-HJKMNP-Z]{5}", code)

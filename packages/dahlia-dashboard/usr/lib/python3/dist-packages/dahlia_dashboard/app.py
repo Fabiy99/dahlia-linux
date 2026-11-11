@@ -68,7 +68,8 @@ class Config:
     terminal_socket: str = "/run/dahlia-terminal/terminal.sock"
     secure_cookie: bool = True
     agent_call: AgentCall | None = None
-    sessions: SessionStore = field(default_factory=SessionStore)
+    # None: sessions.json in state_dir.
+    sessions: SessionStore | None = None
     login_limiter: RateLimiter = field(default_factory=RateLimiter)
 
 
@@ -237,7 +238,7 @@ class ScheduleBody(BaseModel):
 def create_app(cfg: Config | None = None) -> FastAPI:
     cfg = cfg or Config()
     users = UserStore(cfg.state_dir / "users.json")
-    sessions = cfg.sessions
+    sessions = cfg.sessions or SessionStore(path=cfg.state_dir / "sessions.json")
     limiter = cfg.login_limiter
     agent_call = cfg.agent_call or default_agent_call(cfg.agent_socket)
     setup_lock = threading.Lock()
