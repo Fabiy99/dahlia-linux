@@ -425,6 +425,21 @@ def test_apps_endpoints(env):
     assert client.post("/api/apps/whoami/exec", headers=CSRF).status_code == 404
 
 
+def test_custom_container_endpoints(env):
+    client, agent, _ = logged_in(env)
+    agent.calls.clear()
+    spec = {"name": "Uptime Kuma", "image": "louislam/uptime-kuma:1.23.16"}
+    client.post("/api/apps/kuma/install", json={"spec": spec, "location": "/srv"}, headers=CSRF)
+    client.post("/api/apps/kuma/update", json={"spec": spec}, headers=CSRF)
+    client.post("/api/apps/kuma/update", headers=CSRF)
+    assert agent.calls == [
+        ("apps.custom_install", {"id": "kuma", "spec": spec, "location": "/srv"}),
+        ("apps.custom_update", {"id": "kuma", "spec": spec}),
+        ("apps.update", {"id": "kuma"}),
+    ]
+    assert client.post("/api/apps/kuma/install", json={"spec": spec}).status_code == 403
+
+
 def test_domains_endpoints(env):
     client, agent, _ = logged_in(env)
     agent.calls.clear()

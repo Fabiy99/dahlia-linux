@@ -113,6 +113,8 @@ class AppOpBody(BaseModel):
     delete_data: bool = False
     folders: dict[str, str] = {}
     location: str = ""
+    # Custom container form; dahlia-apps checks its fields.
+    spec: dict | None = None
 
 
 class MkdirBody(BaseModel):
@@ -552,6 +554,11 @@ def create_app(cfg: Config | None = None) -> FastAPI:
         params = {"id": app_id}
         if op == "remove" and body is not None:
             params["delete_data"] = body.delete_data
+        if op in ("install", "update") and body is not None and body.spec is not None:
+            params["spec"] = body.spec
+            if op == "install" and body.location:
+                params["location"] = body.location
+            return agent(f"apps.custom_{op}", params)
         if op == "install" and body is not None:
             if body.folders:
                 params["folders"] = body.folders
