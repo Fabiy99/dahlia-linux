@@ -412,6 +412,11 @@ form.inline-form { max-width: none; grid-template-columns: repeat(auto-fit, minm
   table.shares .row-ops { justify-content: flex-start; margin-top: .3rem; }
 }
 
+/* terminal */
+.terminal-card { display: grid; gap: .6rem; }
+#terminal { height: min(70vh, 40rem); min-height: 16rem; background: #14121a; border-radius: 8px;
+            padding: .5rem; overflow: hidden; }
+
 /* update progress */
 #update-progress { gap: .45rem; margin: 1rem 0; justify-items: stretch; border-color: var(--info); }
 #update-progress.ok { border-color: var(--ok); }

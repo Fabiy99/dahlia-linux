@@ -336,6 +336,24 @@ computes the CPU usage from two samples.
 Forgotten password: `sudo rm /var/lib/dahlia-dashboard/users.json` and
 `sudo systemctl restart dahlia-dashboard` open the setup wizard with a new code.
 
+### Terminal (from milestone 12)
+
+The dashboard's Terminal page is a shell in the browser (xterm.js, MIT, in
+`www/vendor/xterm`, canvas renderer because of the CSP). Flow:
+
+1. Browser → `wss://<server>/api/terminal` (nginx with upgrade headers). The backend checks
+   the dashboard session and that `Origin` is this server.
+2. Backend → Unix socket `/run/dahlia-terminal/terminal.sock` (group `dahlia-ui`, 0660).
+3. `dahlia-terminal.service` runs as `dahlia-term` without privileges and starts
+   `su -l <user>` in a pseudo-terminal per session. `su` asks for the Linux password; root
+   is then available with `sudo` as over SSH. Only accounts with UID 1000 or higher and a
+   login shell are accepted, `dahlia-admin` by default.
+
+At most 4 sessions, disconnect after 15 minutes without input. Start and end of each
+session (Linux account, dashboard account, IP) are logged in the journal of
+`dahlia-terminal`. An update of `dahlia-dashboard` restarts the backend and ends open
+sessions; run package updates from the update page or inside `tmux`/`screen`.
+
 ### Apps (from milestone 6)
 
 Apps are Docker containers built from app templates. The catalog lives in the repository
