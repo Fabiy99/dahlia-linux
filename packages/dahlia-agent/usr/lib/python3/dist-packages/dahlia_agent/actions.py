@@ -85,6 +85,7 @@ FORMAT_FILESYSTEMS = ("xfs", "ext4", "btrfs")
 IMPORT_TARGET_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 IMPORT_UNIT = "dahlia-import"
 # Whole disks only; dahlia-disk checks that the disk is blank or imported.
+SIZE_RE = re.compile(r"^[1-9][0-9]{0,5}[MGT]$")
 DEVICE_RE = re.compile(r"^/dev/((sd|vd|xvd)[a-z]{1,2}|nvme[0-9]{1,2}n[0-9]{1,2}|loop[0-9]{1,3})$")
 STORAGE_OPTIONS = (
     "mover_min_age_minutes",
@@ -472,6 +473,23 @@ def storage_remove(ctx: Context, uuid: str, force: bool):
         args.append("--force")
     dahlia_disk(ctx, *args)
     return {"uuid": uuid}
+
+
+@action("storage.settings", mutating=False)
+def storage_settings(ctx: Context):
+    """Mover, mergerfs and SnapRAID settings from storage.json."""
+    return {"settings": json.loads(dahlia_disk(ctx, "settings"))}
+
+
+@action(
+    "storage.set_minfreespace",
+    mutating=True,
+    params={"size": Param(str, pattern=SIZE_RE)},
+)
+def storage_set_minfreespace(ctx: Context, size: str):
+    """Free space mergerfs keeps on each disk before it places new files elsewhere."""
+    dahlia_disk(ctx, "set-minfreespace", size)
+    return {"minfreespace": size}
 
 
 @action(
@@ -1089,6 +1107,7 @@ from . import (  # noqa: E402, F401
     notify,
     settings,
     smb,
+    snapshots,
     unattended,
     ups,
 )

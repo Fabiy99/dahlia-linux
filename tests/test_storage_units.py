@@ -100,3 +100,17 @@ def test_snapraid_rejects_small_parity():
 def test_snapraid_needs_parity():
     st = state.State(disks=[state.Disk("u1", "data", 1, "ext4", size=1)])
     assert "no parity disk" in snapraid.validate(st)
+
+
+def test_settings_command_prints_json(monkeypatch, capsys):
+    from dahlia_storage import cli
+
+    st = state.State()
+    st.settings.minfreespace = "100G"
+    st.settings.mover_min_age_minutes = 1440
+    monkeypatch.setattr(state, "load", lambda: st)
+    assert cli.main(["settings"]) == 0
+    out = json.loads(capsys.readouterr().out)
+    assert out["minfreespace"] == "100G"
+    assert out["mover_min_age_minutes"] == 1440
+    assert out["snapraid_delete_threshold"] == 50

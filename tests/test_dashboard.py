@@ -636,6 +636,44 @@ def test_auto_updates_endpoints(env):
     assert agent.calls == [("updates.auto", {}), ("updates.set_auto", body)]
 
 
+def test_snapshot_endpoints(env):
+    client, agent, _ = logged_in(env)
+    agent.calls.clear()
+    assert client.get("/api/snapshots").json() == {"action": "snapshots.list"}
+    client.post("/api/snapshots", json={"description": "manual"}, headers=CSRF)
+    client.post("/api/snapshots/5/delete", headers=CSRF)
+    client.post("/api/snapshots/4/rollback", headers=CSRF)
+    name = "@rootfs.pre-rollback-20261111-211354"
+    client.post("/api/snapshots/old-root/delete", json={"name": name}, headers=CSRF)
+    assert agent.calls == [
+        ("snapshots.list", {}),
+        ("snapshots.create", {"description": "manual"}),
+        ("snapshots.delete", {"number": 5}),
+        ("snapshots.rollback", {"number": 4}),
+        ("snapshots.delete_old_root", {"name": name}),
+    ]
+    assert client.post("/api/snapshots/4/rollback").status_code == 403
+    assert client.post("/api/snapshots/x/rollback", headers=CSRF).status_code == 422
+
+
+def test_storage_settings_endpoints(env):
+    client, agent, _ = logged_in(env)
+    agent.calls.clear()
+    assert client.get("/api/storage/settings").json() == {"action": "storage.settings"}
+    body = {"minfreespace": "100G", "mover_min_age_minutes": 1440,
+            "snapraid_delete_threshold": 30}
+    assert client.post("/api/storage/settings", json=body, headers=CSRF).json() == body
+    assert agent.calls == [
+        ("storage.settings", {}),
+        ("storage.set_minfreespace", {"size": "100G"}),
+        ("storage.set_option", {"name": "mover_min_age_minutes", "value": 1440}),
+        ("storage.set_option", {"name": "snapraid_delete_threshold", "value": 30}),
+    ]
+    assert client.post("/api/storage/settings", json=body).status_code == 403
+    assert client.post("/api/storage/settings", json={"minfreespace": "1G"},
+                       headers=CSRF).status_code == 422
+
+
 def test_parity_endpoints(env):
     client, agent, _ = logged_in(env)
     agent.calls.clear()

@@ -343,7 +343,7 @@ function showLogin() {
 
 const loaders = {
   overview: loadOverview,
-  storage: loadStorage,
+  storage: () => Promise.all([loadStorage(), loadStorageSettings()]),
   parity: loadParity,
   apps: loadApps,
   domains: loadDomains,
@@ -353,7 +353,7 @@ const loaders = {
   backup: loadBackup,
   terminal: loadTerminal,
   jobs: loadJobs,
-  updates: () => Promise.all([loadUpdateProgress(), loadAutoUpdates()]),
+  updates: () => Promise.all([loadUpdateProgress(), loadAutoUpdates(), loadRootSnapshots()]),
   account: loadAccount,
 };
 
@@ -837,6 +837,54 @@ function bindImport() {
       document.getElementById("import-dialog").close();
       importWasRunning = true;
       await pollImport();
+    });
+  });
+}
+
+// --- storage settings -------------------------------------------------------------
+
+const MOVER_AGES = [0, 60, 360, 720, 1440, 4320, 10080, 43200];
+
+function moverAgeLabel(m) {
+  if (m === 0) return t("storage.mover_age_none");
+  if (m % 1440 === 0) return t("storage.mover_age_days", { n: m / 1440 });
+  if (m % 60 === 0) return t("storage.mover_age_hours", { n: m / 60 });
+  return t("storage.mover_age_minutes", { n: m });
+}
+
+async function loadStorageSettings() {
+  const { settings } = await api("GET", "storage/settings");
+  const f = document.getElementById("storage-settings");
+  if (document.activeElement?.form === f) return;
+  const ages = MOVER_AGES.includes(settings.mover_min_age_minutes)
+    ? MOVER_AGES : [...MOVER_AGES, settings.mover_min_age_minutes].sort((a, b) => a - b);
+  fillOptions(f.elements.mover_min_age_minutes, ages, moverAgeLabel);
+  f.elements.mover_min_age_minutes.value = String(settings.mover_min_age_minutes);
+  // minfreespace is a number with an optional K/M/G/T suffix; show it in MB, GB or TB.
+  const m = /^(\d+)([KMGT]?)$/.exec(settings.minfreespace) || [null, "50", "G"];
+  let [value, unit] = [Number(m[1]), m[2] || "B"];
+  const bytes = value * { B: 1, K: 1024, M: 1024 ** 2, G: 1024 ** 3, T: 1024 ** 4 }[unit];
+  if (!["M", "G", "T"].includes(unit)) [value, unit] = [Math.max(1, Math.round(bytes / 1024 ** 2)), "M"];
+  fillOptions(f.elements.free_unit, ["M", "G", "T"], (u) => t(`storage.unit_${u}`));
+  f.elements.free_value.value = String(value);
+  f.elements.free_unit.value = unit;
+  f.elements.snapraid_delete_threshold.value = String(settings.snapraid_delete_threshold);
+}
+
+function bindStorageSettings() {
+  const f = document.getElementById("storage-settings");
+  f.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const btn = f.querySelector("button");
+    guarded(btn, async () => {
+      await api("POST", "storage/settings", {
+        minfreespace: `${Number(f.elements.free_value.value)}${f.elements.free_unit.value}`,
+        mover_min_age_minutes: Number(f.elements.mover_min_age_minutes.value),
+        snapraid_delete_threshold: Number(f.elements.snapraid_delete_threshold.value),
+      });
+      say(t("storage.settings_saved"), "ok");
+      btn.blur();
+      await loadStorageSettings();
     });
   });
 }
@@ -1898,6 +1946,95 @@ async function loadAutoUpdates() {
   if (last.errors.length) fact(dl, "auto.errors", last.errors.join(" "));
 }
 
+// --- snapshots of the system (snapper) ------------------------------------------
+
+function snapDate(s) {
+  return s.date ? new Date(s.date.replace(" ", "T")).toLocaleString(lang) : "";
+}
+
+async function loadRootSnapshots() {
+  const d = await api("GET", "snapshots");
+  const card = document.getElementById("snap-card");
+  card.hidden = !d.available;
+  if (!d.available) return;
+  const notice = document.getElementById("snap-notice");
+  notice.replaceChildren();
+  if (d.job && ["active", "activating"].includes(d.job.active)) {
+    notice.append(el("p", "", t("snap.running")));
+  } else if (d.rollback) {
+    notice.append(el("p", "", t("snap.rolled_back", {
+      n: d.rollback.snapshot, time: new Date(d.rollback.time).toLocaleString(lang) })));
+  }
+  notice.hidden = !notice.childElementCount;
+
+  const byNumber = new Map(d.snapshots.map((s) => [s.number, s]));
+  const tbody = document.getElementById("snap-list");
+  tbody.replaceChildren();
+  for (const s of [...d.snapshots].reverse()) {
+    const tr = el("tr");
+    cell(tr, String(s.number));
+    cell(tr, snapDate(s));
+    const desc = el("span");
+    desc.append(document.createTextNode(s.description || ""));
+    if (s.type === "pre") desc.append(" ", badge(t("snap.type_pre"), "info"));
+    if (s.type === "post") desc.append(" ", badge(t("snap.type_post", { n: s.pre_number }), ""));
+    if (s.userdata && s.userdata.important === "yes") desc.append(" ", badge(t("snap.important"), "accent"));
+    cell(tr, desc);
+    const ops = el("div", "ops");
+    ops.append(
+      iconButton("reboot", "snap.rollback", async () => {
+        const pre = s.type === "post" ? byNumber.get(s.pre_number) : null;
+        const text = t("snap.rollback_confirm", { n: s.number, date: snapDate(s) })
+          + (pre ? `\n\n${t("snap.rollback_post_hint", { pre: pre.number })}` : "");
+        if (!await ask(text, "snap.rollback_now", true)) return;
+        await api("POST", `snapshots/${s.number}/rollback`);
+        say(t("snap.rollback_started"), "ok");
+        await loadRootSnapshots();
+      }),
+      iconButton("trash", "snap.delete", async () => {
+        if (!await ask(t("snap.delete_confirm", { n: s.number }), "snap.delete", true)) return;
+        await api("POST", `snapshots/${s.number}/delete`);
+        await loadRootSnapshots();
+      }),
+    );
+    cell(tr, ops);
+    tbody.append(tr);
+  }
+  if (!d.snapshots.length) {
+    const tr = el("tr");
+    cell(tr, t("snap.none")).colSpan = 4;
+    tbody.append(tr);
+  }
+
+  const old = document.getElementById("snap-old");
+  const oldList = document.getElementById("snap-old-list");
+  oldList.replaceChildren();
+  for (const name of d.old_roots) {
+    const tr = el("tr");
+    cell(tr, el("code", "", name));
+    cell(tr, iconButton("trash", "snap.delete", async () => {
+      if (!await ask(t("snap.old_delete_confirm", { name }), "snap.delete", true)) return;
+      await api("POST", "snapshots/old-root/delete", { name });
+      await loadRootSnapshots();
+    }));
+    oldList.append(tr);
+  }
+  old.hidden = !d.old_roots.length;
+}
+
+function bindRootSnapshots() {
+  const f = document.getElementById("snap-form");
+  f.addEventListener("submit", (e) => {
+    e.preventDefault();
+    guarded(f.querySelector("button"), async () => {
+      const { number } = await api("POST", "snapshots", { description: f.elements.description.value.trim() });
+      f.reset();
+      say(t("snap.created", { n: number }), "ok");
+      await loadRootSnapshots();
+    });
+  });
+}
+
 function bindAutoUpdates() {
   const f = document.getElementById("auto-form");
   const sync = () => {
@@ -2884,6 +3021,7 @@ function bindButtons() {
     }));
   }
   document.getElementById("storage-refresh").addEventListener("click", (e) => guarded(e.currentTarget, loadStorage));
+  bindStorageSettings();
   document.getElementById("apps-search").addEventListener("input", renderCatalog);
   const custom = document.getElementById("apps-custom");
   custom.addEventListener("click", () => customInstall(custom));
@@ -2960,6 +3098,7 @@ async function start() {
   bindFolderPicker();
   bindNotifyUps();
   bindAutoUpdates();
+  bindRootSnapshots();
   bindParity();
   bindBackup();
   try {

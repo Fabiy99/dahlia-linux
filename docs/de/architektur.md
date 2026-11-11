@@ -49,6 +49,17 @@ Root-Dateisystem: Btrfs, der Installer legt das Subvolume `@rootfs` an. `snapper
 und nach jedem apt-Lauf einen Snapshot an, `grub-btrfs` macht die Snapshots im Bootmenü
 startbar.
 
+Rollback (ab Meilenstein 18): Das Dashboard listet die Snapshots unter Updates, legt neue an,
+löscht sie und setzt das System auf einen zurück. `snapper rollback` wirkt bei Debians
+Layout nicht, weil fstab und GRUB `@rootfs` beim Namen einhängen. Deshalb macht
+`/usr/lib/dahlia/rollback.sh N` (als `dahlia-rollback.service`) es wie `snapper-rollback`:
+beschreibbarer Snapshot von `.snapshots/N/snapshot` neben der Wurzel, die laufende Wurzel
+wird zu `@rootfs.pre-rollback-<Zeit>`, der neue Snapshot heißt `@rootfs`, `.snapshots` zieht
+mit um, dann Neustart. Aus dem laufenden System übernommen (Reflink-Kopie) werden `/home`,
+`/root`, `/var/log`, `/etc/dahlia`, `/var/lib/dahlia`, `/var/lib/dahlia-dashboard` und
+`/var/lib/docker`; `/srv` (`@srv`) und das Array gehören ohnehin nicht dazu. Der alte Stand
+bleibt, bis man ihn im Dashboard löscht (`rollback.sh --delete-old NAME`).
+
 Beim ersten Start zeigt das Dashboard nur den Einrichtungsassistenten. Er ist mit einem
 Einmal-Code geschützt, der auf tty1 und in `/etc/motd` steht (ab Meilenstein 5).
 
@@ -131,7 +142,12 @@ dahlia-snapraid fix --disk N                   # Dateien von /mnt/diskN aus der 
 dahlia-snapraid fix --bad                      # vom Scrub gefundene defekte Blöcke reparieren
 dahlia-snapraid status [--json]                # Abdeckung, Scrub-Stand, Fehler, letzte Läufe
 dahlia-disk set-option snapraid_delete_threshold 50
+dahlia-disk set-option mover_min_age_minutes 1440
+dahlia-disk set-minfreespace 100G               # freier Platz pro Platte für mergerfs
+dahlia-disk settings                           # alle Einstellungen als JSON
 ```
+
+Dieselben Werte setzt das Dashboard unter Platten > Einstellungen (ab Meilenstein 17).
 
 Der Mover lässt offene, kürzlich geänderte und schon auf den Datenplatten vorhandene
 Dateien sowie Hardlinks auf dem Cache. Er kopiert erst, prüft, benennt um und löscht dann.
@@ -201,7 +217,7 @@ Debians `nftables.service` bleibt aus; sein `/etc/nftables.conf` beginnt mit
 Der Agent hört auf `/run/dahlia/agent.sock` (root:dahlia-agent, 0660) und wird von
 `dahlia-agent.socket` beim ersten Aufruf gestartet. Zusätzlich zu den Dateirechten prüft er
 die Gegenstelle per `SO_PEERCRED`: erlaubt sind root und Mitglieder der Gruppe
-`dahlia-agent`. Später ist das der Dashboard-Benutzer `dahlia-ui`.
+`dahlia-agent`, dazu gehört der Dashboard-Benutzer `dahlia-ui`.
 
 Protokoll: eine Anfrage pro Verbindung, je eine JSON-Zeile hin und zurück.
 
@@ -241,6 +257,8 @@ Protokoll: eine Anfrage pro Verbindung, je eine JSON-Zeile hin und zurück.
 | `storage.add` | `uuid`, `role` (data, parity, cache, external) | `dahlia-disk add` |
 | `storage.remove` | `uuid`, `force` (optional) | `dahlia-disk remove` |
 | `storage.set_option` | `name`, `value` (Zahl) | `dahlia-disk set-option` |
+| `storage.settings` | – | `dahlia-disk settings` |
+| `storage.set_minfreespace` | `size` (z. B. `100G`, M/G/T) | `dahlia-disk set-minfreespace` |
 | `storage.format` | `device` (ganze Platte), `filesystem` (`xfs`, `ext4`, `btrfs`), `confirm` (Plattenname wiederholt) | `dahlia-disk format`, nur leere oder übernommene Platten |
 | `storage.import` / `storage.import_status` | `uuid`, `target` (Name unter `/mnt/user`) | `dahlia-disk import` als Unit `dahlia-import`, Fortschritt in `/run/dahlia/import.json` |
 | `job.start` | `job` (mover, snapraid-sync, snapraid-scrub, backup) | startet die Unit, kehrt sofort zurück |
@@ -251,6 +269,11 @@ Protokoll: eine Anfrage pro Verbindung, je eine JSON-Zeile hin und zurück.
 | `updates.check` | - | `apt-get update`, Liste der Upgrades |
 | `updates.apply` | - | `apt-get full-upgrade` über die Unit `dahlia-update.service`; die geplanten Pakete (Simulation) in `/run/dahlia/update.json` |
 | `updates.auto` | - | Schalter und Neustart-Einstellungen, letzter Lauf von unattended-upgrades, ausstehender Neustart |
+| `snapshots.list` | – | `snapper --jsonout list`, `btrfs subvolume list /`, `/var/lib/dahlia/rollback.json` |
+| `snapshots.create` | `description` | `snapper create --cleanup-algorithm number` |
+| `snapshots.delete` | `number` | `snapper delete` |
+| `snapshots.rollback` | `number` | `dahlia-rollback.service` → `rollback.sh N --reboot` |
+| `snapshots.delete_old_root` | `name` (`<subvol>.pre-rollback-<Zeit>`) | `rollback.sh --delete-old` |
 | `updates.set_auto` | `enabled`, `reboot`, `reboot_time` (`HH:MM`) | `20auto-upgrades`, `52dahlia-auto-reboot`, `/etc/dahlia/updates.json` |
 | `updates.progress` | - | Zustand, Prozent, je Paket wartet/geladen/eingerichtet/fertig aus der apt-Ausgabe im Journal dieses Laufs; das Dashboard zeigt es auf der Update-Seite |
 | `apps.catalog` | `refresh` (optional) | App-Katalog und sein Stand, mit `refresh` vorher herunterladen |

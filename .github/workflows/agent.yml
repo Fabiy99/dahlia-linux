@@ -8,6 +8,7 @@ on:
       - "tests/integration/agent.sh"
       - "tests/integration/apps.sh"
       - "tests/integration/system-data.sh"
+      - "tests/integration/rollback-loop.sh"
       - "tools/build-packages.sh"
       - ".github/workflows/agent.yml"
   workflow_dispatch:
@@ -54,6 +55,9 @@ jobs:
 
       - name: Integration test (app data on the system SSD)
         run: sudo tests/integration/system-data.sh
+
+      - name: Integration test (rollback on Btrfs)
+        run: sudo tests/integration/rollback-loop.sh
 
       - name: Agent journal on failure
         if: failure()
