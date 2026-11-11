@@ -83,6 +83,27 @@ def test_blank_disk_is_empty():
     assert by_path(disks.classify(LSBLK))["/dev/sdc"].status == "empty"
 
 
+def test_mounted_disk_without_readable_signature_is_not_blank():
+    # squashfs or anything blkid cannot read, mounted by someone else.
+    lsblk = {"blockdevices": [dev("vde", mounts=["/mnt/skills/public"])]}
+    found = disks.classify(lsblk)
+    assert found[0].status == "mounted"
+    with pytest.raises(ValueError):
+        disks.formattable(found, "/dev/vde")
+
+
+def test_ambivalent_signatures_are_foreign(monkeypatch):
+    class Res:
+        returncode = 8
+        stdout = ""
+    monkeypatch.setattr(disks.subprocess, "run", lambda *a, **k: Res())
+    lsblk = disks.enrich({"blockdevices": [dev("sdy")]}, disks.blkid_probe)
+    found = disks.classify(lsblk)
+    assert found[0].status == "foreign"
+    with pytest.raises(ValueError):
+        disks.formattable(found, "/dev/sdy")
+
+
 def test_raid_and_luks_are_foreign():
     found = by_path(disks.classify(LSBLK))
     assert found["/dev/sdd1"].status == "foreign"
