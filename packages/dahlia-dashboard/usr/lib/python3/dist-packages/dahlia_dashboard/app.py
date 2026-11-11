@@ -228,6 +228,14 @@ class ParitySettingsBody(BaseModel):
     scrub_older_than_days: int
 
 
+class SnapshotBody(BaseModel):
+    description: str
+
+
+class OldRootBody(BaseModel):
+    name: str
+
+
 class StorageSettingsBody(BaseModel):
     minfreespace: str
     mover_min_age_minutes: int
@@ -474,6 +482,29 @@ def create_app(cfg: Config | None = None) -> FastAPI:
     @app.post("/api/updates/auto", dependencies=changing)
     def updates_set_auto(body: AutoUpdatesBody):
         return agent("updates.set_auto", body.model_dump())
+
+    # --- snapshots ------------------------------------------------------------
+
+    @app.get("/api/snapshots", dependencies=authed)
+    def snapshots():
+        return agent("snapshots.list")
+
+    @app.post("/api/snapshots", dependencies=changing)
+    def snapshot_create(body: SnapshotBody):
+        return agent("snapshots.create", {"description": body.description})
+
+    # Before /{number}/delete, which would take "old-root" as a number.
+    @app.post("/api/snapshots/old-root/delete", dependencies=changing)
+    def snapshot_delete_old_root(body: OldRootBody):
+        return agent("snapshots.delete_old_root", {"name": body.name})
+
+    @app.post("/api/snapshots/{number}/delete", dependencies=changing)
+    def snapshot_delete(number: int):
+        return agent("snapshots.delete", {"number": number})
+
+    @app.post("/api/snapshots/{number}/rollback", dependencies=changing)
+    def snapshot_rollback(number: int):
+        return agent("snapshots.rollback", {"number": number})
 
     # --- apps -----------------------------------------------------------------
 
