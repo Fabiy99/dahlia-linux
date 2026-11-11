@@ -179,6 +179,8 @@ class ShareBody(BaseModel):
     security: str
     users: dict[str, str] = {}
     time_machine: bool = False
+    time_machine_size: int = 0
+    nfs: bool = False
 
 
 class SmbUserBody(BaseModel):

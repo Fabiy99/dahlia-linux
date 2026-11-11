@@ -547,7 +547,8 @@ def test_shares_endpoints(env):
     assert agent.calls == [
         ("shares.list", {}),
         ("shares.set", {"name": "media", "comment": "", "security": "private",
-                        "users": {"anna": "rw"}, "time_machine": False}),
+                        "users": {"anna": "rw"}, "time_machine": False,
+                        "time_machine_size": 0, "nfs": False}),
         ("shares.remove", {"name": "media"}),
         ("shares.user_add", {"name": "anna", "password": "geheim123"}),
         ("shares.user_password", {"name": "anna", "password": "neu12345"}),

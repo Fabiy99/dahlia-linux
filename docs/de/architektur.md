@@ -194,7 +194,7 @@ jeder Änderung.
   die Subnetze der eigenen Interfaces (auch das IPv6-Präfix des Providers) und die
   zusätzlich eingetragenen Netze (z. B. VPN).
 - Offene Ports: 22 (SSH), 80/443 (nginx), 5353/udp (mDNS); 445, 5357 und 3702/udp nur,
-  solange Freigaben existieren; der Port-Link und die LAN-Ports jeder installierten App.
+  solange Freigaben existieren; 2049 (NFS), solange eine Freigabe über NFS geht; der Port-Link und die LAN-Ports jeder installierten App.
   Geschlossene Ports antworten dem LAN sofort mit `admin-prohibited`.
 - Weitergeleitet (`forward`): Ports, die Docker per DNAT an Container gibt, nur für lokale
   Quellen.
@@ -240,8 +240,8 @@ Protokoll: eine Anfrage pro Verbindung, je eine JSON-Zeile hin und zurück.
 | `settings.spindown` / `settings.set_spindown` | `default`, `disks` (Seriennummer → Minuten) | `/etc/dahlia/spindown.json`, `hdparm -S` |
 | `settings.firewall` / `settings.set_firewall` | `enabled`, `networks` (CIDR-Liste, höchstens 20) | `/etc/dahlia/firewall.json`, `nft -c -f` und `nft -f` mit `/run/dahlia/firewall.nft` |
 | `settings.schedules` / `settings.set_schedule` | `job`, `frequency`, `time`, `weekday`, `monthday` | Drop-in `OnCalendar=` für die Timer |
-| `shares.list` | – | Freigaben, SMB-Benutzer, ob `/mnt/user` eingehängt ist |
-| `shares.set` / `shares.remove` | `name`, `comment`, `security` (`public`/`secure`/`private`), `users` (Name → `rw`/`ro`), `time_machine` | erzeugt `/etc/samba/smb.conf`, prüft mit `testparm`, startet `smbd` |
+| `shares.list` | – | Freigaben, SMB-Benutzer, ob `/mnt/user` eingehängt ist, ob `smbd` und `nfs-server` laufen |
+| `shares.set` / `shares.remove` | `name`, `comment`, `security` (`public`/`secure`/`private`), `users` (Name → `rw`/`ro`), `time_machine`, `time_machine_size` (GB, 0 = ohne Grenze), `nfs` | erzeugt `/etc/samba/smb.conf`, prüft mit `testparm`, startet `smbd`; bei `nfs` `/etc/exports.d/dahlia.exports`, `exportfs -ra`, `nfs-server` |
 | `shares.user_add` / `shares.user_password` / `shares.user_remove` | `name`, `password` | `useradd`/`userdel` (Gruppen `dahlia`, `dahlia-smb`), `smbpasswd` über stdin |
 | `notify.get` | – | Kanäle ohne Geheimnisse, Schalter, letzte Meldungen |
 | `notify.set` | `channel` (`email`/`ntfy`/`gotify`), `settings` | `/etc/dahlia/notify.json` (0600); leeres Passwort/Token behält das alte |
@@ -340,7 +340,7 @@ wird die Seitenleiste zum Menü, Tabellen werden zu Karten. Ein Web-App-Manifest
 | Aufgaben | Mover, SnapRAID-Sync und -Scrub starten, Zustand |
 | System-Log | Journal mit Filter nach Stufe und Dienst |
 | Updates | suchen, installieren |
-| Freigaben | SMB-Freigaben auf `/mnt/user`, SMB-Benutzer |
+| Freigaben | SMB- und NFS-Freigaben auf `/mnt/user`, Time Machine, SMB-Benutzer |
 | Einstellungen | Zeit und Zeitzone, Netzwerk (DHCP/fest), Platten-Spindown, Zeitpläne für Mover und SnapRAID, Benachrichtigungen, USV, Dashboard-Passwort, Servername |
 
 Benachrichtigungen und USV (M9d):
@@ -370,6 +370,24 @@ SMB-Freigaben (M9c):
   `dahlia`. Das Passwort geht nur über stdin an `smbpasswd`.
 - Finden im Netz: `wsdd` für Windows, eine Avahi-Datei (`_smb._tcp`, bei Time Machine
   `_adisk._tcp`) für macOS. Ohne Freigabe sind `smbd` und `wsdd` aus.
+- Time Machine: `fruit:time machine` pro Freigabe, optional mit Größengrenze
+  (`fruit:time machine max size`). Mehrere Macs auf einer Freigabe teilen sich die Grenze.
+
+NFS-Freigaben (M21):
+
+- Eine öffentliche oder geschützte Freigabe kann zusätzlich über NFS gehen: öffentlich
+  lesen und schreiben, geschützt nur lesen. Private Freigaben nie, denn NFS hat ohne Kerberos
+  keine Anmeldung.
+- Nur NFSv4 (`/etc/nfs.conf.d/dahlia.conf`: `vers3=n`, `udp=n`), damit reicht 2049/tcp;
+  rpcbind und mountd bleiben hinter der Firewall.
+- `/etc/exports.d/dahlia.exports` wird aus `shares.json` erzeugt. Erlaubt sind dieselben Netze
+  wie in der Firewall: die privaten Bereiche und die zusätzlich eingetragenen Netze (eine
+  Änderung dort schreibt die Exports neu). Optionen: `all_squash`, `anonuid=65534`
+  (nobody), `anongid` = Gruppe `dahlia`, `sync`, `no_subtree_check` und eine feste `fsid`
+  aus dem Namen, weil nfsd bei mergerfs (FUSE) keine Gerätenummer hat. mergerfs läuft dafür
+  schon mit `inodecalc=path-hash` und `noforget`.
+- `nfs-server` läuft nur, solange eine Freigabe über NFS geht.
+- Einhängen unter Linux: `mount -t nfs4 dahlia.local:/mnt/user/<Name> /mnt/ziel`.
 
 Einstellungen (M9b):
 

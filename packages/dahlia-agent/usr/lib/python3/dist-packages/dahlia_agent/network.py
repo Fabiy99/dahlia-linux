@@ -311,6 +311,11 @@ def settings_set_firewall(ctx: Context, enabled: bool, networks: list):
     except FirewallError as e:
         raise AgentError(INVALID_PARAMS, str(e)) from None
     try:
-        return firewall_of(ctx).set(enabled, networks)
+        status = firewall_of(ctx).set(enabled, networks)
     except FirewallError as e:
         raise AgentError(FAILED, str(e)) from None
+    # NFS exports list the same extra networks.
+    from . import smb
+
+    smb.apply_nfs(ctx, smb.load_shares(ctx))
+    return status

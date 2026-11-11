@@ -192,7 +192,7 @@ after every change.
   the subnets of the server's own interfaces (including the ISP's IPv6 prefix) and the
   extra networks entered by the admin (e.g. VPN).
 - Open ports: 22 (SSH), 80/443 (nginx), 5353/udp (mDNS); 445, 5357 and 3702/udp only
-  while shares exist; the port link and LAN ports of every installed app.
+  while shares exist; 2049 (NFS) while a share is exported over NFS; the port link and LAN ports of every installed app.
   Closed ports answer the LAN at once with `admin-prohibited`.
 - Forwarded (`forward`): ports Docker hands to containers via DNAT, only for local sources.
 
@@ -237,8 +237,8 @@ Protocol: one request per connection, one JSON line each way.
 | `settings.spindown` / `settings.set_spindown` | `default`, `disks` (serial → minutes) | `/etc/dahlia/spindown.json`, `hdparm -S` |
 | `settings.firewall` / `settings.set_firewall` | `enabled`, `networks` (CIDR list, at most 20) | `/etc/dahlia/firewall.json`, `nft -c -f` and `nft -f` with `/run/dahlia/firewall.nft` |
 | `settings.schedules` / `settings.set_schedule` | `job`, `frequency`, `time`, `weekday`, `monthday` | drop-in `OnCalendar=` for the timers |
-| `shares.list` | – | shares, SMB users, whether `/mnt/user` is mounted |
-| `shares.set` / `shares.remove` | `name`, `comment`, `security` (`public`/`secure`/`private`), `users` (name → `rw`/`ro`), `time_machine` | generates `/etc/samba/smb.conf`, checks it with `testparm`, starts `smbd` |
+| `shares.list` | – | shares, SMB users, whether `/mnt/user` is mounted, whether `smbd` and `nfs-server` run |
+| `shares.set` / `shares.remove` | `name`, `comment`, `security` (`public`/`secure`/`private`), `users` (name → `rw`/`ro`), `time_machine`, `time_machine_size` (GB, 0 = no limit), `nfs` | generates `/etc/samba/smb.conf`, checks it with `testparm`, starts `smbd`; with `nfs` `/etc/exports.d/dahlia.exports`, `exportfs -ra`, `nfs-server` |
 | `shares.user_add` / `shares.user_password` / `shares.user_remove` | `name`, `password` | `useradd`/`userdel` (groups `dahlia`, `dahlia-smb`), `smbpasswd` via stdin |
 | `notify.get` | – | channels without secrets, switches, recent notifications |
 | `notify.set` | `channel` (`email`/`ntfy`/`gotify`), `settings` | `/etc/dahlia/notify.json` (0600); an empty password/token keeps the old one |
@@ -336,7 +336,7 @@ and tablets.
 | Jobs | start mover, SnapRAID sync and scrub, state |
 | System log | journal filtered by level and service |
 | Updates | check, install |
-| Shares | SMB shares on `/mnt/user`, SMB users |
+| Shares | SMB and NFS shares on `/mnt/user`, Time Machine, SMB users |
 | Settings | time and time zone, network (DHCP/static), disk spindown, mover and SnapRAID schedules, notifications, UPS, dashboard password, server name |
 
 Notifications and UPS (M9d):
@@ -365,6 +365,23 @@ SMB shares (M9c):
   `dahlia`. The password only goes to `smbpasswd` via stdin.
 - Discovery: `wsdd` for Windows, an Avahi file (`_smb._tcp`, `_adisk._tcp` for Time
   Machine) for macOS. Without a share `smbd` and `wsdd` are off.
+- Time Machine: `fruit:time machine` per share, optionally with a size limit
+  (`fruit:time machine max size`). Several Macs on one share share the limit.
+
+NFS shares (M21):
+
+- A public or secure share can also be exported over NFS: public read-write, secure
+  read-only. Private shares never, since NFS has no login without Kerberos.
+- NFSv4 only (`/etc/nfs.conf.d/dahlia.conf`: `vers3=n`, `udp=n`), so 2049/tcp is enough;
+  rpcbind and mountd stay behind the firewall.
+- `/etc/exports.d/dahlia.exports` is generated from `shares.json`. Allowed are the same
+  networks as in the firewall: the private ranges and the extra networks entered there (a
+  change there rewrites the exports). Options: `all_squash`, `anonuid=65534` (nobody),
+  `anongid` = group `dahlia`, `sync`, `no_subtree_check` and a fixed `fsid` derived from the
+  name, because nfsd has no device number for mergerfs (FUSE). mergerfs already runs with
+  `inodecalc=path-hash` and `noforget` for this.
+- `nfs-server` runs only while a share is exported over NFS.
+- Mounting on Linux: `mount -t nfs4 dahlia.local:/mnt/user/<name> /mnt/target`.
 
 Settings (M9b):
 
