@@ -4,7 +4,7 @@ Architecture: all
 Maintainer: Dahlia Linux <https://github.com/Fabiy99/dahlia-linux>
 Section: admin
 Priority: optional
-Depends: python3 (>= 3.11), python3-yaml, adduser, systemd, dahlia-storage (= @VERSION@), docker.io | docker-ce, docker-compose (>= 2) | docker-compose-plugin, openssl, iproute2, avahi-utils, smartmontools, hdparm, ifupdown, systemd-timesyncd | time-daemon, samba, samba-vfs-modules, nut-client, nut-server
+Depends: python3 (>= 3.11), python3-yaml, adduser, systemd, dahlia-storage (= @VERSION@), docker.io | docker-ce, docker-compose (>= 2) | docker-compose-plugin, openssl, iproute2, avahi-utils, smartmontools, hdparm, ifupdown, systemd-timesyncd | time-daemon, samba, samba-vfs-modules, nut-client, nut-server, restic, openssh-client
 Recommends: wsdd
 Description: Dahlia Linux privileged agent
  Root service on /run/dahlia/agent.sock. It accepts a fixed list of

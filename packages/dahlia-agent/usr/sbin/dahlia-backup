@@ -1,0 +1,7 @@
+#!/usr/bin/python3 -I
+# Entry point; the code lives in /usr/lib/python3/dist-packages/dahlia_agent/backup.py.
+import sys
+
+from dahlia_agent.backup import main
+
+sys.exit(main())

@@ -216,7 +216,7 @@ def test_actions_go_to_agent(env):
 def test_job_list_and_unknown_job(env):
     client, agent, _ = logged_in(env)
     jobs = client.get("/api/jobs").json()
-    assert set(jobs) == {"mover", "snapraid-sync", "snapraid-scrub", "update"}
+    assert set(jobs) == {"mover", "snapraid-sync", "snapraid-scrub", "update", "backup"}
     r = client.post("/api/jobs/update/start", headers=CSRF)
     assert r.status_code == 404
 
@@ -520,3 +520,24 @@ def test_nginx_ui_is_revalidated_and_keeps_security_headers():
     for header in ("Content-Security-Policy", "X-Content-Type-Options", "Referrer-Policy",
                    "Strict-Transport-Security"):
         assert header in root
+
+
+def test_backup_endpoints(env):
+    client, agent, _ = logged_in(env)
+    agent.calls.clear()
+    target = {"type": "folder", "path": "/mnt/disk2/dahlia-backup"}
+    client.get("/api/backup")
+    client.post("/api/backup", json={"target": target, "stop_apps": True}, headers=CSRF)
+    client.post("/api/backup/key", headers=CSRF)
+    client.get("/api/backup/snapshots")
+    client.post("/api/backup/restore", json={"snapshot": "abc12345", "what": "whoami"},
+                headers=CSRF)
+    assert agent.calls == [
+        ("backup.get", {}),
+        ("backup.set", {"target": target, "stop_apps": True, "folders": []}),
+        ("backup.key", {}),
+        ("backup.snapshots", {}),
+        ("backup.restore", {"snapshot": "abc12345", "what": "whoami"}),
+    ]
+    # The password needs the CSRF header.
+    assert client.post("/api/backup/key").status_code == 403
