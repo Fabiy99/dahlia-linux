@@ -1,26 +1,26 @@
-"""Domains, the local CA, app proxies and mDNS aliases.
+"""Names, the local CA, app proxies and mDNS aliases.
 
-Names for the server and its apps:
+Names for the server and its apps, all without a DNS server:
 
     https://<host>.local                 server (Avahi host name)
-    https://<domain>                     server, needs DNS <domain> -> server
-    https://<app>.<domain>               app, needs DNS *.<domain> -> server
     https://<app>.local                  app, single-label mDNS alias (optional)
     http://<host>.local:<public_port>    app port link
 
-<domain> defaults to dahlia.home.arpa (RFC 8375). Multi-level .local names
-are refused: mDNS resolvers only answer single labels reliably.
+Multi-level .local names are not used: mDNS resolvers only answer single
+labels reliably. The placeholder {DOMAIN} in app templates is "local", so
+"https://<app>.{DOMAIN}" is the app's mDNS alias.
 
 A local CA signs the certificates. The server's own certificate names only
 the server, so installing or removing an app never replaces it: a browser
 that accepted it once keeps working. The <app>.local aliases go into a
 second certificate used by the app proxies. The CA carries name constraints:
-it can only sign names under .local, home.arpa, the configured domain and
-private IPv4 addresses, so importing it into a browser does not let it
-vouch for other sites. The CA key never leaves /etc/dahlia/tls.
+it can only sign names under .local and private IPv4 addresses, so
+importing it into a browser does not let it vouch for other sites. (CAs
+made before 1.1 may also sign home.arpa; they are kept, so nobody has to
+import a new one.) The CA key never leaves /etc/dahlia/tls.
 
 Layout:
-    /etc/dahlia/domains.json               domain, mdns_aliases
+    /etc/dahlia/domains.json               mdns_aliases
     /etc/dahlia/tls/ca.key, ca.crt         local CA (key readable by root only)
     /etc/dahlia/tls/ca.json                names the CA may sign
     /etc/dahlia/tls/server.key, server.crt certificate of the server itself
@@ -53,14 +53,13 @@ TLS_DIR = Path("/etc/dahlia/tls")
 NGINX_DIR = Path("/etc/nginx/conf.d")
 ALIAS_FILE = Path("/var/lib/dahlia/mdns-aliases.json")
 
-DEFAULT_DOMAIN = "dahlia.home.arpa"
+# What {DOMAIN} in app templates stands for: <app>.local is the mDNS alias.
+APP_DOMAIN = "local"
 LABEL = r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?"
-DOMAIN_RE = re.compile(rf"^{LABEL}(?:\.{LABEL}){{1,5}}$")
 HOST_RE = re.compile(rf"^{LABEL}$")
 
-# The CA may always sign these; the configured domain is added when it is
-# not below one of them.
-BASE_DNS = ("local", "home.arpa")
+# Names the CA may sign.
+BASE_DNS = ("local",)
 PRIVATE_NETS = tuple(
     ipaddress.ip_network(n) for n in ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16")
 )
@@ -82,19 +81,8 @@ class DomainError(Exception):
 # --- settings -----------------------------------------------------------------
 
 
-def check_domain(domain) -> str:
-    if not isinstance(domain, str) or len(domain) > 200 or not DOMAIN_RE.fullmatch(domain):
-        raise DomainError("domain must be two to six DNS labels, lower case, e.g. dahlia.home.arpa")
-    if domain.endswith(".local"):
-        raise DomainError("multi-level .local names do not resolve via mDNS; use home.arpa")
-    if domain.rsplit(".", 1)[1].isdigit():
-        raise DomainError("domain must not end in a number")
-    return domain
-
-
 @dataclass
 class Settings:
-    domain: str = DEFAULT_DOMAIN
     mdns_aliases: bool = True
 
     @classmethod
@@ -107,9 +95,8 @@ class Settings:
             raise DomainError(f"{path} is not valid JSON") from None
         if not isinstance(data, dict):
             raise DomainError(f"{path} must contain an object")
+        # "domain" from versions before 1.1 is ignored.
         s = cls()
-        if "domain" in data:
-            s.domain = check_domain(data["domain"])
         if "mdns_aliases" in data:
             if type(data["mdns_aliases"]) is not bool:
                 raise DomainError("mdns_aliases must be true or false")
@@ -217,7 +204,6 @@ def aliases(apps: list[AppProxy], settings: Settings, host: Host) -> list[str]:
 
 def app_urls(app_id: str, public_port: int | None, settings: Settings, host: Host) -> dict:
     urls = {
-        "domain": f"https://{app_id}.{settings.domain}",
         "mdns": f"https://{app_id}.local" if settings.mdns_aliases and app_id != host.name
         else None,
         "port": f"http://{host.name}.local:{public_port}" if public_port else None,
@@ -315,13 +301,6 @@ def cert_info(crt: Path) -> dict | None:
     return info
 
 
-def ca_dns(domain: str) -> list[str]:
-    names = list(BASE_DNS)
-    if not any(domain == n or domain.endswith("." + n) for n in names):
-        names.append(domain)
-    return names
-
-
 def covers(permitted: list[str], name: str) -> bool:
     name = name.removeprefix("*.")
     return any(name == p or name.endswith("." + p) for p in permitted)
@@ -335,16 +314,16 @@ def read_meta(path: Path) -> dict:
     return data if isinstance(data, dict) else {}
 
 
-def ensure_ca(tls: TlsPaths, domain: str, host: Host) -> bool:
+def ensure_ca(tls: TlsPaths, host: Host) -> bool:
     """Create the CA unless a usable one exists. Returns True if it is new."""
     meta = read_meta(tls.ca_meta)
     permitted = meta.get("dns") if isinstance(meta.get("dns"), list) else []
     if (tls.ca_key.is_file() and valid_for(tls.ca_crt, CA_RENEW_SECONDS)
-            and covers(permitted, domain)):
+            and all(covers(permitted, n) for n in BASE_DNS)):
         return False
     tls.dir.mkdir(parents=True, exist_ok=True)
     tls.dir.chmod(0o755)
-    dns = ca_dns(domain)
+    dns = list(BASE_DNS)
     constraints = [f"permitted;DNS:{n}" for n in dns] + [
         f"permitted;IP:{net.network_address}/{net.netmask}" for net in PRIVATE_NETS
     ]
@@ -376,12 +355,12 @@ nameConstraints = critical,{",".join(constraints)}
     return True
 
 
-def server_names(settings: Settings, host: Host) -> list[str]:
-    return [f"{host.name}.local", settings.domain, f"*.{settings.domain}"]
+def server_names(host: Host) -> list[str]:
+    return [f"{host.name}.local"]
 
 
 def app_names(settings: Settings, host: Host, apps: list[AppProxy]) -> list[str]:
-    return [f"*.{settings.domain}"] + [f"{a}.local" for a in aliases(apps, settings, host)]
+    return [f"{a}.local" for a in aliases(apps, settings, host)]
 
 
 def ensure_server_cert(tls: TlsPaths, names: list[str], addresses: list[str]) -> bool:
@@ -454,9 +433,10 @@ def proxy_location(host_port: int) -> str:
     }}"""
 
 
-def nginx_conf(app: AppProxy, settings: Settings, tls: TlsPaths) -> str:
+def nginx_conf(app: AppProxy, alias: bool, tls: TlsPaths) -> str:
+    """Port link, plus https://<app>.local when the app has an mDNS alias."""
     loc = proxy_location(app.host_port)
-    return f"""# Generated by dahlia-domains for {app.id}. Do not edit.
+    port_link = f"""# Generated by dahlia-domains for {app.id}. Do not edit.
 server {{
     listen {app.public_port};
     listen [::]:{app.public_port};
@@ -465,11 +445,14 @@ server {{
 
 {loc}
 }}
-
+"""
+    if not alias:
+        return port_link
+    return port_link + f"""
 server {{
     listen 443 ssl;
     listen [::]:443 ssl;
-    server_name {app.id}.{settings.domain} {app.id}.local;
+    server_name {app.id}.local;
     server_tokens off;
     client_max_body_size 0;
 
@@ -482,11 +465,11 @@ server {{
 """
 
 
-def write_proxies(apps: list[AppProxy], settings: Settings, nginx: Path,
+def write_proxies(apps: list[AppProxy], alias_ids: list[str], nginx: Path,
                   tls: TlsPaths) -> bool:
     """Write one conf per app and drop stale ones. Returns True on change."""
     changed = False
-    wanted = {f"dahlia-app-{a.id}.conf": nginx_conf(a, settings, tls) for a in apps}
+    wanted = {f"dahlia-app-{a.id}.conf": nginx_conf(a, a.id in alias_ids, tls) for a in apps}
     if nginx.is_dir():
         for f in nginx.glob("dahlia-app-*.conf"):
             if f.name not in wanted:
@@ -548,11 +531,14 @@ class Domains:
         s = self.settings()
         host = self._host()
         tls = self.paths.tls
-        ca_new = ensure_ca(tls, s.domain, host)
-        cert_new = ensure_server_cert(tls, server_names(s, host), host.addresses)
-        apps_new = ensure_apps_cert(tls, app_names(s, host, apps))
-        proxies = write_proxies(apps, s, self.paths.nginx, tls)
-        alias_text = json.dumps({"aliases": aliases(apps, s, host)}) + "\n"
+        ca_new = ensure_ca(tls, host)
+        cert_new = ensure_server_cert(tls, server_names(host), host.addresses)
+        names = app_names(s, host, apps)
+        # Without aliases no app proxy listens on 443; the old apps.crt stays unused.
+        apps_new = ensure_apps_cert(tls, names) if names else False
+        alias_ids = aliases(apps, s, host)
+        proxies = write_proxies(apps, alias_ids, self.paths.nginx, tls)
+        alias_text = json.dumps({"aliases": alias_ids}) + "\n"
         alias_changed = write_file(self.paths.aliases, alias_text)
         if ca_new or cert_new or apps_new or proxies:
             self.nginx_reload()
@@ -560,12 +546,9 @@ class Domains:
             self.mdns_reload()
         return {"ca_renewed": ca_new, "cert_renewed": cert_new, "apps_cert_renewed": apps_new}
 
-    def set(self, apps: list[AppProxy], domain: str | None = None,
-            mdns_aliases: bool | None = None) -> dict:
+    def set(self, apps: list[AppProxy], mdns_aliases: bool | None = None) -> dict:
         s = self.settings()
         old = Settings(**vars(s))
-        if domain is not None:
-            s.domain = check_domain(domain)
         if mdns_aliases is not None:
             s.mdns_aliases = mdns_aliases
         s.save(self.paths.config)
@@ -581,11 +564,9 @@ class Domains:
         s = self.settings()
         host = self._host()
         return {
-            "domain": s.domain,
             "mdns_aliases": s.mdns_aliases,
             "hostname": host.name,
             "address": host.primary,
-            "dns_records": [f"{s.domain}", f"*.{s.domain}"],
             "ca": cert_info(self.paths.tls.ca_crt),
             "cert": cert_info(self.paths.tls.crt),
             "names": list(dict.fromkeys(
@@ -707,12 +688,11 @@ def installed_proxies() -> list[AppProxy]:
 
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="dahlia-domains",
-                                description="Domains, certificates and mDNS aliases.")
+                                description="Certificates, app proxies and mDNS aliases.")
     sub = p.add_subparsers(dest="command", required=True)
-    sub.add_parser("show", help="settings, DNS records and certificates")
+    sub.add_parser("show", help="settings, names and certificates")
     sub.add_parser("apply", help="renew CA/certificate if needed, write proxies and aliases")
     s = sub.add_parser("set", help="change settings and apply them")
-    s.add_argument("--domain")
     s.add_argument("--mdns", choices=("on", "off"))
     sub.add_parser("mdns", help="run the mDNS alias publisher (service)")
     args = p.parse_args(argv)
@@ -730,7 +710,7 @@ def main(argv: list[str] | None = None) -> int:
             result = d.apply(apps)
         else:
             mdns = None if args.mdns is None else args.mdns == "on"
-            result = d.set(apps, domain=args.domain, mdns_aliases=mdns)
+            result = d.set(apps, mdns_aliases=mdns)
     except (DomainError, AppError) as e:
         print(f"dahlia-domains: {e}", file=sys.stderr)
         return 1

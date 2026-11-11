@@ -326,5 +326,5 @@ curl -sf --max-time 30 --cacert "$OUTDIR/dahlia-ca.crt" \
     || dashboard_fail "server certificate does not verify against the local CA"
 domains="$(web "$BASE/api/domains")"
 echo "$domains"
-grep -q '"domain":"dahlia.home.arpa"' <<<"$domains" || dashboard_fail "domains via dahlia-agent failed"
+grep -q '"mdns_aliases":true' <<<"$domains" || dashboard_fail "domains via dahlia-agent failed"
 echo "OK: local CA and server certificate"

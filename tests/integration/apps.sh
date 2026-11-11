@@ -148,20 +148,22 @@ if curl -sf --max-time 3 "http://$lan_ip:41000/" >/dev/null; then
     fail "internal port reachable from the LAN side"
 fi
 
-step "app domain and mDNS alias over https (local CA)"
-for name in whoami.dahlia.home.arpa whoami.local; do
-    rm -f "$WORK/https.txt"
-    for _ in $(seq 1 10); do
-        curl -sSf --max-time 10 --cacert /etc/dahlia/tls/ca.crt --resolve "$name:443:$lan_ip" \
-            "https://$name/" -o "$WORK/https.txt" && break
-        sleep 1
-    done
-    grep -q '^Hostname:' "$WORK/https.txt" 2>/dev/null \
-        || fail "https://$name/ does not verify or is not the app"
+step "mDNS alias over https (local CA)"
+rm -f "$WORK/https.txt"
+for _ in $(seq 1 10); do
+    curl -sSf --max-time 10 --cacert /etc/dahlia/tls/ca.crt --resolve "whoami.local:443:$lan_ip" \
+        "https://whoami.local/" -o "$WORK/https.txt" && break
+    sleep 1
 done
-call domains.get | jq -e '.aliases == ["whoami"]' >/dev/null || fail "alias not listed"
+grep -q '^Hostname:' "$WORK/https.txt" 2>/dev/null \
+    || fail "https://whoami.local/ does not verify or is not the app"
+call domains.get | jq -e '.aliases == ["whoami"] and (has("domain") | not)' >/dev/null \
+    || fail "alias not listed"
 jq -e '.aliases == ["whoami"]' /var/lib/dahlia/mdns-aliases.json >/dev/null \
     || fail "alias file not written"
+if openssl x509 -noout -ext subjectAltName -in /etc/dahlia/tls/server.crt | grep -q arpa; then
+    fail "home.arpa name in the server certificate"
+fi
 resolved=""
 for _ in $(seq 1 15); do
     resolved="$(avahi-resolve -4 -n whoami.local 2>/dev/null | awk '{print $2}')" || true
@@ -171,30 +173,15 @@ done
 echo "whoami.local -> ${resolved:-nothing}"
 [ "$resolved" = "$(jq -r .address <<<"$(call domains.get)")" ] || fail "mDNS alias not published"
 
-step "change the domain"
-call domains.set '{"domain": "lab.home.arpa", "mdns_aliases": false}' \
-    | jq -e '.ca_renewed == false and .domain == "lab.home.arpa"' >/dev/null \
+step "mDNS aliases off: port link only"
+call domains.set '{"mdns_aliases": false}' | jq -e '.ca_renewed == false' >/dev/null \
     || fail "domains.set failed"
-# nginx -s reload returns before the new workers serve the new certificate.
-served=0
-for _ in $(seq 1 10); do
-    if curl -sSf --max-time 10 --cacert /etc/dahlia/tls/ca.crt \
-            --resolve "whoami.lab.home.arpa:443:$lan_ip" "https://whoami.lab.home.arpa/" \
-            -o /dev/null; then
-        served=1
-        break
-    fi
-    sleep 1
-done
-[ "$served" = 1 ] || fail "new domain not served"
-if openssl x509 -noout -ext subjectAltName -in /etc/dahlia/tls/server.crt | grep -q whoami.local
-then
-    fail "alias still in the certificate"
+grep -q "listen 443" /etc/nginx/conf.d/dahlia-app-whoami.conf && fail "https proxy without alias"
+curl -sf "http://$lan_ip:8099/" -o /dev/null || fail "port link gone with aliases off"
+if call domains.set '{"domain": "lab.home.arpa", "mdns_aliases": true}' >/dev/null 2>&1; then
+    fail "domain still accepted"
 fi
-if call domains.set '{"domain": "nas.dahlia.local", "mdns_aliases": true}' >/dev/null 2>&1; then
-    fail "multi-level .local accepted"
-fi
-call domains.set '{"domain": "dahlia.home.arpa", "mdns_aliases": true}' >/dev/null
+call domains.set '{"mdns_aliases": true}' >/dev/null
 
 step "list, stop, start, update"
 call apps.list | jq -e '.apps[0].status == "running"' >/dev/null || fail "apps.list wrong"

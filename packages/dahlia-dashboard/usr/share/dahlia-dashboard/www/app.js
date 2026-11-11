@@ -537,7 +537,7 @@ const DOT_KIND = { ok: "ok", warn: "warn", crit: "crit", "": "" };
 function primaryUrl(app) {
   if (!app.public_port) return null;
   const urls = app.urls || {};
-  return urls.domain || urls.mdns || `http://${location.hostname}:${app.public_port}`;
+  return urls.mdns || `http://${location.hostname}:${app.public_port}`;
 }
 
 function renderOverviewApps(installed) {
@@ -967,7 +967,7 @@ function appLinks(app) {
   const list = el("div", "links");
   if (!app.public_port) return list;
   const urls = app.urls || {};
-  for (const href of [urls.domain, urls.mdns, `http://${location.hostname}:${app.public_port}`]) {
+  for (const href of [urls.mdns, `http://${location.hostname}:${app.public_port}`]) {
     if (href) list.append(link(href));
   }
   return list;
@@ -1451,17 +1451,7 @@ async function loadLog() {
 async function loadDomains() {
   const d = await api("GET", "domains");
   const form = document.getElementById("domains-form");
-  form.elements.domain.value = d.domain;
   form.elements.mdns_aliases.checked = d.mdns_aliases;
-
-  const rows = document.getElementById("dns-records");
-  rows.replaceChildren();
-  for (const name of d.dns_records) {
-    const tr = el("tr");
-    cell(tr, el("code", "", name));
-    cell(tr, d.address || t("domains.no_address"));
-    rows.append(tr);
-  }
 
   const dl = document.getElementById("tls-info");
   dl.replaceChildren();
@@ -2616,10 +2606,9 @@ function bindForms() {
 
   document.getElementById("domains-form").addEventListener("submit", (e) => {
     e.preventDefault();
-    const domain = e.target.elements.domain.value.trim().toLowerCase();
     const mdns = e.target.elements.mdns_aliases.checked;
     guarded(e.submitter, async () => {
-      const res = await api("POST", "domains", { domain, mdns_aliases: mdns });
+      const res = await api("POST", "domains", { mdns_aliases: mdns });
       await loadDomains();
       say(t(res.ca_renewed ? "domains.saved_new_ca" : "domains.saved"), "ok");
     });
