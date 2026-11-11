@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily Dahlia backup
+
+# Enabled by the agent once a backup target is set (backup.set).
+[Timer]
+OnCalendar=*-*-* 02:00:00
+RandomizedDelaySec=10min
+Persistent=true
+
+[Install]
+WantedBy=timers.target
