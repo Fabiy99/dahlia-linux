@@ -267,7 +267,7 @@ function percent(used, size) {
 // --- views ----------------------------------------------------------------------
 
 const TITLES = {
-  overview: "nav.overview", storage: "storage.title", apps: "apps.title",
+  overview: "nav.overview", storage: "storage.title", parity: "parity.title", apps: "apps.title",
   domains: "nav.domains", jobs: "jobs.title", backup: "nav.backup", updates: "updates.title", account: "nav.account",
   docker: "nav.docker", log: "nav.log", shares: "nav.shares", terminal: "nav.terminal",
   setup: "setup.title", login: "login.title",
@@ -303,6 +303,7 @@ function showLogin() {
 const loaders = {
   overview: loadOverview,
   storage: loadStorage,
+  parity: loadParity,
   apps: loadApps,
   domains: loadDomains,
   docker: loadDocker,
@@ -1381,6 +1382,204 @@ async function loadDomains() {
   fact(dl, "domains.cert_names", d.names.join(", "));
 }
 
+// --- parity ---------------------------------------------------------------------
+
+let parityTimer = null;
+
+// A oneshot unit runs while "activating"; the repair unit stays "active (exited)".
+function unitRunning(s) {
+  return !!s && (["activating", "deactivating"].includes(s.active)
+    || (s.active === "active" && s.sub !== "exited"));
+}
+
+function parityTime(sec) {
+  return sec ? new Date(sec * 1000).toLocaleString(lang) : "-";
+}
+
+function parityRun(run) {
+  if (!run) return t("parity.never");
+  let text = `${parityTime(run.end)}: ${tv("parity_result", run.result)}`;
+  if (run.result === "ok" && run.counts) {
+    const c = run.counts;
+    text += ` (${t("parity.counts", { added: c.added || 0, removed: c.removed || 0, updated: c.updated || 0 })})`;
+  }
+  if (run.result === "failed" && run.message) text += ` (${run.message})`;
+  return text;
+}
+
+function parityNotice(d, running) {
+  const box = document.getElementById("parity-notice");
+  box.replaceChildren();
+  const add = (text, ...buttons) => {
+    box.append(el("p", "", text));
+    if (buttons.length) {
+      const row = el("div", "actions");
+      row.append(...buttons);
+      box.append(row);
+    }
+  };
+  const s = d.status;
+  const missing = [...d.parity, ...d.data].filter((x) => !x.mounted).map((x) => x.mountpoint);
+  if (running) add(t(`parity.running_${running}`));
+  if (!d.parity.length) add(t("parity.no_parity"), button("parity.to_disks", () => open("storage")));
+  else if (!d.data.length) add(t("parity.no_data"), button("parity.to_disks", () => open("storage")));
+  else if (d.problems.length) add(t("parity.problems", { list: d.problems.join("; ") }));
+  if (missing.length) add(t("parity.unmounted", { list: missing.join(", ") }));
+  if (d.error) add(t("parity.error", { text: d.error }));
+  const ready = !running && !missing.length;
+  if (s && s.bad > 0 && !ready) add(t("parity.bad", { n: s.bad }));
+  if (s && s.bad > 0 && ready) {
+    add(t("parity.bad", { n: s.bad }), button("parity.repair", async () => {
+      if (!await ask(t("parity.repair_confirm", { n: s.bad }), "parity.repair")) return;
+      await api("POST", "parity/fix", { what: "bad" });
+      say(t("parity.repair_started"), "ok");
+      await loadParity();
+    }, "primary"));
+  }
+  const sync = d.runs.sync;
+  if (sync && sync.result === "blocked" && ready) {
+    add(t("parity.blocked", { n: sync.counts.removed, threshold: sync.threshold }),
+      button("parity.force", async () => {
+        if (!await ask(t("parity.force_confirm", { n: sync.counts.removed }), "parity.force", true)) return;
+        await api("POST", "parity/sync", { force: true });
+        say(t("parity.sync_started"), "ok");
+        await loadParity();
+      }, "danger"));
+  }
+  if (s && s.unsynced > 0 && !running) add(t("parity.interrupted"));
+  const fix = d.runs.fix;
+  if (fix && fix.result === "failed" && !running) add(t("parity.fix_failed", { text: fix.message || "" }));
+  box.hidden = !box.childElementCount;
+}
+
+function parityState(d) {
+  const s = d.status;
+  if (!d.configured) return badge(t("parity.state_none"), "");
+  if (s && s.bad > 0) return badge(t("parity.state_bad"), "crit");
+  if (!s) return badge(t("parity.state_unsynced"), "warn");
+  if (d.runs.sync && ["blocked", "failed"].includes(d.runs.sync.result)) {
+    return badge(t("parity.state_stale"), "warn");
+  }
+  return badge(t("parity.state_ok"), "ok");
+}
+
+async function loadParity() {
+  clearTimeout(parityTimer);
+  const d = await api("GET", "parity");
+  const jobs = d.jobs || {};
+  const running = ["sync", "scrub", "repair", "mover"].find((k) => unitRunning(jobs[k])) || "";
+  parityNotice(d, running);
+
+  const dl = document.getElementById("parity-state");
+  dl.replaceChildren();
+  fact(dl, "parity.state", parityState(d));
+  const s = d.status;
+  if (s) {
+    fact(dl, "parity.protected", t("parity.protected_value", { n: s.files, size: formatBytes(s.size) }));
+  }
+  fact(dl, "parity.last_sync", parityRun(d.runs.sync));
+  fact(dl, "parity.last_scrub", parityRun(d.runs.scrub));
+  if (s && s.blocks) {
+    const pct = Math.floor(100 * (s.blocks - s.unscrubbed) / s.blocks);
+    fact(dl, "parity.checked", t("parity.checked_value", { pct }));
+    fact(dl, "parity.oldest", parityTime(s.scrub_oldest));
+  }
+  if (s) fact(dl, "parity.bad_blocks", String(s.bad));
+  if (d.runs.fix) {
+    const what = d.runs.fix.what === "bad" ? t("parity.what_bad")
+      : `/mnt/disk${String(d.runs.fix.what || "").slice(1)}`;
+    fact(dl, "parity.last_fix", `${what}, ${parityRun(d.runs.fix)}`);
+  }
+
+  const tbody = document.getElementById("parity-disks");
+  tbody.replaceChildren();
+  const rows = [
+    ...d.parity.map((x) => [t("parity.parity_n", { n: x.index }), x, "-"]),
+    ...d.data.map((x) => {
+      const files = s && s.disks[`d${x.index}`] ? String(s.disks[`d${x.index}`].files) : "-";
+      return [t("parity.data_n", { n: x.index }), x, files];
+    }),
+  ];
+  for (const [name, x, files] of rows) {
+    const tr = el("tr");
+    const td = cell(tr, el("b", "", name));
+    td.append(el("small", "muted", ` ${x.mountpoint}`));
+    cell(tr, formatBytes(x.size));
+    cell(tr, files);
+    cell(tr, x.mounted ? badge(t("parity.mounted"), "ok") : badge(t("parity.not_mounted"), "crit"));
+    tbody.append(tr);
+  }
+  if (!rows.length) {
+    const tr = el("tr");
+    const td = cell(tr, t("parity.no_disks"));
+    td.colSpan = 4;
+    tbody.append(tr);
+  }
+
+  const allMounted = [...d.parity, ...d.data].every((x) => x.mounted);
+  const idle = d.configured && !running && allMounted;
+  document.getElementById("parity-sync").disabled = !idle;
+  document.getElementById("parity-scrub").disabled = !idle || !s;
+
+  const form = document.getElementById("parity-restore");
+  fillOptions(form.elements.disk, d.data.map((x) => `disk${x.index}`), (v) => `/mnt/${v}`);
+  form.querySelector("button").disabled = !idle || !s || !d.data.length;
+
+  const set = document.getElementById("parity-settings");
+  if (document.activeElement?.form !== set) {
+    for (const [k, v] of Object.entries(d.settings)) set.elements[k].value = String(v);
+  }
+
+  if (running) {
+    parityTimer = setTimeout(() => { if (current === "parity") guarded(null, loadParity); }, 5000);
+  }
+}
+
+function bindParity() {
+  const refresh = document.getElementById("parity-refresh");
+  refresh.addEventListener("click", () => guarded(refresh, loadParity));
+  const sync = document.getElementById("parity-sync");
+  sync.addEventListener("click", () => guarded(sync, async () => {
+    await api("POST", "parity/sync", {});
+    say(t("parity.sync_started"), "ok");
+    await loadParity();
+  }));
+  const scrub = document.getElementById("parity-scrub");
+  scrub.addEventListener("click", () => guarded(scrub, async () => {
+    await api("POST", "jobs/snapraid-scrub/start");
+    say(t("parity.scrub_started"), "ok");
+    await loadParity();
+  }));
+  const restore = document.getElementById("parity-restore");
+  restore.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const btn = restore.querySelector("button");
+    guarded(btn, async () => {
+      const what = restore.elements.disk.value;
+      const disk = `/mnt/${what}`;
+      if (!await ask(t("parity.restore_confirm", { disk }), "parity.restore", true)) return;
+      await api("POST", "parity/fix", { what });
+      say(t("parity.restore_started", { disk }), "ok");
+      await loadParity();
+    });
+  });
+  const settings = document.getElementById("parity-settings");
+  settings.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const btn = settings.querySelector("button");
+    guarded(btn, async () => {
+      const body = {};
+      for (const k of ["snapraid_delete_threshold", "scrub_percent", "scrub_older_than_days"]) {
+        body[k] = Number(settings.elements[k].value);
+      }
+      await api("POST", "parity/settings", body);
+      say(t("parity.saved"), "ok");
+      settings.querySelector("button").blur();
+      await loadParity();
+    });
+  });
+}
+
 // --- jobs -----------------------------------------------------------------------
 
 const STARTABLE = ["mover", "snapraid-sync", "snapraid-scrub", "backup"];
@@ -2426,6 +2625,7 @@ async function start() {
   bindImport();
   bindFolderPicker();
   bindNotifyUps();
+  bindParity();
   bindBackup();
   try {
     const state = await api("GET", "state");

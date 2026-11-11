@@ -204,6 +204,20 @@ class UpsBody(BaseModel):
     shutdown_minutes: int = 0
 
 
+class ParitySyncBody(BaseModel):
+    force: bool = False
+
+
+class ParityFixBody(BaseModel):
+    what: str
+
+
+class ParitySettingsBody(BaseModel):
+    snapraid_delete_threshold: int
+    scrub_percent: int
+    scrub_older_than_days: int
+
+
 class ScheduleBody(BaseModel):
     frequency: str
     time: str = "03:00"
@@ -381,6 +395,26 @@ def create_app(cfg: Config | None = None) -> FastAPI:
     @app.post("/api/storage/remove", dependencies=changing)
     def storage_remove(body: DiskRemoveBody):
         return agent("storage.remove", {"uuid": body.uuid, "force": body.force})
+
+    # --- parity ---------------------------------------------------------------
+
+    @app.get("/api/parity", dependencies=authed)
+    def parity():
+        return agent("parity.get")
+
+    @app.post("/api/parity/sync", dependencies=changing)
+    def parity_sync(body: ParitySyncBody):
+        return agent("parity.sync", {"force": body.force})
+
+    @app.post("/api/parity/fix", dependencies=changing)
+    def parity_fix(body: ParityFixBody):
+        return agent("parity.fix", {"what": body.what})
+
+    @app.post("/api/parity/settings", dependencies=changing)
+    def parity_settings(body: ParitySettingsBody):
+        for name, value in body.model_dump().items():
+            agent("storage.set_option", {"name": name, "value": value})
+        return body.model_dump()
 
     # --- jobs and updates -----------------------------------------------------
 

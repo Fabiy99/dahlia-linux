@@ -93,3 +93,45 @@ def parse_diff(output: str) -> dict[str, int]:
     if "removed" not in counts:
         raise SnapraidError("could not read the summary of snapraid diff")
     return counts
+
+
+def parse_status(log: str) -> dict:
+    """Facts from the tagged log of `snapraid -l ">&1" status`.
+
+    files/disks: what the parity covers. unsynced: blocks of an interrupted
+    sync. unscrubbed: blocks never checked by a scrub. bad: blocks a scrub
+    found broken ("snapraid -e fix" repairs them). scrub_oldest/newest: Unix
+    time of the oldest and newest check or sync of any block.
+    """
+    disks: dict[str, dict] = {}
+    facts: dict[str, int] = {}
+    times: list[int] = []
+    for line in log.splitlines():
+        parts = line.split(":")
+        if parts[0] == "info_time" and len(parts) >= 3 and parts[1].isdigit():
+            times.append(int(parts[1]))
+            continue
+        if parts[0] != "summary" or len(parts) < 3:
+            continue
+        key = parts[1]
+        if key in ("disk_file_count", "disk_file_size") and len(parts) == 4 and parts[3].isdigit():
+            disks.setdefault(parts[2], {})["files" if key == "disk_file_count" else "size"] = \
+                int(parts[3])
+        elif key in ("file_count", "file_size", "has_unsynced", "has_unscrubbed",
+                     "parity_block_count") and parts[2].isdigit():
+            facts[key] = int(parts[2])
+        elif key == "has_bad" and parts[2].isdigit():
+            facts["has_bad"] = int(parts[2])
+    if "has_bad" not in facts:
+        raise SnapraidError("could not read the summary of snapraid status")
+    return {
+        "files": facts.get("file_count", sum(d.get("files", 0) for d in disks.values())),
+        "size": facts.get("file_size", sum(d.get("size", 0) for d in disks.values())),
+        "disks": disks,
+        "blocks": facts.get("parity_block_count", 0),
+        "unsynced": facts.get("has_unsynced", 0),
+        "unscrubbed": facts.get("has_unscrubbed", 0),
+        "bad": facts["has_bad"],
+        "scrub_oldest": min(times) if times else None,
+        "scrub_newest": max(times) if times else None,
+    }

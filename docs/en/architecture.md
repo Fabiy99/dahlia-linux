@@ -125,6 +125,9 @@ without a remount. `/mnt/user` then uses `category.create=ff`; `/mnt/storage` st
 dahlia-mover [--dry-run] [--min-age MIN]       # cache -> /mnt/storage, path unchanged
 dahlia-snapraid sync [--force]                 # diff, check delete threshold, sync
 dahlia-snapraid scrub                          # verify part of the array against parity
+dahlia-snapraid fix --disk N                   # rebuild the files of /mnt/diskN from parity, verify
+dahlia-snapraid fix --bad                      # repair bad blocks found by a scrub
+dahlia-snapraid status [--json]                # coverage, scrub state, errors, last runs
 dahlia-disk set-option snapraid_delete_threshold 50
 ```
 
@@ -132,6 +135,20 @@ The mover leaves open files, recently modified files, files that already exist o
 disks and hard links on the cache. It copies, verifies, renames and only then deletes.
 Timers: mover 03:00, SnapRAID sync 04:30, scrub Sundays 06:00 (8 %, blocks older than
 10 days). Mover and SnapRAID share `/run/dahlia/array.lock`.
+
+Parity in the dashboard (from milestone 14): page "Parity" with state, disks, manual sync
+and scrub, settings (delete threshold, scrub share and age) and the repairs. Result and
+counts of the last runs are in `/var/lib/dahlia/snapraid.json`; `snapraid status` only runs
+when the content file changed. A sync stopped by the delete threshold can run with
+`--force` after a confirmation. A scrub that finds bad blocks ends with an error
+(notification) and `fix --bad` repairs them.
+
+Replacing a failed data disk: remove the old disk under Disks, format the new one and add it
+as a data disk. It gets the lowest free number, i.e. that of the old one. Then
+`fix --disk N`: `snapraid -d dN fix` (log in `/var/log/dahlia/snapraid-fix.log`) and
+`snapraid -d dN -a check`. The state of the last sync is restored. Until then SnapRAID refuses
+to sync because dN is missing or empty. Forced sync and repairs run as unit
+`dahlia-parity.service`.
 
 ## Privileges and security
 
@@ -223,6 +240,9 @@ Protocol: one request per connection, one JSON line each way.
 | `storage.import` / `storage.import_status` | `uuid`, `target` (name below `/mnt/user`) | `dahlia-disk import` as unit `dahlia-import`, progress in `/run/dahlia/import.json` |
 | `job.start` | `job` (mover, snapraid-sync, snapraid-scrub, backup) | starts the unit, returns at once |
 | `job.status` | `job` (plus `update`) | State and last result |
+| `parity.get` | – | `dahlia-snapraid status --json` and the state of sync, scrub, mover and repair |
+| `parity.sync` | `force` (optional) | start a sync; with `force` without the delete threshold as `dahlia-parity.service` |
+| `parity.fix` | `what` (`bad` or `diskN`) | `dahlia-snapraid fix --bad` or `--disk N` as `dahlia-parity.service` |
 | `updates.check` | - | `apt-get update`, list of upgrades |
 | `updates.apply` | - | `apt-get full-upgrade` through the unit `dahlia-update.service`; the planned packages (simulation) in `/run/dahlia/update.json` |
 | `updates.progress` | - | state, percent, per package waiting/downloaded/setting up/done from the apt output in this run's journal; shown on the dashboard's update page |

@@ -209,6 +209,7 @@ JOB_NAMES = {
     "dahlia-mover.service": "Mover",
     "dahlia-snapraid-sync.service": "SnapRAID sync",
     "dahlia-snapraid-scrub.service": "SnapRAID scrub",
+    "dahlia-parity.service": "Parity repair",
     "dahlia-update.service": "System update",
 }
 
