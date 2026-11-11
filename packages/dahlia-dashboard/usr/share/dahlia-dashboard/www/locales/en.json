@@ -552,5 +552,8 @@
   "auto.result.nothing": "nothing to do",
   "auto.result.failed": "failed",
   "auto.result.running": "running",
-  "notify.event.updates": "Restart needed after updates"
+  "notify.event.updates": "Restart needed after updates",
+  "apps.gpu_used": "Uses the GPU (/dev/dri) for video and AI.",
+  "apps.gpu_none": "Can use a GPU; none found, runs on the CPU.",
+  "overview.gpu": "Graphics"
 }

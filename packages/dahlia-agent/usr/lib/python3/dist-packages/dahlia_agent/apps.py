@@ -27,11 +27,17 @@ extra capabilities.
         environment: {TZ: "{TZ}", PAPERLESS_DBPASS: "{SECRET_DB}"}
         command: [--flag, value]         # optional
         user: "{PUID}:{PGID}"            # optional
+        gpu: true                        # optional, schema 3: /dev/dri for VA-API/QSV
       db:                                # container dahlia-<id>-db, host name "db"
         image: postgres:17.6
         environment: {POSTGRES_PASSWORD: "{SECRET_DB}"}
         volumes:
           - {container: /var/lib/postgresql/data, appdata: db}
+
+Schema 3 is schema 2 plus "gpu" on a service: the container gets /dev/dri
+and the groups render and video, if the server has a GPU with a DRM driver
+(Intel, AMD; NVIDIA needs its container toolkit and is not supported). Without
+one the app runs on the CPU. Older Dahlia versions skip schema 3 templates.
 
 Schema 1 is the single-container form (image, lan_ports, volumes and
 environment at the top level); it is read as a stack with only "app".
@@ -108,7 +114,10 @@ RESERVED_PUBLIC = RESERVED_PORTS | {53}
 MAX_FILE = 256 * 1024
 MAX_BUNDLE = 16 * 1024 * 1024
 DOWNLOAD_TIMEOUT = 30
-SCHEMAS = (1, 2)
+SCHEMAS = (1, 2, 3)
+GPU_SCHEMA = 3
+DRI = Path("/dev/dri")
+GPU_GROUPS = ("render", "video")
 BUNDLE_FORMAT = 1
 MAX_ICON = 64 * 1024
 ICON_RE = re.compile(r"icons/([a-z0-9][a-z0-9-]*)\.(svg|png)")
@@ -174,6 +183,7 @@ class Service:
     command: list[str] | None = None
     user: str | None = None
     depends_on: list[str] = field(default_factory=list)
+    gpu: bool = False
 
 
 @dataclass
@@ -203,6 +213,10 @@ class Template:
         return [p for s in self.services.values() for p in s.lan_ports]
 
     @property
+    def gpu(self) -> bool:
+        return any(s.gpu for s in self.services.values())
+
+    @property
     def volumes(self) -> list[Volume]:
         return [v for s in self.services.values() for v in s.volumes]
 
@@ -229,6 +243,7 @@ class Template:
             "public_port": self.public_port,
             "lan_ports": [vars(p) for p in self.lan_ports],
             "shares": self.share_list(),
+            "gpu": self.gpu,
         }
 
     def share_list(self) -> list[dict]:
@@ -372,6 +387,10 @@ def _service(name: str, data: dict, where: str) -> Service:
     if not isinstance(deps, list) or not all(isinstance(d, str) for d in deps):
         raise AppError(f"{where}.depends_on must be a list of service names")
     s.depends_on = list(deps)
+    if "gpu" in data:
+        if not isinstance(data["gpu"], bool):
+            raise AppError(f"{where}.gpu must be true or false")
+        s.gpu = data["gpu"]
     return s
 
 
@@ -395,7 +414,8 @@ def _check_dependencies(services: dict[str, Service]) -> None:
         visit(name, ())
 
 
-SERVICE_FIELDS = {"image", "lan_ports", "volumes", "environment", "command", "user", "depends_on"}
+SERVICE_FIELDS = {"image", "lan_ports", "volumes", "environment", "command", "user", "depends_on",
+                  "gpu"}
 
 
 def parse_template(text: str, expected_id: str | None = None) -> Template:
@@ -448,8 +468,10 @@ def parse_template(text: str, expected_id: str | None = None) -> Template:
             services[name] = _service(name, _fields(raw[name], SERVICE_FIELDS, {"image"}, where),
                                       where)
         _check_dependencies(services)
+        if schema < GPU_SCHEMA and any(sv.gpu for sv in services.values()):
+            raise AppError(f"gpu needs schema {GPU_SCHEMA}")
         t = Template(id=app_id, name=data["name"], description=desc, services=services,
-                     category=data["category"])
+                     schema=schema, category=data["category"])
         if "website" in data:
             if not isinstance(data["website"], str) or not URL_RE.fullmatch(data["website"]):
                 raise AppError("website must be an https:// URL")
@@ -489,6 +511,9 @@ class Host:
     gid: int
     hostname: str = "dahlia"
     domain: str = domains.DEFAULT_DOMAIN
+    # GPU for apps with "gpu": /dev/dri exists, and the gids of render and video.
+    dri: bool = False
+    gpu_gids: tuple[int, ...] = ()
 
     @classmethod
     def detect(cls) -> "Host":
@@ -506,7 +531,17 @@ class Host:
             gid = grp.getgrnam(APPS_GROUP).gr_gid
         except KeyError:
             gid = pwd.getpwnam(APPS_USER).pw_gid
-        return cls(tz=tz or "Etc/UTC", uid=uid, gid=gid, hostname=socket.gethostname())
+        gids = []
+        for name in GPU_GROUPS:
+            with contextlib.suppress(KeyError):
+                gids.append(grp.getgrnam(name).gr_gid)
+        return cls(tz=tz or "Etc/UTC", uid=uid, gid=gid, hostname=socket.gethostname(),
+                   dri=has_gpu(DRI), gpu_gids=tuple(gids))
+
+
+def has_gpu(dri: Path = DRI) -> bool:
+    """A DRM render node exists (Intel, AMD, nouveau)."""
+    return dri.is_dir() and any(dri.glob("renderD*"))
 
 
 @dataclass
@@ -657,6 +692,10 @@ def compose(t: Template, host_port: int | None, paths: Paths, host: Host,
             svc["user"] = fill(s.user, host)
         if s.depends_on:
             svc["depends_on"] = list(s.depends_on)
+        if s.gpu and host.dri:
+            svc["devices"] = [f"{DRI}:{DRI}"]
+            if host.gpu_gids:
+                svc["group_add"] = [str(g) for g in host.gpu_gids]
         services[s.name] = svc
     return {"name": f"dahlia-{t.id}", "services": services}
 
@@ -1095,6 +1134,7 @@ class Apps:
         meta = catalog_meta(self.paths)
         icons = icon_urls(self.paths)
         return {
+            "gpu_available": self._host().dri,
             "apps": [{**t.summary(), "installed": t.id in have, "icon": icons.get(t.id)}
                      for t in templates],
             "refreshed": meta.get("refreshed"),

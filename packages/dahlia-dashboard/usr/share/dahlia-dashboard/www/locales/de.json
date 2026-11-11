@@ -552,5 +552,8 @@
   "auto.result.nothing": "nichts zu tun",
   "auto.result.failed": "fehlgeschlagen",
   "auto.result.running": "läuft",
-  "notify.event.updates": "Neustart nach Updates nötig"
+  "notify.event.updates": "Neustart nach Updates nötig",
+  "apps.gpu_used": "Nutzt die Grafikkarte (/dev/dri) für Video und KI.",
+  "apps.gpu_none": "Kann eine Grafikkarte nutzen; keine gefunden, läuft auf der CPU.",
+  "overview.gpu": "Grafik"
 }
