@@ -2562,7 +2562,7 @@ async function loadAccount() {
   document.querySelector("#hostname-form [name=hostname]").value = info.hostname;
   // Each card loads on its own; one failing part does not hide the others.
   await Promise.all([loadTime(), loadNetwork(), loadSpindown(), loadFirewall(), loadSchedules(),
-               loadNotify(), loadUps()]
+               loadNotify(), loadUps(), loadVpn()]
     .map((p) => p.catch(sayError)));
 }
 
@@ -2670,9 +2670,167 @@ async function loadFirewall() {
     const name = p.service.startsWith("app:") ? p.service.slice(4) : t(`firewall.${p.service}`);
     return `${p.port}/${p.protocol} ${name}`;
   });
+  if (data.wireguard) ports.push(t("settings.firewall_wireguard", { port: data.wireguard.port }));
   document.getElementById("firewall-ports").textContent = data.enabled
     ? t("settings.firewall_ports", { ports: ports.join(", ") })
     : t("settings.firewall_off");
+}
+
+// --- settings: remote access (WireGuard, Tailscale) -------------------------------
+
+let vpnTimer = null;
+
+function renderWireguard(wg) {
+  const f = document.getElementById("wg-form");
+  f.elements.enabled.checked = wg.enabled;
+  f.elements.endpoint.value = wg.endpoint;
+  f.elements.port.value = wg.port;
+  f.elements.route.value = wg.route;
+  f.elements.dns.value = wg.dns;
+  f.elements.subnet.value = wg.subnet;
+  f.elements.subnet.readOnly = wg.peers.length > 0;
+  document.getElementById("wg-router").textContent = t("vpn.router", { port: wg.port });
+  const body = document.getElementById("wg-peers");
+  body.replaceChildren();
+  for (const p of wg.peers) {
+    const tr = el("tr");
+    cell(tr, p.name);
+    cell(tr, p.address);
+    cell(tr, p.handshake ? new Date(p.handshake * 1000).toLocaleString(lang) : t("vpn.never"));
+    cell(tr, p.rx !== undefined ? `↓ ${formatBytes(p.rx)} ↑ ${formatBytes(p.tx)}` : "–");
+    const del = iconButton("trash", "vpn.peer_remove", async () => {
+      if (!await ask(t("vpn.peer_remove_confirm", { name: p.name }), "vpn.peer_remove", true)) return;
+      await api("POST", "vpn/wireguard/peers/delete", { name: p.name });
+      await loadVpn();
+    }, "danger");
+    cell(tr, del);
+    body.append(tr);
+  }
+  if (!wg.peers.length) {
+    const tr = el("tr");
+    const td = cell(tr, t("vpn.no_peers"));
+    td.colSpan = 5;
+    td.className = "hint";
+    body.append(tr);
+  }
+  const peerForm = document.getElementById("wg-peer-form");
+  for (const e of peerForm.elements) e.disabled = !wg.enabled || !wg.endpoint;
+}
+
+function renderTailscale(ts) {
+  const list = document.getElementById("ts-state");
+  list.replaceChildren();
+  const installing = unitRunning(ts.install_job);
+  const waiting = unitRunning(ts.login_job);
+  const f = document.getElementById("ts-form");
+  f.elements.routes.checked = ts.routes;
+  f.elements.exit_node.checked = ts.exit_node;
+  if (!ts.installed) {
+    list.append(checkItem("info", t(installing ? "vpn.ts_installing" : "vpn.ts_not_installed")));
+    if (ts.install_job && ts.install_job.result && ts.install_job.result !== "success" && !installing) {
+      list.append(checkItem("bad", t("vpn.ts_install_failed")));
+    }
+  } else if (ts.state === "Running") {
+    list.append(checkItem("ok", t("vpn.ts_running", { tailnet: ts.tailnet || "-" })));
+    if (ts.dns_name) list.append(checkItem("ok", ts.dns_name));
+    if (ts.addresses.length) list.append(checkItem("ok", ts.addresses.join(", ")));
+    if (ts.routes) list.append(checkItem("info", t("vpn.ts_routes_hint")));
+  } else if (ts.auth_url) {
+    const li = checkItem("info", t("vpn.ts_login"));
+    li.lastChild.append(" ", link(ts.auth_url, t("vpn.ts_login_link")));
+    list.append(li);
+  } else {
+    list.append(checkItem("info", t(waiting ? "vpn.ts_waiting" : "vpn.ts_logged_out")));
+  }
+  const installBtn = document.getElementById("ts-install");
+  installBtn.hidden = ts.installed;
+  installBtn.disabled = installing;
+  document.getElementById("ts-logout").hidden = !ts.installed || ts.state !== "Running";
+  const up = document.getElementById("ts-up");
+  up.hidden = !ts.installed;
+  up.textContent = t(ts.state === "Running" ? "common.save" : "vpn.ts_up");
+  f.elements.routes.disabled = f.elements.exit_node.disabled = !ts.installed;
+  // Poll while something is in progress: install, or a login link to follow.
+  const busy = installing || waiting || (ts.installed && ts.state !== "Running" && ts.auth_url);
+  if (busy && !vpnTimer) {
+    vpnTimer = setInterval(() => {
+      if (current !== "account") { clearInterval(vpnTimer); vpnTimer = null; return; }
+      loadVpn().catch(() => {});
+    }, 3000);
+  } else if (!busy && vpnTimer) {
+    clearInterval(vpnTimer);
+    vpnTimer = null;
+  }
+}
+
+async function loadVpn() {
+  const data = await api("GET", "vpn");
+  renderWireguard(data.wireguard);
+  renderTailscale(data.tailscale);
+}
+
+function showPeer(res) {
+  const dlg = document.getElementById("wg-peer-dialog");
+  document.getElementById("wg-peer-title").textContent = t("vpn.peer_title", { name: res.name });
+  document.getElementById("wg-peer-config").textContent = res.config;
+  const qr = document.getElementById("wg-peer-qr");
+  qr.hidden = !res.qr_svg;
+  if (res.qr_svg) qr.src = `data:image/svg+xml;base64,${btoa(res.qr_svg)}`;
+  const dl = document.getElementById("wg-peer-download");
+  dl.href = URL.createObjectURL(new Blob([res.config], { type: "text/plain" }));
+  dl.download = `${res.name.replace(/[^A-Za-z0-9._-]+/g, "-")}.conf`;
+  dlg.addEventListener("close", () => {
+    // The private key is shown once; drop it from the page.
+    URL.revokeObjectURL(dl.href);
+    document.getElementById("wg-peer-config").textContent = "";
+    qr.removeAttribute("src");
+  }, { once: true });
+  dlg.showModal();
+}
+
+function bindVpn() {
+  document.getElementById("wg-form").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const f = e.target.elements;
+    guarded(e.submitter, async () => {
+      await api("POST", "vpn/wireguard", {
+        enabled: f.enabled.checked, port: Number(f.port.value), endpoint: f.endpoint.value.trim(),
+        route: f.route.value, dns: f.dns.value.trim(), subnet: f.subnet.value.trim(),
+      });
+      say(t("vpn.saved"), "ok");
+      await loadVpn();
+    });
+  });
+  document.getElementById("wg-peer-form").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const input = e.target.elements.name;
+    guarded(e.submitter, async () => {
+      const res = await api("POST", "vpn/wireguard/peers", { name: input.value.trim() });
+      input.value = "";
+      showPeer(res);
+      await loadVpn();
+    });
+  });
+  const install = document.getElementById("ts-install");
+  install.addEventListener("click", () => guarded(install, async () => {
+    await api("POST", "vpn/tailscale/install");
+    say(t("vpn.ts_installing"), "");
+    await loadVpn();
+  }));
+  const logout = document.getElementById("ts-logout");
+  logout.addEventListener("click", () => guarded(logout, async () => {
+    if (!await ask(t("vpn.ts_logout_confirm"), "vpn.ts_logout", true)) return;
+    await api("POST", "vpn/tailscale/logout");
+    await loadVpn();
+  }));
+  document.getElementById("ts-form").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const f = e.target.elements;
+    guarded(e.submitter, async () => {
+      await api("POST", "vpn/tailscale/up", { routes: f.routes.checked, exit_node: f.exit_node.checked });
+      await loadVpn();
+    });
+  });
 }
 
 function scheduleRow(job, s) {
@@ -3121,6 +3279,7 @@ async function start() {
   bindRootSnapshots();
   bindParity();
   bindBackup();
+  bindVpn();
   try {
     const state = await api("GET", "state");
     if (state.setup_required) show("setup");

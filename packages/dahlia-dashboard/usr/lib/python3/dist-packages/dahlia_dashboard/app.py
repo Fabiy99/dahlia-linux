@@ -246,6 +246,24 @@ class StorageSettingsBody(BaseModel):
     snapraid_delete_threshold: int
 
 
+class WireguardBody(BaseModel):
+    enabled: bool
+    port: int
+    endpoint: str
+    route: str
+    dns: str = ""
+    subnet: str = "10.253.0.0/24"
+
+
+class PeerBody(BaseModel):
+    name: str
+
+
+class TailscaleBody(BaseModel):
+    routes: bool
+    exit_node: bool
+
+
 class ScheduleBody(BaseModel):
     frequency: str
     time: str = "03:00"
@@ -646,6 +664,34 @@ def create_app(cfg: Config | None = None) -> FastAPI:
     @app.post("/api/settings/firewall", dependencies=changing)
     def settings_set_firewall(body: FirewallBody):
         return agent("settings.set_firewall", body.model_dump())
+
+    @app.get("/api/vpn", dependencies=authed)
+    def vpn_status():
+        return agent("vpn.status")
+
+    @app.post("/api/vpn/wireguard", dependencies=changing)
+    def vpn_wireguard(body: WireguardBody):
+        return agent("vpn.wireguard_set", body.model_dump())
+
+    @app.post("/api/vpn/wireguard/peers", dependencies=changing)
+    def vpn_add_peer(body: PeerBody):
+        return agent("vpn.wireguard_add_peer", body.model_dump())
+
+    @app.post("/api/vpn/wireguard/peers/delete", dependencies=changing)
+    def vpn_remove_peer(body: PeerBody):
+        return agent("vpn.wireguard_remove_peer", body.model_dump())
+
+    @app.post("/api/vpn/tailscale/install", dependencies=changing)
+    def vpn_tailscale_install():
+        return agent("vpn.tailscale_install")
+
+    @app.post("/api/vpn/tailscale/up", dependencies=changing)
+    def vpn_tailscale_up(body: TailscaleBody):
+        return agent("vpn.tailscale_up", body.model_dump())
+
+    @app.post("/api/vpn/tailscale/logout", dependencies=changing)
+    def vpn_tailscale_logout():
+        return agent("vpn.tailscale_logout")
 
     @app.get("/api/settings/schedules", dependencies=authed)
     def settings_schedules():

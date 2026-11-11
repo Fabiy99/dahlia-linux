@@ -561,6 +561,53 @@
               <button type="submit" data-i18n="common.save"></button>
             </form>
           </article>
+          <article class="card tile wide" id="wg-card">
+            <h2 data-i18n="vpn.wg_title"></h2>
+            <p class="hint" data-i18n="vpn.wg_hint"></p>
+            <form id="wg-form">
+              <label class="check"><input name="enabled" type="checkbox"><span data-i18n="vpn.wg_enabled"></span></label>
+              <div class="vpn-grid">
+                <label class="wide"><span data-i18n="vpn.endpoint"></span>
+                  <input name="endpoint" autocomplete="off" data-i18n-placeholder="vpn.endpoint_placeholder"></label>
+                <label><span data-i18n="vpn.port"></span><input name="port" type="number" min="1024" max="65535" required></label>
+                <label><span data-i18n="vpn.route"></span>
+                  <select name="route">
+                    <option value="lan" data-i18n="vpn.route_lan"></option>
+                    <option value="all" data-i18n="vpn.route_all"></option>
+                  </select></label>
+                <label><span data-i18n="vpn.dns"></span><input name="dns" autocomplete="off" data-i18n-placeholder="vpn.dns_placeholder"></label>
+                <label><span data-i18n="vpn.subnet"></span><input name="subnet" autocomplete="off" required></label>
+              </div>
+              <p class="hint" id="wg-router"></p>
+              <button type="submit" data-i18n="common.save"></button>
+            </form>
+            <h3 data-i18n="vpn.peers"></h3>
+            <table class="containers">
+              <thead><tr>
+                <th data-i18n="vpn.peer_name"></th><th data-i18n="vpn.peer_address"></th>
+                <th data-i18n="vpn.peer_handshake"></th><th data-i18n="vpn.peer_traffic"></th><th></th>
+              </tr></thead>
+              <tbody id="wg-peers"></tbody>
+            </table>
+            <form id="wg-peer-form" class="folder-new">
+              <input name="name" autocomplete="off" required maxlength="32" data-i18n-placeholder="vpn.peer_placeholder">
+              <button type="submit" data-i18n="vpn.peer_add"></button>
+            </form>
+          </article>
+          <article class="card" id="ts-card">
+            <h2 data-i18n="vpn.ts_title"></h2>
+            <p class="hint" data-i18n="vpn.ts_hint"></p>
+            <ul id="ts-state" class="checks"></ul>
+            <form id="ts-form">
+              <label class="check"><input name="routes" type="checkbox"><span data-i18n="vpn.ts_routes"></span></label>
+              <label class="check"><input name="exit_node" type="checkbox"><span data-i18n="vpn.ts_exit"></span></label>
+              <div class="dialog-actions">
+                <button type="button" id="ts-install" data-i18n="vpn.ts_install"></button>
+                <button type="button" id="ts-logout" class="danger" data-i18n="vpn.ts_logout"></button>
+                <button type="submit" id="ts-up" class="primary" data-i18n="vpn.ts_up"></button>
+              </div>
+            </form>
+          </article>
           <article class="card">
             <h2 data-i18n="account.password_title"></h2>
             <form id="password-form">
@@ -756,6 +803,21 @@
     <div class="dialog-actions">
       <button value="cancel" formnovalidate data-i18n="common.cancel"></button>
       <button value="ok" id="install-ok" class="primary" data-i18n="apps.install"></button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="wg-peer-dialog" class="wide-dialog">
+  <form method="dialog">
+    <h2 id="wg-peer-title"></h2>
+    <p class="hint" data-i18n="vpn.peer_once"></p>
+    <div class="wg-peer">
+      <img id="wg-peer-qr" alt="">
+      <pre id="wg-peer-config"></pre>
+    </div>
+    <div class="dialog-actions">
+      <a id="wg-peer-download" class="button" data-i18n="vpn.peer_download"></a>
+      <button value="ok" class="primary" data-i18n="common.ok"></button>
     </div>
   </form>
 </dialog>

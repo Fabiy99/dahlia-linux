@@ -8,6 +8,10 @@ WS-Discovery while shares exist, NFS while a share is exported, and the
 ports of installed apps.
 Container ports Docker forwards (lan_ports) are dropped for other sources.
 
+WireGuard (vpn.py): while the tunnel is on, its UDP port is open from
+anywhere, and the tunnel subnet is masqueraded on the way into the LAN.
+The NAT stays loaded with the firewall turned off.
+
 Docker keeps its own tables; the ruleset never flushes anything but
 inet dahlia, so it can be loaded at any time. Settings live in
 /etc/dahlia/firewall.json; dahlia-firewall.service loads the table at boot,
@@ -135,6 +139,21 @@ def app_ports(apps_dir: Path) -> list[Port]:
     return out
 
 
+def wireguard(etc: Path) -> dict | None:
+    """{"port", "subnet", "interface"} while the WireGuard server is on, else None."""
+    try:
+        data = json.loads((etc / "dahlia/wireguard.json").read_text())
+        if not isinstance(data, dict) or data.get("enabled") is not True:
+            return None
+        port = data["port"]
+        subnet = str(ipaddress.ip_network(data["subnet"]))
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+    if type(port) is not int or not 1 <= port <= 65535:
+        return None
+    return {"port": port, "subnet": subnet, "interface": "dahlia-wg"}
+
+
 def open_ports(etc: Path, apps_dir: Path) -> list[Port]:
     ports = list(BASE_PORTS)
     if shares_active(etc):
@@ -179,7 +198,18 @@ def _set(name: str, type_: str, values) -> str:
     return f"    set {name} {{ type {type_}; elements = {{ {', '.join(values)} }} }}"
 
 
-def ruleset(ports: list[Port], networks: list[str]) -> str:
+def nat_chain(vpn: dict | None) -> list[str]:
+    if not vpn:
+        return []
+    return [
+        "    chain postrouting {",
+        "        type nat hook postrouting priority srcnat; policy accept;",
+        f'        ip saddr {vpn["subnet"]} oifname != "{vpn["interface"]}" masquerade',
+        "    }",
+    ]
+
+
+def ruleset(ports: list[Port], networks: list[str], vpn: dict | None = None) -> str:
     """The table inet dahlia, replacing an existing one in one transaction."""
     v4 = list(PRIVATE4) + [n for n in networks if ":" not in n]
     v6 = list(PRIVATE6) + [n for n in networks if ":" in n]
@@ -210,6 +240,9 @@ def ruleset(ports: list[Port], networks: list[str]) -> str:
         "        udp sport 67 udp dport 68 accept",
         "        ip6 saddr fe80::/10 udp sport 547 udp dport 546 accept",
     ]
+    if vpn:
+        # Clients connect from the internet; WireGuard drops what is not signed.
+        lines.append(f"        udp dport {vpn['port']} accept")
     for proto, setname in (("tcp", "tcp_ports"), ("udp", "udp_ports")):
         if (tcp if proto == "tcp" else udp):
             lines += [f"        ip saddr @local4 {proto} dport @{setname} accept",
@@ -225,13 +258,17 @@ def ruleset(ports: list[Port], networks: list[str]) -> str:
         "        ct status dnat ip saddr != @local4 drop",
         "        ct status dnat ip6 saddr != @local6 drop",
         "    }",
+        *nat_chain(vpn),
         "}",
     ]
     return "\n".join(lines) + "\n"
 
 
-def disabled_ruleset() -> str:
-    return f"table inet {TABLE} {{}}\ndelete table inet {TABLE}\n"
+def disabled_ruleset(vpn: dict | None = None) -> str:
+    text = f"table inet {TABLE} {{}}\ndelete table inet {TABLE}\n"
+    if vpn:
+        text += "\n".join([f"table inet {TABLE} {{", *nat_chain(vpn), "}"]) + "\n"
+    return text
 
 
 # --- apply ----------------------------------------------------------------------
@@ -263,6 +300,7 @@ class Firewall:
             "local": list(PRIVATE4) + list(PRIVATE6),
             "subnets": local_subnets(self.run),
             "ports": [p.to_dict() for p in open_ports(self.etc, self.apps_dir)],
+            "wireguard": wireguard(self.etc),
         }
 
     def apply(self) -> dict:
@@ -270,9 +308,9 @@ class Firewall:
         status = self.status()
         if status["enabled"]:
             text = ruleset([Port(**p) for p in status["ports"]],
-                           status["subnets"] + status["networks"])
+                           status["subnets"] + status["networks"], status["wireguard"])
         else:
-            text = disabled_ruleset()
+            text = disabled_ruleset(status["wireguard"])
         self.run_dir.mkdir(parents=True, exist_ok=True)
         rules = self.run_dir / "firewall.nft"
         rules.write_text(text)
@@ -326,8 +364,8 @@ def main(argv: list[str] | None = None) -> int:
             print(json.dumps(fw.status(), indent=2))
         elif args.command == "show":
             st = fw.status()
-            print(ruleset([Port(**x) for x in st["ports"]], st["subnets"] + st["networks"]),
-                  end="")
+            print(ruleset([Port(**x) for x in st["ports"]], st["subnets"] + st["networks"],
+                          st["wireguard"]), end="")
         else:
             fw.set(args.command == "enable", load_settings(fw.config)["networks"])
             print(f"dahlia-firewall: {'enabled' if args.command == 'enable' else 'disabled'}")

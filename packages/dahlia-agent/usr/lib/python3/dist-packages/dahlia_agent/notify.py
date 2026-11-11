@@ -223,6 +223,7 @@ JOB_NAMES = {
     "dahlia-parity.service": "Parity repair",
     "dahlia-rollback.service": "Rollback",
     "dahlia-update.service": "System update",
+    "dahlia-tailscale-install.service": "Tailscale install",
 }
 
 
