@@ -340,6 +340,7 @@ Vorlage unter `login` nennt.
 | Container | `no-new-privileges`, Log-Treiber `local` mit 3 x 10 MB; Hauptdienst `dahlia-<id>`, Hilfsdienste `dahlia-<id>-<dienst>` |
 | Stack | eigenes Docker-Netz je App, Dienste erreichen sich über den Dienstnamen; Hilfsdienste veröffentlichen keine Ports |
 | Katalog | `catalog.json` (alle Vorlagen in einer Datei), sonst `index.json` und `apps/<id>.yaml`; Vorlagen mit neuerem Schema werden übersprungen |
+| Logos | `catalog.json` nennt unter `icons` je App `icons/<id>.svg` oder `.png` mit SHA-256. Der Agent lädt nur geänderte Logos, prüft Hash, Größe (64 KB) und Dateityp und legt sie in `/var/lib/dahlia/apps-catalog/icons/`; nginx liefert sie als `/app-icons/` mit `sandbox`-CSP aus. Ohne Logo zeigt das Dashboard den Anfangsbuchstaben |
 | Updates | `dahlia-apps-catalog.timer` lädt den Katalog alle 6 Stunden; weicht die Vorlage einer installierten App ab, zeigt das Dashboard "Update auf <Version>" und "Alle aktualisieren". Alte Images werden danach gelöscht |
 
 ```sh

@@ -172,6 +172,7 @@ details summary { cursor: pointer; color: var(--muted); font-size: .85rem; }
 /* avatars */
 .avatar { width: 2.4rem; height: 2.4rem; border-radius: 9px; display: grid; place-content: center; flex: none;
           font-weight: 700; color: #fff; font-size: 1.05rem; }
+img.avatar { object-fit: contain; padding: .2rem; background: #fff; border: 1px solid var(--line); }
 .app-mini .avatar { width: 2rem; height: 2rem; font-size: .9rem; border-radius: 7px; }
 
 /* apps */

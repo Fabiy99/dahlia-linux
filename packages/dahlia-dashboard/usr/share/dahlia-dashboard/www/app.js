@@ -134,8 +134,17 @@ function cell(tr, content) {
   return td;
 }
 
-// Letter avatar with a colour derived from the id, so it stays the same.
-function avatar(id, name) {
+// App logo from the catalog, else a letter avatar with a colour derived from
+// the id, so it stays the same.
+function avatar(id, name, icon) {
+  if (icon) {
+    const img = el("img", "avatar logo-img");
+    img.src = `/app-icons/${icon}`;
+    img.alt = "";
+    img.loading = "lazy";
+    img.addEventListener("error", () => img.replaceWith(avatar(id, name)), { once: true });
+    return img;
+  }
   let h = 0;
   for (const c of id) h = (h * 31 + c.charCodeAt(0)) % 360;
   const a = el("span", "avatar", (name || id).slice(0, 1).toUpperCase());
@@ -494,7 +503,7 @@ function renderOverviewApps(installed) {
     const item = el("div", "app-mini");
     const meta = el("div", "meta");
     meta.append(el("b", "", app.name), el("small", "", tv("app_status", app.status)));
-    item.append(el("span", `dot ${DOT_KIND[STATUS_KIND[app.status] ?? ""]}`), avatar(app.id, app.name), meta);
+    item.append(el("span", `dot ${DOT_KIND[STATUS_KIND[app.status] ?? ""]}`), avatar(app.id, app.name, app.icon), meta);
     if (app.update) item.append(badge(t("apps.update_short"), "accent"));
     const url = primaryUrl(app);
     if (url && app.status === "running") {
@@ -880,7 +889,7 @@ function cardHead(app, sub) {
   const head = el("div", "head");
   const title = el("div", "title");
   title.append(el("b", "", app.name), el("small", "", sub));
-  head.append(avatar(app.id, app.name), title);
+  head.append(avatar(app.id, app.name, app.icon), title);
   return head;
 }
 

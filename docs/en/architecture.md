@@ -333,6 +333,7 @@ characters), made at install time and kept in `/var/lib/dahlia/apps/<id>/secrets
 | Containers | `no-new-privileges`, log driver `local` with 3 x 10 MB; main service `dahlia-<id>`, helpers `dahlia-<id>-<service>` |
 | Stack | own Docker network per app, services reach each other by service name; helpers publish no ports |
 | Catalog | `catalog.json` (all templates in one file), otherwise `index.json` and `apps/<id>.yaml`; templates with a newer schema are skipped |
+| Logos | `catalog.json` lists `icons/<id>.svg` or `.png` with its SHA-256 per app under `icons`. The agent downloads only changed logos, checks hash, size (64 KB) and file type and stores them in `/var/lib/dahlia/apps-catalog/icons/`; nginx serves them as `/app-icons/` with a `sandbox` CSP. Without a logo the dashboard shows the first letter |
 | Updates | `dahlia-apps-catalog.timer` downloads the catalog every 6 hours; when an installed app's template differs, the dashboard shows "Update to <version>" and "Update all". Old images are deleted afterwards |
 
 ```sh

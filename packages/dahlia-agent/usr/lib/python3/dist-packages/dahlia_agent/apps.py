@@ -60,6 +60,7 @@ catalog's; tags are pinned, so a new version is a new template.
 Layout:
     /etc/dahlia/apps.json                    catalog URL
     /var/lib/dahlia/apps-catalog/            last downloaded catalog, meta.json
+    /var/lib/dahlia/apps-catalog/icons/      app logos, served by nginx as /app-icons/
     /var/lib/dahlia/apps/<id>/app.yaml       template the app was installed from
     /var/lib/dahlia/apps/<id>/compose.json   generated, used by docker compose
     /var/lib/dahlia/apps/<id>/state.json     host port, enabled flag, location, folders
@@ -70,6 +71,7 @@ import argparse
 import contextlib
 import datetime
 import grp
+import hashlib
 import json
 import os
 import pwd
@@ -108,6 +110,8 @@ MAX_BUNDLE = 16 * 1024 * 1024
 DOWNLOAD_TIMEOUT = 30
 SCHEMAS = (1, 2)
 BUNDLE_FORMAT = 1
+MAX_ICON = 64 * 1024
+ICON_RE = re.compile(r"icons/([a-z0-9][a-z0-9-]*)\.(svg|png)")
 MAX_SERVICES = 8
 MAIN = "app"
 
@@ -762,6 +766,10 @@ def catalog_url(paths: Paths) -> str:
 
 
 def fetch(url: str, limit: int = MAX_FILE) -> str:
+    return fetch_bytes(url, limit).decode()
+
+
+def fetch_bytes(url: str, limit: int = MAX_FILE) -> bytes:
     scheme = urllib.parse.urlsplit(url).scheme
     if scheme not in ("https", "file"):
         raise AppError(f"refusing to fetch {url}")
@@ -780,11 +788,38 @@ def fetch(url: str, limit: int = MAX_FILE) -> str:
         raise AppError(f"download failed: {url}: {e}") from None
     if len(data) > limit:
         raise AppError(f"{url} is larger than {limit} bytes")
-    return data.decode()
+    return data
 
 
-def _catalog_texts(base: str, fetcher) -> dict[str, str]:
-    """Template texts by id: catalog.json (one file), else index.json + apps/<id>.yaml."""
+def _catalog_icons(data: dict) -> dict[str, tuple[str, str]]:
+    """The "icons" of catalog.json: id -> (file name, sha256). Bad entries are left out."""
+    out = {}
+    icons = data.get("icons")
+    for app_id, entry in (icons.items() if isinstance(icons, dict) else []):
+        if not isinstance(entry, dict) or not isinstance(entry.get("file"), str):
+            continue
+        m = ICON_RE.fullmatch(entry["file"])
+        sha = entry.get("sha256")
+        if (m and m.group(1) == app_id and isinstance(sha, str)
+                and re.fullmatch(r"[0-9a-f]{64}", sha)):
+            out[app_id] = (f"{app_id}.{m.group(2)}", sha)
+    return out
+
+
+def icon_ok(name: str, data: bytes) -> bool:
+    """Size and file type. The dashboard shows icons only in <img>, where SVG scripts do not run."""
+    if len(data) > MAX_ICON:
+        return False
+    if name.endswith(".png"):
+        return data.startswith(b"\x89PNG\r\n\x1a\n")
+    return b"<svg" in data[:2048]
+
+
+def _catalog_texts(base: str, fetcher, icons: dict | None = None) -> dict[str, str]:
+    """Template texts by id: catalog.json (one file), else index.json + apps/<id>.yaml.
+
+    The icons listed in catalog.json are put into `icons` (id -> (file, sha256)).
+    """
     try:
         bundle = fetcher(base + "catalog.json", MAX_BUNDLE)
     except NotFound:
@@ -802,6 +837,8 @@ def _catalog_texts(base: str, fetcher) -> dict[str, str]:
             for k, v in texts.items()
         ):
             raise AppError("catalog.json must contain {\"apps\": {id: template}}")
+        if icons is not None:
+            icons.update(_catalog_icons(data))
         return dict(sorted(texts.items()))
     try:
         index = json.loads(fetcher(base + "index.json", MAX_FILE))
@@ -815,15 +852,39 @@ def _catalog_texts(base: str, fetcher) -> dict[str, str]:
 
 def _clear(d: Path) -> None:
     if d.exists():
-        for f in d.iterdir():
-            f.unlink()
-        d.rmdir()
+        shutil.rmtree(d)
 
 
-def refresh_catalog(paths: Paths, fetcher=fetch) -> list[Template]:
+def _fetch_icons(paths: Paths, base: str, wanted: dict, target: Path, fetcher) -> dict:
+    """Copy unchanged icons from the cache, download the others; id -> {file, sha256}.
+
+    An icon that fails is left out: the dashboard shows the first letter instead.
+    """
+    old = catalog_meta(paths).get("icons") or {}
+    target.mkdir()
+    target.chmod(0o755)  # nginx (www-data) serves them
+    out = {}
+    for app_id, (name, sha) in sorted(wanted.items()):
+        cached = paths.catalog / "icons" / name
+        if old.get(app_id, {}).get("sha256") == sha and cached.is_file():
+            data = cached.read_bytes()
+        else:
+            try:
+                data = fetcher(f"{base}icons/{name}", MAX_ICON)
+            except AppError:
+                continue
+        if hashlib.sha256(data).hexdigest() != sha or not icon_ok(name, data):
+            continue
+        (target / name).write_bytes(data)
+        (target / name).chmod(0o644)
+        out[app_id] = {"file": name, "sha256": sha}
+    return out
+
+
+def refresh_catalog(paths: Paths, fetcher=fetch, icon_fetcher=fetch_bytes) -> list[Template]:
     base = catalog_url(paths)
-    templates, texts, skipped = [], {}, []
-    for app_id, text in _catalog_texts(base, fetcher).items():
+    templates, texts, skipped, icons = [], {}, [], {}
+    for app_id, text in _catalog_texts(base, fetcher, icons).items():
         schema = template_schema(text)
         # Templates for a newer Dahlia are left out, not an error.
         if type(schema) is int and schema > max(SCHEMAS):
@@ -837,10 +898,12 @@ def refresh_catalog(paths: Paths, fetcher=fetch) -> list[Template]:
     new.mkdir(parents=True)
     for app_id, text in texts.items():
         (new / f"{app_id}.yaml").write_text(text)
+    icons = {k: v for k, v in icons.items() if k in texts}
     meta = {
         "refreshed": datetime.datetime.now(datetime.UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "source": base,
         "skipped": skipped,
+        "icons": _fetch_icons(paths, base, icons, new / "icons", icon_fetcher),
     }
     (new / "meta.json").write_text(json.dumps(meta) + "\n")
     old = paths.catalog.with_name(paths.catalog.name + ".old")
@@ -874,6 +937,16 @@ def cached_template(paths: Paths, app_id: str) -> Template | None:
 
 def catalog_meta(paths: Paths) -> dict:
     return read_json(paths.catalog / "meta.json", {}) or {}
+
+
+def icon_urls(paths: Paths) -> dict[str, str]:
+    """id -> path below /app-icons/; the hash in the query renews the browser cache."""
+    icons = catalog_meta(paths).get("icons")
+    if not isinstance(icons, dict):
+        return {}
+    return {app_id: f"{v['file']}?v={v['sha256'][:12]}" for app_id, v in icons.items()
+            if isinstance(v, dict) and isinstance(v.get("file"), str)
+            and isinstance(v.get("sha256"), str)}
 
 
 # --- docker -------------------------------------------------------------------
@@ -1016,8 +1089,10 @@ class Apps:
         templates = refresh_catalog(self.paths) if refresh else cached_catalog(self.paths)
         have = set(installed(self.paths))
         meta = catalog_meta(self.paths)
+        icons = icon_urls(self.paths)
         return {
-            "apps": [{**t.summary(), "installed": t.id in have} for t in templates],
+            "apps": [{**t.summary(), "installed": t.id in have, "icon": icons.get(t.id)}
+                     for t in templates],
             "refreshed": meta.get("refreshed"),
             "skipped": meta.get("skipped", []),
         }
@@ -1155,6 +1230,7 @@ class Apps:
         out = []
         settings = self.naming.settings()
         host = self.naming._host()
+        icons = icon_urls(self.paths)
         for app_id in installed(self.paths):
             t, state = load_installed(self.paths, app_id)
             login = {}
@@ -1171,6 +1247,7 @@ class Apps:
                 if t.public_port else None,
                 "update": update_info(t, cached_template(self.paths, app_id)),
                 "login": login or None,
+                "icon": icons.get(app_id),
             })
         return out
 
