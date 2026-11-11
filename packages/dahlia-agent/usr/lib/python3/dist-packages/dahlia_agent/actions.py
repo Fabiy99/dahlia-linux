@@ -552,6 +552,80 @@ def job_status(ctx: Context, job: str):
     return {"job": job, **state}
 
 
+# --- parity -------------------------------------------------------------------
+
+# Forced sync and repairs run as a transient unit; it stays after it finished
+# (RemainAfterExit) so the dashboard can show the result.
+PARITY_UNIT = "dahlia-parity.service"
+PARITY_WHAT_RE = re.compile(r"^(bad|disk[1-9][0-9]?)$")
+
+
+def parity_busy(ctx: Context) -> str | None:
+    for name, unit in (("mover", JOBS["mover"]), ("sync", JOBS["snapraid-sync"]),
+                       ("scrub", JOBS["snapraid-scrub"]), ("repair", PARITY_UNIT)):
+        if is_running(ctx, unit):
+            return name
+    return None
+
+
+def start_parity_unit(ctx: Context, description: str, *args: str) -> None:
+    busy = parity_busy(ctx)
+    if busy:
+        raise AgentError(BUSY, f"{busy} is running")
+    ctx.runner.run(["systemctl", "stop", PARITY_UNIT], check=False)
+    ctx.runner.run(["systemctl", "reset-failed", PARITY_UNIT], check=False)
+    ctx.runner.run(["systemd-run", "--unit", PARITY_UNIT, "--no-block",
+                    "--property", "Type=oneshot", "--property", "RemainAfterExit=yes",
+                    "--property", f"OnFailure=dahlia-notify-failure@{PARITY_UNIT}.service",
+                    "--description", description, "/usr/sbin/dahlia-snapraid", *args])
+
+
+@action("parity.get", mutating=False)
+def parity_get(ctx: Context):
+    """Parity disks, problems, snapraid status, last runs and running jobs."""
+    out = ctx.runner.run(["dahlia-snapraid", "status", "--json"], timeout=600).stdout
+    info = json.loads(out)
+    info["jobs"] = {
+        "sync": unit_state(ctx, JOBS["snapraid-sync"]),
+        "scrub": unit_state(ctx, JOBS["snapraid-scrub"]),
+        "mover": unit_state(ctx, JOBS["mover"]),
+        "repair": unit_state(ctx, PARITY_UNIT),
+    }
+    return info
+
+
+@action(
+    "parity.sync",
+    mutating=True,
+    params={"force": Param(bool, required=False, default=False)},
+)
+def parity_sync(ctx: Context, force: bool):
+    """Sync now; force skips the delete threshold after the admin checked the disks."""
+    if not force:
+        busy = parity_busy(ctx)
+        if busy:
+            raise AgentError(BUSY, f"{busy} is running")
+        ctx.runner.run(["systemctl", "start", "--no-block", JOBS["snapraid-sync"]])
+        return {"started": True, "force": False}
+    start_parity_unit(ctx, "Dahlia parity: forced sync", "sync", "--force")
+    return {"started": True, "force": True}
+
+
+@action(
+    "parity.fix",
+    mutating=True,
+    params={"what": Param(str, pattern=PARITY_WHAT_RE)},
+)
+def parity_fix(ctx: Context, what: str):
+    """Repair bad blocks ("bad") or rebuild data disk N ("diskN") from the parity."""
+    if what == "bad":
+        start_parity_unit(ctx, "Dahlia parity: repair bad blocks", "fix", "--bad")
+    else:
+        disk = what.removeprefix("disk")
+        start_parity_unit(ctx, f"Dahlia parity: restore /mnt/disk{disk}", "fix", "--disk", disk)
+    return {"started": True, "what": what}
+
+
 # --- updates ------------------------------------------------------------------
 
 APT_ENV = {

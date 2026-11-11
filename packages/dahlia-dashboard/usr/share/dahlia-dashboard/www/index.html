@@ -43,6 +43,7 @@
   <symbol id="i-log" viewBox="0 0 24 24"><path d="M6 3h9l4 4v14H6z"/><path d="M15 3v4h4M9 11h7M9 14.5h7M9 18h4"/></symbol>
   <symbol id="i-thermo" viewBox="0 0 24 24"><path d="M10 4a2 2 0 0 1 4 0v9.5a4 4 0 1 1-4 0Z"/><path d="M12 10v7"/></symbol>
   <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 6.5A1.5 1.5 0 0 1 4.5 5H9l2 2.5h8.5A1.5 1.5 0 0 1 21 9v8.5a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 17.5Z"/></symbol>
+  <symbol id="i-parity" viewBox="0 0 24 24"><path d="M12 3 4.5 6v5.5c0 4.6 3.1 8.2 7.5 9.5 4.4-1.3 7.5-4.9 7.5-9.5V6L12 3Z"/><path d="m8.8 12 2.2 2.2 4.2-4.4"/></symbol>
   <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></symbol>
 </svg>
 
@@ -57,6 +58,7 @@
     <nav id="nav">
       <button data-view="overview"><svg><use href="#i-overview"/></svg><span data-i18n="nav.overview"></span></button>
       <button data-view="storage"><svg><use href="#i-storage"/></svg><span data-i18n="nav.storage"></span></button>
+      <button data-view="parity"><svg><use href="#i-parity"/></svg><span data-i18n="nav.parity"></span></button>
       <button data-view="shares"><svg><use href="#i-share"/></svg><span data-i18n="nav.shares"></span></button>
       <button data-view="apps"><svg><use href="#i-apps"/></svg><span data-i18n="nav.apps"></span><span id="nav-apps-badge" class="count" hidden></span></button>
       <button data-view="docker"><svg><use href="#i-docker"/></svg><span data-i18n="nav.docker"></span></button>
@@ -205,6 +207,58 @@
         <div id="import-status" class="notice" hidden></div>
         <div id="disks" class="disk-list"></div>
         <div class="actions"><button id="storage-refresh" data-i18n="common.refresh"></button></div>
+      </section>
+
+      <section id="view-parity" hidden>
+        <div id="parity-notice" class="notice" hidden></div>
+        <div class="tiles two">
+          <article class="card">
+            <h2 data-i18n="parity.state_title"></h2>
+            <dl id="parity-state" class="facts"></dl>
+            <p class="hint" data-i18n="parity.schedule_hint"></p>
+            <div class="actions">
+              <button id="parity-sync" class="primary" data-i18n="parity.sync"></button>
+              <button id="parity-scrub" data-i18n="parity.scrub"></button>
+              <button id="parity-refresh" data-i18n="common.refresh"></button>
+            </div>
+          </article>
+          <article class="card">
+            <h2 data-i18n="parity.disks_title"></h2>
+            <table>
+              <thead><tr>
+                <th data-i18n="parity.disk"></th><th data-i18n="parity.size"></th>
+                <th data-i18n="parity.files"></th><th data-i18n="parity.state"></th>
+              </tr></thead>
+              <tbody id="parity-disks"></tbody>
+            </table>
+            <p class="hint" data-i18n="parity.what"></p>
+          </article>
+          <article class="card">
+            <h2 data-i18n="parity.restore_title"></h2>
+            <ol class="steps">
+              <li data-i18n="parity.restore_step1"></li>
+              <li data-i18n="parity.restore_step2"></li>
+              <li data-i18n="parity.restore_step3"></li>
+            </ol>
+            <form id="parity-restore" class="inline-form">
+              <label><span data-i18n="parity.disk"></span><select name="disk"></select></label>
+              <div class="actions"><button type="submit" data-i18n="parity.restore"></button></div>
+            </form>
+          </article>
+          <article class="card">
+            <h2 data-i18n="parity.settings_title"></h2>
+            <form id="parity-settings">
+              <label><span data-i18n="parity.threshold"></span>
+                <input name="snapraid_delete_threshold" type="number" min="0" max="100000" required></label>
+              <p class="hint" data-i18n="parity.threshold_hint"></p>
+              <label><span data-i18n="parity.scrub_percent"></span>
+                <input name="scrub_percent" type="number" min="1" max="100" required></label>
+              <label><span data-i18n="parity.scrub_age"></span>
+                <input name="scrub_older_than_days" type="number" min="0" max="3650" required></label>
+              <div class="actions"><button type="submit" class="primary" data-i18n="common.save"></button></div>
+            </form>
+          </article>
+        </div>
       </section>
 
       <section id="view-apps" hidden>
