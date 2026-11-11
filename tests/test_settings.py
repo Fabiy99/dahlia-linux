@@ -130,7 +130,7 @@ def test_set_schedule_off(ctx):
 
 
 @pytest.mark.parametrize("params", [
-    {"job": "backup", "frequency": "daily"},
+    {"job": "update", "frequency": "daily"},
     {"job": "mover", "frequency": "yearly"},
     {"job": "mover", "frequency": "daily", "time": "24:00"},
     {"job": "mover", "frequency": "daily", "time": "3:00"},

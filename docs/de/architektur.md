@@ -225,7 +225,7 @@ Protokoll: eine Anfrage pro Verbindung, je eine JSON-Zeile hin und zurück.
 | `storage.set_option` | `name`, `value` (Zahl) | `dahlia-disk set-option` |
 | `storage.format` | `device` (ganze Platte), `filesystem` (`xfs`, `ext4`, `btrfs`), `confirm` (Plattenname wiederholt) | `dahlia-disk format`, nur leere oder übernommene Platten |
 | `storage.import` / `storage.import_status` | `uuid`, `target` (Name unter `/mnt/user`) | `dahlia-disk import` als Unit `dahlia-import`, Fortschritt in `/run/dahlia/import.json` |
-| `job.start` | `job` (mover, snapraid-sync, snapraid-scrub) | startet die Unit, kehrt sofort zurück |
+| `job.start` | `job` (mover, snapraid-sync, snapraid-scrub, backup) | startet die Unit, kehrt sofort zurück |
 | `job.status` | `job` (dazu `update`) | Zustand und letztes Ergebnis |
 | `updates.check` | - | `apt-get update`, Liste der Upgrades |
 | `updates.apply` | - | `apt-get full-upgrade` über die Unit `dahlia-update.service`; die geplanten Pakete (Simulation) in `/run/dahlia/update.json` |
@@ -242,6 +242,11 @@ Protokoll: eine Anfrage pro Verbindung, je eine JSON-Zeile hin und zurück.
 | `files.mkdir` | `root`, `path` | neuen Ordner anlegen (Gruppe `dahlia`, 2775), nicht unter `appdata` |
 | `domains.get` | - | Domain, mDNS-Aliase, nötige DNS-Einträge, Zertifikate |
 | `domains.set` | `domain`, `mdns_aliases` | `dahlia-domains set`, Zertifikat und Proxy neu |
+| `backup.get` | – | Ziel, letztes Ergebnis, öffentlicher SSH-Schlüssel, mögliche Zielplatten (`/mnt/diskN`, `/mnt/cache`, `/mnt/user`, `/media/…`) |
+| `backup.set` | `target` (`{"type": "folder", "path": …}` oder `{"type": "sftp", "host", "port", "user", "path"}`), `stop_apps`, `folders` (optional, weitere Ordner unter `/mnt/user` oder `/srv`) | `/etc/dahlia/backup.json`, legt Passwort und SSH-Schlüssel an, schaltet `dahlia-backup.timer` ein |
+| `backup.key` | – | Passwort des Repositorys |
+| `backup.snapshots` | – | `restic snapshots` |
+| `backup.restore` | `snapshot`, `what` (`config` oder App-ID) | im Hintergrund als Unit `dahlia-backup-restore` |
 | `agent.actions` | - | diese Liste |
 
 Unbekannte Aktionen, unbekannte oder fehlende Parameter und falsche Typen werden abgelehnt,
@@ -413,6 +418,46 @@ dahlia-apps update jellyfin
 dahlia-apps remove jellyfin [--delete-data]
 dahlia-apps check app.yaml        # Vorlage prüfen
 ```
+
+## Backup (ab Meilenstein 13)
+
+`dahlia-backup` sichert mit restic, was zum Wiederherstellen eines Servers nötig ist:
+
+- `/etc/dahlia`
+- `/var/lib/dahlia/apps` (Vorlagen, Zustand und Geheimnisse der installierten Apps)
+- `/var/lib/dahlia-dashboard` (Dashboard-Konten)
+- `<Speicherort>/appdata/<id>` jeder installierten App
+- weitere Ordner aus `folders` in `/etc/dahlia/backup.json`
+
+Freigaben mit Filmen oder Fotos gehören nicht dazu. Dafür sind Parity und eine zweite
+Kopie zuständig.
+
+Ziel ist ein Ordner `dahlia-backup` auf einer anderen Platte (am sichersten eine USB-Platte
+unter `/media`) oder ein SFTP-Server. Für SFTP legt Dahlia `/etc/dahlia/backup_ed25519` an;
+der öffentliche Schlüssel steht im Dashboard und gehört auf dem Server in
+`~/.ssh/authorized_keys`. Das Repository ist mit einem Zufallspasswort aus
+`/etc/dahlia/backup.pass` (0600) verschlüsselt. Ohne dieses Passwort lässt sich nichts
+wiederherstellen, daher zeigt das Dashboard es zum Aufbewahren an.
+
+Laufende Apps werden für die Sicherung gestoppt und danach wieder gestartet, damit die
+Datenbanken konsistent sind (abschaltbar). Danach behält restic 7 tägliche, 4 wöchentliche
+und 6 monatliche Snapshots. `dahlia-backup.timer` läuft täglich um 02:00 und wird erst
+eingeschaltet, wenn ein Ziel gespeichert ist; die Zeit steht unter Einstellungen > Zeitpläne.
+Fehler gehen wie bei den anderen Jobs an die Benachrichtigungen.
+
+Wiederherstellen geht je App (Container gestoppt, `appdata` ersetzt, wieder gestartet) oder
+für die Konfiguration (`/etc/dahlia` und die App-Liste).
+
+```sh
+sudo dahlia-backup run
+sudo dahlia-backup snapshots
+sudo dahlia-backup restore 4f2a9c1d paperless
+sudo dahlia-backup restore 4f2a9c1d config
+```
+
+Auf einem neuen Server: Dahlia installieren, das alte Passwort nach `/etc/dahlia/backup.pass`
+(0600) schreiben, im Dashboard dasselbe Ziel eintragen und `config` wiederherstellen, danach
+die Apps einzeln wiederherstellen und unter Apps starten.
 
 ## Netzwerk und Namen (ab Meilenstein 7)
 

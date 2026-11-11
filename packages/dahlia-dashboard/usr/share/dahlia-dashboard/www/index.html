@@ -43,6 +43,7 @@
   <symbol id="i-log" viewBox="0 0 24 24"><path d="M6 3h9l4 4v14H6z"/><path d="M15 3v4h4M9 11h7M9 14.5h7M9 18h4"/></symbol>
   <symbol id="i-thermo" viewBox="0 0 24 24"><path d="M10 4a2 2 0 0 1 4 0v9.5a4 4 0 1 1-4 0Z"/><path d="M12 10v7"/></symbol>
   <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 6.5A1.5 1.5 0 0 1 4.5 5H9l2 2.5h8.5A1.5 1.5 0 0 1 21 9v8.5a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 17.5Z"/></symbol>
+  <symbol id="i-backup" viewBox="0 0 24 24"><ellipse cx="12" cy="6" rx="7.5" ry="2.8"/><path d="M4.5 6v6c0 1.5 3.4 2.8 7.5 2.8s7.5-1.3 7.5-2.8V6M4.5 12v6c0 1.5 3.4 2.8 7.5 2.8s7.5-1.3 7.5-2.8v-6"/></symbol>
   <symbol id="i-terminal" viewBox="0 0 24 24"><rect x="2.5" y="4" width="19" height="16" rx="2"/><path d="M6.5 9l3 3-3 3M12 15h5"/></symbol>
   <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></symbol>
 </svg>
@@ -63,6 +64,7 @@
       <button data-view="docker"><svg><use href="#i-docker"/></svg><span data-i18n="nav.docker"></span></button>
       <button data-view="domains"><svg><use href="#i-domains"/></svg><span data-i18n="nav.domains"></span></button>
       <button data-view="jobs"><svg><use href="#i-jobs"/></svg><span data-i18n="nav.jobs"></span></button>
+      <button data-view="backup"><svg><use href="#i-backup"/></svg><span data-i18n="nav.backup"></span></button>
       <button data-view="log"><svg><use href="#i-log"/></svg><span data-i18n="nav.log"></span></button>
       <button data-view="terminal"><svg><use href="#i-terminal"/></svg><span data-i18n="nav.terminal"></span></button>
       <button data-view="updates"><svg><use href="#i-updates"/></svg><span data-i18n="nav.updates"></span></button>
@@ -307,6 +309,56 @@
           <dl id="tls-info" class="facts"></dl>
           <p><a class="button" href="/dahlia-ca.crt" download><svg><use href="#i-download"/></svg><span data-i18n="domains.ca_download"></span></a></p>
         </article>
+      </section>
+
+      <section id="view-backup" hidden>
+        <div class="tiles two">
+          <article class="card">
+            <h2 data-i18n="backup.target_title"></h2>
+            <form id="backup-form">
+              <label><span data-i18n="backup.type"></span>
+                <select name="type">
+                  <option value="folder" data-i18n="backup.type_folder"></option>
+                  <option value="sftp" data-i18n="backup.type_sftp"></option>
+                </select></label>
+              <div id="backup-folder" class="field-group">
+                <label><span data-i18n="backup.disk"></span><select name="path"></select></label>
+                <p class="hint" data-i18n="backup.disk_hint"></p>
+              </div>
+              <div id="backup-sftp" class="field-group" hidden>
+                <label><span data-i18n="backup.host"></span><input name="host" placeholder="nas.fritz.box"></label>
+                <label><span data-i18n="backup.port"></span><input name="port" type="number" min="1" max="65535" value="22"></label>
+                <label><span data-i18n="backup.user"></span><input name="user" autocomplete="off"></label>
+                <label><span data-i18n="backup.path"></span><input name="spath" placeholder="dahlia-backup"></label>
+                <p class="hint" id="backup-pubkey-hint" data-i18n="backup.sftp_hint"></p>
+                <code id="backup-pubkey" class="pubkey" hidden></code>
+              </div>
+              <label class="check"><input name="stop_apps" type="checkbox" checked><span data-i18n="backup.stop_apps"></span></label>
+              <p class="hint" data-i18n="backup.what"></p>
+              <div class="actions">
+                <button type="submit" class="primary" data-i18n="common.save"></button>
+                <button type="button" id="backup-key" data-i18n="backup.show_key"></button>
+              </div>
+            </form>
+          </article>
+          <article class="card">
+            <h2 data-i18n="backup.state_title"></h2>
+            <dl id="backup-state" class="facts"></dl>
+            <p class="hint" data-i18n="backup.schedule_hint"></p>
+            <div class="actions">
+              <button id="backup-run" class="primary" data-i18n="backup.run"></button>
+              <button id="backup-list" data-i18n="backup.list"></button>
+            </div>
+          </article>
+          <article class="card tile wide" id="backup-snapshots-card" hidden>
+            <h2 data-i18n="backup.snapshots_title"></h2>
+            <p class="hint" data-i18n="backup.restore_hint"></p>
+            <table>
+              <thead><tr><th data-i18n="backup.time"></th><th data-i18n="backup.id"></th><th data-i18n="backup.restore"></th></tr></thead>
+              <tbody id="backup-snapshots"></tbody>
+            </table>
+          </article>
+        </div>
       </section>
 
       <section id="view-jobs" hidden>
