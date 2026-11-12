@@ -610,6 +610,8 @@ def test_domains_set_error_passes_through(ctx):
 def test_action_list_is_fixed():
     assert sorted(actions.ACTIONS) == [
         "agent.actions",
+        "apps.all",
+        "apps.all_job",
         "apps.catalog",
         "apps.custom_install",
         "apps.custom_update",
@@ -629,6 +631,8 @@ def test_action_list_is_fixed():
         "disks.burnin_start",
         "disks.burnin_status",
         "disks.burnin_stop",
+        "disks.locate",
+        "disks.locate_stop",
         "disks.smart_test",
         "docker.container",
         "docker.disk",
@@ -666,8 +670,10 @@ def test_action_list_is_fixed():
         "settings.set_network",
         "settings.set_schedule",
         "settings.set_spindown",
+        "settings.set_syslog",
         "settings.set_time",
         "settings.spindown",
+        "settings.syslog",
         "settings.time",
         "shares.list",
         "shares.remove",

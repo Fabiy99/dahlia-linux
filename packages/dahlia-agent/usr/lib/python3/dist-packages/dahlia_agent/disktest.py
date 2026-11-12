@@ -55,6 +55,32 @@ def disks_smart_test(ctx: Context, device: str, kind: str):
     return {"device": device, "kind": kind}
 
 
+# --- find a disk by its LED ----------------------------------------------------
+
+LOCATE_UNIT = "dahlia-locate.service"
+LOCATE_SECONDS = 120
+
+
+@action("disks.locate", mutating=True, params={"device": Param(str, pattern=DEVICE_RE)})
+def disks_locate(ctx: Context, device: str):
+    """Make the activity LED of a disk blink for two minutes (short reads)."""
+    if device not in disk_paths(ctx):
+        raise AgentError(FAILED, f"{device} is not a disk")
+    ctx.runner.run(["systemctl", "stop", LOCATE_UNIT], check=False)
+    ctx.runner.run(["systemctl", "reset-failed", LOCATE_UNIT], check=False)
+    ctx.runner.run(["systemd-run", f"--unit={LOCATE_UNIT}", f"--description=Dahlia: find {device}",
+                    "--property=Nice=19", "--property=IOSchedulingClass=idle",
+                    "--", "/usr/sbin/dahlia-locate", device, str(LOCATE_SECONDS)])
+    return {"device": device, "seconds": LOCATE_SECONDS}
+
+
+@action("disks.locate_stop", mutating=True)
+def disks_locate_stop(ctx: Context):
+    """Stop the blinking."""
+    ctx.runner.run(["systemctl", "stop", LOCATE_UNIT], check=False)
+    return {"stopped": True}
+
+
 # --- burn-in ------------------------------------------------------------------
 
 
