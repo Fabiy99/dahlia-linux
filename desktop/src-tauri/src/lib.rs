@@ -35,10 +35,16 @@ fn server_url(host: &str) -> Result<Url, String> {
     Url::parse(&format!("https://{host}/")).map_err(|e| e.to_string())
 }
 
-/// The bundled pairing page (index.html in ui/).
+/// The bundled pairing page (index.html in ui/). "#choose" keeps it from
+/// connecting to the paired server right away.
 fn local_url() -> Url {
-    let base = if cfg!(windows) { "http://tauri.localhost/" } else { "tauri://localhost/" };
+    let base = if cfg!(windows) { "http://tauri.localhost/#choose" } else { "tauri://localhost/#choose" };
     Url::parse(base).expect("static url")
+}
+
+fn ca_file(app: &AppHandle, host: &str) -> Result<PathBuf, String> {
+    let dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    Ok(dir.join(format!("dahlia-ca-{}.crt", host.replace(':', "_"))))
 }
 
 fn main_window(app: &AppHandle) -> Result<WebviewWindow, String> {
@@ -89,9 +95,32 @@ async fn fetch_ca(host: String) -> Result<CaInfo, String> {
 async fn pair(app: AppHandle, host: String, pem: String) -> Result<(), String> {
     let host = pairing::normalize_host(&host)?;
     pairing::pem_to_der(&pem)?;
-    let dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
-    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-    let file = dir.join(format!("dahlia-ca-{}.crt", host.replace(':', "_")));
+    finish_pair(app, host, pem).await
+}
+
+/// Pairing with the code from the dashboard instead of the fingerprint.
+#[tauri::command]
+async fn pair_code(app: AppHandle, host: String, pem: String, code: String) -> Result<(), String> {
+    let host = pairing::normalize_host(&host)?;
+    let code = pairing::normalize_code(&code)?;
+    let der = pairing::pem_to_der(&pem)?;
+    let mut nonce = [0u8; 32];
+    getrandom::getrandom(&mut nonce).map_err(|e| e.to_string())?;
+    let h = host.clone();
+    let got = tauri::async_runtime::spawn_blocking(move || pairing::request_proof(&h, &nonce))
+        .await
+        .map_err(|e| e.to_string())??;
+    if !pairing::proof_matches(&pairing::proof(&code, &nonce, &der), &got) {
+        return Err("proof".into());
+    }
+    finish_pair(app, host, pem).await
+}
+
+async fn finish_pair(app: AppHandle, host: String, pem: String) -> Result<(), String> {
+    let file = ca_file(&app, &host)?;
+    if let Some(dir) = file.parent() {
+        std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+    }
     std::fs::write(&file, &pem).map_err(|e| e.to_string())?;
     tauri::async_runtime::spawn_blocking(move || pairing::trust(&file))
         .await
@@ -105,9 +134,16 @@ fn paired(app: AppHandle) -> Option<String> {
     config_path(&app).ok().and_then(|p| config::load(&p).server)
 }
 
+/// Opens the paired server's dashboard after checking that it answers with
+/// the certificate it was paired with.
 #[tauri::command]
-fn connect(app: AppHandle) -> Result<(), String> {
+async fn connect(app: AppHandle) -> Result<(), String> {
     let host = paired(app.clone()).ok_or("not_paired")?;
+    let pem = std::fs::read_to_string(ca_file(&app, &host)?).map_err(|_| "changed".to_string())?;
+    let h = host.clone();
+    tauri::async_runtime::spawn_blocking(move || pairing::check(&h, &pem))
+        .await
+        .map_err(|e| e.to_string())??;
     main_window(&app)?.navigate(server_url(&host)?).map_err(|e| e.to_string())
 }
 
@@ -143,15 +179,14 @@ fn build_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
 
 pub fn run() {
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![discover, fetch_ca, pair, paired, connect, forget, ui_strings])
+        .invoke_handler(tauri::generate_handler![
+            discover, fetch_ca, pair, pair_code, paired, connect, forget, ui_strings
+        ])
         .setup(|app| {
             let handle = app.handle().clone();
-            let start = match paired(handle.clone()).and_then(|h| server_url(&h).ok()) {
-                Some(url) => WebviewUrl::External(url),
-                None => WebviewUrl::App("index.html".into()),
-            };
             let opener = handle.clone();
-            WebviewWindowBuilder::new(app, MAIN, start)
+            // The pairing page connects to a paired server by itself (pair.js).
+            WebviewWindowBuilder::new(app, MAIN, WebviewUrl::App("index.html".into()))
                 .title("Dahlia")
                 .inner_size(1360.0, 900.0)
                 .min_inner_size(420.0, 600.0)

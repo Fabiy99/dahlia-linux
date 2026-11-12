@@ -49,6 +49,7 @@
   <symbol id="i-backup" viewBox="0 0 24 24"><ellipse cx="12" cy="6" rx="7.5" ry="2.8"/><path d="M4.5 6v6c0 1.5 3.4 2.8 7.5 2.8s7.5-1.3 7.5-2.8V6M4.5 12v6c0 1.5 3.4 2.8 7.5 2.8s7.5-1.3 7.5-2.8v-6"/></symbol>
   <symbol id="i-terminal" viewBox="0 0 24 24"><rect x="2.5" y="4" width="19" height="16" rx="2"/><path d="M6.5 9l3 3-3 3M12 15h5"/></symbol>
   <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4"/></symbol>
+  <symbol id="i-phone" viewBox="0 0 24 24"><rect x="6.5" y="2.5" width="11" height="19" rx="2.5"/><path d="M10.5 18.5h3"/></symbol>
   <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></symbol>
 </svg>
 
@@ -112,6 +113,7 @@
         <option value="de">Deutsch</option>
         <option value="en">English</option>
       </select>
+      <button id="phone" class="icon-btn viewer-ok" hidden data-i18n-title="phone.open"><svg><use href="#i-phone"/></svg></button>
       <button id="logout" class="icon-btn" hidden data-i18n-title="nav.logout"><svg><use href="#i-logout"/></svg></button>
     </header>
 
@@ -1259,6 +1261,30 @@
     <div class="dialog-actions">
       <a id="wg-peer-download" class="button" data-i18n="vpn.peer_download"></a>
       <button value="ok" class="primary" data-i18n="common.ok"></button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="phone-dialog" class="wide-dialog">
+  <form method="dialog">
+    <h2 data-i18n="phone.title"></h2>
+    <div class="phone-link">
+      <img id="phone-qr" alt="">
+      <div>
+        <p class="hint" data-i18n="phone.scan"></p>
+        <p><code id="phone-url"></code></p>
+        <p class="hint" data-i18n="phone.bookmark"></p>
+        <p class="hint" data-i18n="phone.certificate"></p>
+      </div>
+    </div>
+    <h3 data-i18n="phone.desktop_title"></h3>
+    <p class="hint" data-i18n="phone.desktop_hint"></p>
+    <div class="admin-only">
+      <p id="phone-code-box" hidden><code id="phone-code" class="pair-code"></code> <span id="phone-code-valid" class="hint"></span></p>
+      <button type="button" id="phone-code-new" data-i18n="phone.code_new"></button>
+    </div>
+    <div class="dialog-actions">
+      <button value="ok" class="primary" data-i18n="common.close"></button>
     </div>
   </form>
 </dialog>

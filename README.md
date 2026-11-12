@@ -45,6 +45,9 @@ Updates über das apt-Repo, im Dashboard unter "Updates".
 - **Desktop-App:** für Windows, macOS und Linux (`desktop/`). Findet den Server im Netz, koppelt
   sich über den Fingerabdruck der lokalen CA und zeigt das Dashboard im eigenen Fenster; Apps wie
   Jellyfin öffnen sich per Klick in einem App-Fenster, ohne IP-Adressen.
+- **Handy:** das Handy-Symbol im Dashboard zeigt einen QR-Code; das Handy öffnet dasselbe
+  Dashboard im Browser und legt es als Lesezeichen ab. Darüber bleibt der Server immer erreichbar
+  und die Desktop-App lässt sich mit einem kurzen Kopplungscode neu koppeln.
 - **Anmeldung:** eigenes Dashboard-Konto aus dem Einrichtungs-Assistenten, optional mit
   Zwei-Faktor-Login (TOTP).
 
@@ -205,6 +208,9 @@ updates from the apt repository, in the dashboard under "Updates".
 - **Desktop app:** for Windows, macOS and Linux (`desktop/`). Finds the server in the network,
   pairs via the fingerprint of the local CA and shows the dashboard in its own window; apps such as
   Jellyfin open in an app window with one click, no IP addresses.
+- **Phone:** the phone icon in the dashboard shows a QR code; the phone opens the same dashboard in
+  the browser and keeps it as a bookmark. That way the server stays reachable, and the desktop app
+  can be paired again with a short pairing code.
 - **Login:** own dashboard account from the setup wizard, optionally with two-factor login (TOTP).
 
 ### Testing in a VM

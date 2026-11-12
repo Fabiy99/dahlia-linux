@@ -742,3 +742,12 @@ body.screen .bloom { left: 22%; width: min(60rem, 90vh); }
 .fingerprint { display: block; padding: .6rem .8rem; border-radius: 8px; background: var(--card-2);
                font-size: .85rem; letter-spacing: .03em; line-height: 1.6; overflow-wrap: anywhere; }
 .screen-fp { font-family: ui-monospace, monospace; font-size: .72rem; overflow-wrap: anywhere; }
+
+/* Phone link and pairing code for the desktop app */
+.phone-link { display: grid; grid-template-columns: minmax(0, 12rem) minmax(0, 1fr); gap: 1rem; align-items: start; }
+.phone-link img { width: 100%; background: #fff; padding: .5rem; border-radius: .5rem; }
+.phone-link code { overflow-wrap: anywhere; }
+/* On the phone itself the QR code is of no use. */
+@media (max-width: 40rem) { .phone-link { grid-template-columns: 1fr; } .phone-link img { display: none; } }
+.pair-code { display: inline-block; padding: .4rem .8rem; border-radius: 8px; background: var(--card-2);
+             font-size: 1.4rem; font-weight: 700; letter-spacing: .12em; }

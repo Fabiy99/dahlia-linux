@@ -631,11 +631,31 @@ same dashboard as the browser, in its own window.
 | Pair | The app downloads `/dahlia-ca.crt` once without verification and shows the SHA-256 fingerprint. The same one is on the server's monitor and in the dashboard under Addresses (`GET /api/pairing`). Only after confirmation the app adds the CA: Windows `certutil -user -addstore Root`, macOS keychain (`security add-trusted-cert`), Linux via `pkexec` (`update-ca-certificates` or `trust anchor`) |
 | Show | The main window loads `https://<server>/`; links with `target=_blank` (app UIs) open a window of their own instead of the browser |
 | Switch | Menu "Dahlia → Other server …" goes back to the pairing page |
+| Start | The app opens the pairing page first. It checks that the paired server answers with the stored CA and only then loads the dashboard. Otherwise it says whether the server is unreachable or shows another certificate (e.g. after a reinstall) |
 
 Only the bundled pairing page may call Tauri commands; the dashboard in the window has no access
 to them. Only the server address is stored (`server.json` in the app's config directory). CI
 (`.github/workflows/desktop.yml`) builds `.deb`/AppImage, `.exe`/`.msi` and `.dmg` and attaches
 them to the release on a tag. The builds are not signed; Windows and macOS warn on first start.
+
+### Phone and re-pairing (from milestone 40)
+
+The phone icon at the top of the dashboard opens a dialog with a QR code for `https://<IPv4>/`
+(`GET /api/pairing`, address as on the server's monitor). The phone opens the dashboard in the
+browser; as a bookmark or on the home screen it is the way to the server when the desktop app does
+not connect. On narrow screens the dialog hides the QR code.
+
+Pairing again without the long fingerprint:
+
+| Step | Implementation |
+| --- | --- |
+| Code | An administrator creates a pairing code in the dialog (`POST /api/pairing/code`): 10 symbols out of 32 (no 0/O, 1/I), shown as `ABCDE-FGHJK`, kept in memory only, valid for 10 minutes, a new one replaces the old one |
+| Proof | The app downloads `/dahlia-ca.crt` as on first pairing and sends a random nonce (32 bytes) to `POST /api/pairing/proof` (no login). The server answers with HMAC-SHA256(code, `dahlia-pairing\0` + nonce + SHA-256(CA DER)) and uses up the code |
+| Check | The app computes the same with the entered code and the downloaded CA. Only if both match it adds the CA |
+
+The code never crosses the network. Someone in between who hands out their own CA only gets a proof
+over the real server's CA from it and cannot compute a matching one for their own without the code.
+Every code answers exactly one request; fetching it first only uses it up (then create a new code).
 
 ### File manager (from milestone 34)
 
