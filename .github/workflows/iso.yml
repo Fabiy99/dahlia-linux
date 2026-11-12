@@ -74,6 +74,46 @@ jobs:
           retention-days: 7
           if-no-files-found: ignore
 
+  # Screenshots of boot menu and installer dialogs (artwork, colours) as an
+  # artifact to look at; the install itself is tested above.
+  screens:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        firmware: [bios, uefi]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build and test tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            xorriso cpio apt-utils gnupg dirmngr qemu-system-x86 qemu-utils ovmf
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Build packages and ISO
+        run: |
+          tools/build-packages.sh
+          iso/build-iso.sh
+
+      - name: Screenshots
+        run: python3 iso/screenshots.py ${{ matrix.firmware }} build/dahlia-linux-$(cat VERSION)-amd64.iso
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: screens-${{ matrix.firmware }}
+          path: build/screens-${{ matrix.firmware }}/*.png
+          retention-days: 14
+
   release:
     if: startsWith(github.ref, 'refs/tags/v') || inputs.release_tag != ''
     needs: build-and-test

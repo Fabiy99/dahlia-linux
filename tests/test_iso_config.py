@@ -102,6 +102,13 @@ def test_boot_menus_offer_both_modes():
         assert "dahlia.mode" not in line.split("---", 1)[1]
 
 
+def test_installer_dark_theme():
+    # d-i's dark dialogs on every entry, only for the installer (before "---").
+    for _, line in grub_entries():
+        installer, target = line.split("---", 1)
+        assert "theme=dark" in installer and "theme=" not in target
+
+
 def test_default_boot_entries_do_not_use_serial_console():
     # Without a serial port (Hyper-V gen 2, most hardware) d-i would run on
     # ttyS0 and leave the screen black, so only the extra entries may use it.

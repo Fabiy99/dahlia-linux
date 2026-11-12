@@ -15,8 +15,16 @@ haben. Der Installer ist englisch. Boot-Menü (BIOS und UEFI):
 | --- | --- |
 | Install Dahlia Linux | geführt (Standard) |
 | Install Dahlia Linux (serial console) | geführt, Ausgabe auf ttyS0 |
-| Automatic install (no questions, default password) | unbeaufsichtigt |
+| Automatic install (password dahlia) | unbeaufsichtigt |
 | Automatic install (serial console) | unbeaufsichtigt auf ttyS0 (CI-Test) |
+
+Aussehen wie das Dashboard: Beide Boot-Menüs zeigen die Dahlie auf dunklem Grund
+(`iso/art/boot.svg`, gerendert von `iso/art/render.js`; BIOS `isolinux/splash.png`, UEFI
+GRUB-Theme unter `/boot/grub/dahlia`). Die Dialoge des Installers nutzen das dunkle
+Thema des Debian-Installers (`theme=dark` vor `---`, also nur im Installer); eine eigene
+newt-Palette überschreibt der Debian-Installer.
+Die Fragen von `guided.sh` tragen den Titel „Dahlia Linux“. Die CI legt bei jedem ISO-PR Bildschirmfotos von Boot-Menü und Dialogen ab
+(`iso/screenshots.py`, Artefakt `screens-bios`/`screens-uefi`).
 
 Geführt (`iso/installer/dahlia-guided.cfg`, `guided.sh`): Der Debian-Installer fragt nach
 dem Tastaturlayout, dem Kontonamen und dessen Passwort (ab Meilenstein 36; vorher fest

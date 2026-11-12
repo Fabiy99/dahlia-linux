@@ -3,7 +3,7 @@
 #
 #   1. download netinst + SHA256SUMS, verify signature and checksum
 #   2. append iso/preseed.cfg and the mode preseeds to the installer initrd
-#   3. replace the BIOS (isolinux) and UEFI (grub) boot menus
+#   3. replace the BIOS (isolinux) and UEFI (grub) boot menus and their artwork
 #   4. add the Dahlia packages and installer scripts under /dahlia
 #   5. write a new hybrid ISO with the original boot setup (BIOS + UEFI)
 #
@@ -65,7 +65,7 @@ gunzip -c "$WORK/initrd.gz" > "$WORK/initrd.cpio"
 cp "$ROOT/iso/preseed.cfg" "$WORK/initrd-add/preseed.cfg"
 cp "$ROOT/iso/installer/dahlia-auto.cfg" "$ROOT/iso/installer/dahlia-guided.cfg" "$WORK/initrd-add/"
 (cd "$WORK/initrd-add" && printf '%s\n' preseed.cfg dahlia-auto.cfg dahlia-guided.cfg \
-    | cpio --quiet -H newc -o -A -F "$WORK/initrd.cpio")
+    | cpio --quiet -H newc -R 0:0 -o -A -F "$WORK/initrd.cpio")
 gzip -9 -c "$WORK/initrd.cpio" > "$WORK/initrd-dahlia.gz"
 
 # --- 3./4. payload tree ----------------------------------------------------
@@ -80,12 +80,14 @@ printf 'DAHLIA_VERSION=%s\nDEBIAN_BASE=%s\n' "$VERSION" "$NETINST" > "$WORK/dahl
 # md5sum.txt: drop entries for replaced files, add the new ones, so the
 # installer's "check CD integrity" stays usable.
 md5_line() { printf '%s  ./%s\n' "$(md5sum "$1" | cut -d' ' -f1)" "$2"; }
-grep -vE '  \./(install\.amd/initrd\.gz|isolinux/isolinux\.cfg|boot/grub/grub\.cfg)$' \
+grep -vE '  \./(install\.amd/initrd\.gz|isolinux/isolinux\.cfg|isolinux/splash\.png|boot/grub/grub\.cfg)$' \
     "$WORK/md5sum.txt" > "$WORK/md5sum.new"
 {
     md5_line "$WORK/initrd-dahlia.gz" install.amd/initrd.gz
     md5_line "$ROOT/iso/isolinux.cfg" isolinux/isolinux.cfg
+    md5_line "$ROOT/iso/splash.png" isolinux/splash.png
     md5_line "$ROOT/iso/grub.cfg" boot/grub/grub.cfg
+    (cd "$ROOT/iso/grub-theme" && for f in *; do md5_line "$f" "boot/grub/dahlia/$f"; done)
     (cd "$WORK" && find dahlia -type f | sort | while read -r f; do md5_line "$f" "$f"; done)
 } >> "$WORK/md5sum.new"
 
@@ -94,7 +96,9 @@ rm -f "$OUT" "$OUT.sha256"
 xorriso -indev "$CACHE/$NETINST" -outdev "$OUT" \
     -map "$WORK/initrd-dahlia.gz" /install.amd/initrd.gz \
     -map "$ROOT/iso/isolinux.cfg" /isolinux/isolinux.cfg \
+    -map "$ROOT/iso/splash.png" /isolinux/splash.png \
     -map "$ROOT/iso/grub.cfg" /boot/grub/grub.cfg \
+    -map "$ROOT/iso/grub-theme" /boot/grub/dahlia \
     -map "$WORK/dahlia" /dahlia \
     -map "$WORK/md5sum.new" /md5sum.txt \
     -boot_image any replay

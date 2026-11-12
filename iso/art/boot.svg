@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1080" width="1920" height="1080">
+  <!-- Boot menu background for the installer ISO (GRUB theme and isolinux splash).
+       Same dahlia as the dashboard start screen. Rendered to PNG by iso/art/render.js:
+       GRUB gets the background without #wordmark plus the wordmark as its own image,
+       isolinux the centre 4:3 part with the wordmark. Menu text goes on the left. -->
+  <defs>
+    <radialGradient id="sky" cx="1200" cy="560" r="1100" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#2d1729"/><stop offset=".55" stop-color="#18131c"/><stop offset="1" stop-color="#100e14"/>
+    </radialGradient>
+    <linearGradient id="veil" x1="0" y1="0" x2="1" y2="0">
+      <stop offset=".12" stop-color="#131118" stop-opacity=".92"/><stop offset=".5" stop-color="#131118" stop-opacity=".25"/><stop offset=".7" stop-color="#131118" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="bg1" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2="-240"><stop offset="0" stop-color="#6e1a54"/><stop offset=".55" stop-color="#bd4597"/><stop offset="1" stop-color="#f29bd4"/></linearGradient>
+    <linearGradient id="bg2" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2="-185"><stop offset="0" stop-color="#93296f"/><stop offset=".6" stop-color="#e07ab9"/><stop offset="1" stop-color="#ffc2e5"/></linearGradient>
+    <linearGradient id="bg3" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2="-130"><stop offset="0" stop-color="#c4579b"/><stop offset=".6" stop-color="#f6aad7"/><stop offset="1" stop-color="#ffe3f2"/></linearGradient>
+    <path id="bp1" d="M0 0C65-72 50-204 0-240C-50-204-65-72 0 0Z"/>
+    <path id="bp2" d="M0 0C54-56 42-157 0-185C-42-157-54-56 0 0Z"/>
+    <path id="bp3" d="M0 0C45-39 35-110 0-130C-35-110-45-39 0 0Z"/>
+    <path id="bp4" d="M0 0C31-22 24-61 0-72C-24-61-31-22 0 0Z"/>
+  </defs>
+  <rect width="1920" height="1080" fill="url(#sky)"/>
+  <g transform="translate(1200 560) scale(1.75)" stroke="#1a1020" stroke-opacity=".3" opacity=".82">
+      <g fill="url(#bg1)" stroke-width="1.5"><use href="#bp1"/><use href="#bp1" transform="rotate(22.5)"/><use href="#bp1" transform="rotate(45)"/><use href="#bp1" transform="rotate(67.5)"/><use href="#bp1" transform="rotate(90)"/><use href="#bp1" transform="rotate(112.5)"/><use href="#bp1" transform="rotate(135)"/><use href="#bp1" transform="rotate(157.5)"/><use href="#bp1" transform="rotate(180)"/><use href="#bp1" transform="rotate(202.5)"/><use href="#bp1" transform="rotate(225)"/><use href="#bp1" transform="rotate(247.5)"/><use href="#bp1" transform="rotate(270)"/><use href="#bp1" transform="rotate(292.5)"/><use href="#bp1" transform="rotate(315)"/><use href="#bp1" transform="rotate(337.5)"/></g>
+      <g fill="url(#bg2)" stroke-width="1.5"><use href="#bp2" transform="rotate(11.25)"/><use href="#bp2" transform="rotate(33.75)"/><use href="#bp2" transform="rotate(56.25)"/><use href="#bp2" transform="rotate(78.75)"/><use href="#bp2" transform="rotate(101.25)"/><use href="#bp2" transform="rotate(123.75)"/><use href="#bp2" transform="rotate(146.25)"/><use href="#bp2" transform="rotate(168.75)"/><use href="#bp2" transform="rotate(191.25)"/><use href="#bp2" transform="rotate(213.75)"/><use href="#bp2" transform="rotate(236.25)"/><use href="#bp2" transform="rotate(258.75)"/><use href="#bp2" transform="rotate(281.25)"/><use href="#bp2" transform="rotate(303.75)"/><use href="#bp2" transform="rotate(326.25)"/><use href="#bp2" transform="rotate(348.75)"/></g>
+      <g fill="url(#bg3)" stroke-width="1.2"><use href="#bp3" transform="rotate(15)"/><use href="#bp3" transform="rotate(45)"/><use href="#bp3" transform="rotate(75)"/><use href="#bp3" transform="rotate(105)"/><use href="#bp3" transform="rotate(135)"/><use href="#bp3" transform="rotate(165)"/><use href="#bp3" transform="rotate(195)"/><use href="#bp3" transform="rotate(225)"/><use href="#bp3" transform="rotate(255)"/><use href="#bp3" transform="rotate(285)"/><use href="#bp3" transform="rotate(315)"/><use href="#bp3" transform="rotate(345)"/></g>
+      <g fill="#ffe4f3" stroke-width="1"><use href="#bp4" transform="rotate(22.5)"/><use href="#bp4" transform="rotate(67.5)"/><use href="#bp4" transform="rotate(112.5)"/><use href="#bp4" transform="rotate(157.5)"/><use href="#bp4" transform="rotate(202.5)"/><use href="#bp4" transform="rotate(247.5)"/><use href="#bp4" transform="rotate(292.5)"/><use href="#bp4" transform="rotate(337.5)"/></g>
+      <circle r="24" fill="#f2b45c"/><circle r="11" fill="#d97a2e"/>
+  </g>
+  <rect width="1920" height="1080" fill="url(#veil)"/>
+  <g id="wordmark" transform="translate(330 250)">
+    <path transform="scale(3.4)" fill="#e08cc8" d="M12 3c2 2.2 2 4.6 0 6.4C10 7.6 10 5.2 12 3Zm0 18c-2-2.2-2-4.6 0-6.4 2 1.8 2 4.2 0 6.4ZM3 12c2.2-2 4.6-2 6.4 0-1.8 2-4.2 2-6.4 0Zm18 0c-2.2 2-4.6 2-6.4 0 1.8-2 4.2-2 6.4 0ZM5.6 5.6c3-.2 4.7 1.5 4.5 4.5-3 .2-4.7-1.5-4.5-4.5Zm12.8 12.8c-3 .2-4.7-1.5-4.5-4.5 3-.2 4.7 1.5 4.5 4.5Zm0-12.8c.2 3-1.5 4.7-4.5 4.5-.2-3 1.5-4.7 4.5-4.5ZM5.6 18.4c-.2-3 1.5-4.7 4.5-4.5.2 3-1.5 4.7-4.5 4.5Z"/>
+    <circle cx="40.8" cy="40.8" r="8.8" fill="#e08cc8"/>
+    <text x="104" y="62" font-family="Inter, DejaVu Sans, sans-serif" font-size="68" font-weight="700" fill="#e08cc8">Dahlia Linux</text>
+    <text x="106" y="112" font-family="Inter, DejaVu Sans, sans-serif" font-size="30" fill="#a39eae">Home server installer</text>
+  </g>
+</svg>

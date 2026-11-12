@@ -1,3 +1,7 @@
+Template: dahlia/title
+Type: title
+Description: Dahlia Linux
+
 Template: dahlia/disk
 Type: select
 Choices-C: ${CHOICES_C}
