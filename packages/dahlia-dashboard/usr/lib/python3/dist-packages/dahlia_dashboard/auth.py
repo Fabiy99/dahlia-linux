@@ -375,3 +375,92 @@ class RateLimiter:
     def reset(self, key: str) -> None:
         with self.lock:
             self.failures.pop(key, None)
+
+
+TOKEN_PREFIX = "dahlia_"  # noqa: S105 (not a secret, marks Dahlia tokens)
+TOKEN_NAME_RE = re.compile(r"^[^\x00-\x1f\x7f]{1,64}$")
+MAX_TOKENS = 20
+
+
+class TokenStore:
+    """API tokens for read-only access from other programs (Home Assistant,
+    Homepage, scripts), sent as "Authorization: Bearer <token>".
+
+    tokens.json keeps SHA-256 hashes only (the tokens are random, so a slow
+    hash adds nothing); a token is shown once when it is created.
+    last_used is written at most every SAVE_EVERY seconds.
+    """
+
+    SAVE_EVERY = 60
+
+    def __init__(self, path: Path, clock=time.time):
+        self.path = path
+        self.clock = clock
+        self.lock = threading.Lock()
+
+    def _load(self) -> dict:
+        try:
+            data = json.loads(self.path.read_text())
+            return data if isinstance(data.get("tokens"), list) else {"tokens": []}
+        except FileNotFoundError:
+            return {"tokens": []}
+        except (ValueError, AttributeError):
+            return {"tokens": []}
+
+    def _save(self, data: dict) -> None:
+        tmp = self.path.with_name(self.path.name + ".tmp")
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w") as f:
+            json.dump(data, f, indent=2)
+        tmp.replace(self.path)
+
+    @staticmethod
+    def _hash(token: str) -> str:
+        return hashlib.sha256(token.encode()).hexdigest()
+
+    def list(self) -> list[dict]:
+        return [{k: t.get(k) for k in ("id", "name", "created", "last_used")}
+                for t in self._load()["tokens"]]
+
+    def create(self, name: str) -> tuple[dict, str]:
+        name = name.strip()
+        if not TOKEN_NAME_RE.match(name):
+            raise AuthError("token_name")
+        token = TOKEN_PREFIX + secrets.token_urlsafe(32)
+        entry = {"id": secrets.token_hex(6), "name": name, "hash": self._hash(token),
+                 "created": int(self.clock()), "last_used": None}
+        with self.lock:
+            data = self._load()
+            if len(data["tokens"]) >= MAX_TOKENS:
+                raise AuthError("token_limit")
+            data["tokens"].append(entry)
+            self._save(data)
+        return {k: entry[k] for k in ("id", "name", "created", "last_used")}, token
+
+    def delete(self, token_id: str) -> bool:
+        with self.lock:
+            data = self._load()
+            kept = [t for t in data["tokens"] if t.get("id") != token_id]
+            if len(kept) == len(data["tokens"]):
+                return False
+            data["tokens"] = kept
+            self._save(data)
+            return True
+
+    def verify(self, token: str | None) -> dict | None:
+        if not token or not token.startswith(TOKEN_PREFIX) or len(token) > 128:
+            return None
+        h = self._hash(token)
+        with self.lock:
+            data = self._load()
+            found = None
+            for t in data["tokens"]:
+                if hmac.compare_digest(str(t.get("hash", "")), h):
+                    found = t
+            if found is None:
+                return None
+            now = int(self.clock())
+            if not found.get("last_used") or now - found["last_used"] >= self.SAVE_EVERY:
+                found["last_used"] = now
+                self._save(data)
+            return {"id": found["id"], "name": found["name"]}

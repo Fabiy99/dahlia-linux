@@ -507,6 +507,15 @@ asks for the code only once the password is right. Wrong codes count as failed a
 Turning it off needs password and code. Phone and recovery codes lost:
 `sudo dahlia-dashboard --disable-totp <account>`.
 
+API tokens (M26): for Home Assistant, Homepage or scripts, created and revoked under Settings
+(at most 20). A token (`dahlia_` + 43 characters) is shown only when it is created;
+`tokens.json` in the state directory (0600) keeps SHA-256 hashes, name, creation time and last
+use. Sent as `Authorization: Bearer <token>`, it only works for read-only endpoints with
+values: `/api/system`, `/api/stats`, `/api/storage`, `/api/hardware`, `/api/parity`,
+`/api/jobs`, `/api/apps` (without app passwords and custom container settings), `/api/docker`,
+`/api/docker/stats`, `/api/history`. No settings, no changes, no terminal.
+Example: `curl -H "Authorization: Bearer dahlia_…" https://dahlia.local/api/stats`.
+
 ### Terminal (from milestone 12)
 
 The dashboard's Terminal page is a shell in the browser (xterm.js, MIT, in
