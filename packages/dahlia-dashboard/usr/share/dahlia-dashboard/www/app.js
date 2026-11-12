@@ -310,7 +310,7 @@ function percent(used, size) {
 const TITLES = {
   overview: "nav.overview", storage: "storage.title", parity: "parity.title", apps: "apps.title",
   domains: "nav.domains", jobs: "jobs.title", backup: "nav.backup", updates: "updates.title", account: "nav.account",
-  docker: "nav.docker", log: "nav.log", shares: "nav.shares", terminal: "nav.terminal",
+  docker: "nav.docker", log: "nav.log", shares: "nav.shares", terminal: "nav.terminal", files: "nav.files",
   setup: "setup.title", login: "login.title",
 };
 
@@ -367,6 +367,7 @@ const loaders = {
   domains: loadDomains,
   docker: loadDocker,
   shares: loadShares,
+  files: loadFiles,
   log: loadLog,
   backup: loadBackup,
   terminal: loadTerminal,
@@ -3470,6 +3471,278 @@ async function loadUps() {
   if (s.load !== null) fact(dl, "ups.load", `${s.load} %`);
 }
 
+// --- file manager ---------------------------------------------------------------
+
+const fm = { root: ARRAY, path: "", entries: [], selected: new Set(), writable: false, nameAction: null };
+let fmTimer = null;
+
+function fmQuery(params) {
+  return Object.entries(params).map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join("&");
+}
+
+async function loadFiles() {
+  await fmShow(fm.root, fm.path);
+  await fmWatchJob(null);
+}
+
+async function fmShow(root, path) {
+  let data;
+  try {
+    data = await api("GET", `files/list?${fmQuery({ root, path })}`);
+  } catch (err) {
+    // The folder is gone (deleted elsewhere): back to the root.
+    if (!path) throw err;
+    return fmShow(root, "");
+  }
+  Object.assign(fm, { root, path, entries: data.entries, writable: !!data.writable });
+  fm.selected.clear();
+  const available = {};
+  for (const loc of data.locations) available[loc.path] = loc.available;
+  const roots = [["array", ARRAY], ["system", SYSTEM]];
+  if (available[REMOTES]) roots.push(["remotes", REMOTES]);
+  placeButtons(document.getElementById("fm-roots"), root, available,
+               (to) => fmShow(to, "").catch(sayError), roots);
+  const crumbs = document.getElementById("fm-crumbs");
+  crumbs.replaceChildren();
+  const parts = path ? path.split("/") : [];
+  const rootBtn = el("button", "link-btn", root);
+  rootBtn.type = "button";
+  rootBtn.addEventListener("click", () => fmShow(root, "").catch(sayError));
+  crumbs.append(rootBtn);
+  parts.forEach((part, i) => {
+    const b = el("button", "link-btn", part);
+    b.type = "button";
+    const to = parts.slice(0, i + 1).join("/");
+    b.addEventListener("click", () => fmShow(root, to).catch(sayError));
+    crumbs.append(el("span", "sep", "/"), b);
+  });
+  let hint = "";
+  if (!data.mounted) hint = t("fm.not_mounted");
+  else if (!path) hint = t("fm.hint_root");
+  else if (!fm.writable) hint = t("fm.hint_appdata");
+  else if (data.truncated) hint = t("fm.truncated", { n: data.entries.length });
+  document.getElementById("fm-hint").textContent = hint;
+  document.getElementById("fm-mkdir").disabled = !fm.writable;
+  document.getElementById("fm-upload").disabled = !fm.writable;
+  document.getElementById("fm-name-form").hidden = true;
+  fmRender();
+}
+
+function fmRender() {
+  const tbody = document.getElementById("fm-list");
+  tbody.replaceChildren();
+  if (!fm.entries.length) {
+    const tr = el("tr");
+    cell(tr, el("span", "hint", t("fm.empty"))).colSpan = 4;
+    tbody.append(tr);
+  }
+  for (const e of fm.entries) {
+    const tr = el("tr");
+    const box = el("input");
+    box.type = "checkbox";
+    box.checked = fm.selected.has(e.name);
+    box.setAttribute("aria-label", e.name);
+    box.addEventListener("change", () => {
+      if (box.checked) fm.selected.add(e.name);
+      else fm.selected.delete(e.name);
+      fmSelection();
+    });
+    cell(tr, box).className = "pick";
+    let name;
+    if (e.kind === "dir") {
+      name = el("button", "link-btn folder", e.name);
+      name.type = "button";
+      name.prepend(icon("folder"));
+      name.addEventListener("click", () => fmShow(fm.root, joinPath(fm.path, e.name)).catch(sayError));
+    } else {
+      name = el("span", "fname", e.name);
+      if (e.kind === "link") name.append(" ", badge(t("fm.link"), ""));
+    }
+    cell(tr, name);
+    cell(tr, e.size === null ? "" : formatBytes(e.size)).className = "num";
+    cell(tr, new Date(e.mtime * 1000).toLocaleString(lang));
+    tbody.append(tr);
+  }
+  fmSelection();
+}
+
+function fmSelection() {
+  const names = [...fm.selected];
+  const one = names.length === 1 ? fm.entries.find((e) => e.name === names[0]) : null;
+  document.getElementById("fm-actions").hidden = !names.length;
+  document.getElementById("fm-selected").textContent = t("fm.selected", { n: names.length });
+  document.getElementById("fm-download").disabled = !(one && one.kind === "file");
+  document.getElementById("fm-rename").disabled = !(one && fm.writable);
+  document.getElementById("fm-move").disabled = !fm.writable;
+  document.getElementById("fm-delete").disabled = !fm.writable;
+  const all = document.getElementById("fm-all");
+  all.checked = names.length > 0 && names.length === fm.entries.length;
+  all.indeterminate = names.length > 0 && names.length < fm.entries.length;
+}
+
+function fmAskName(labelKey, value, action) {
+  const form = document.getElementById("fm-name-form");
+  document.getElementById("fm-name-label").textContent = t(labelKey);
+  form.elements.name.value = value;
+  fm.nameAction = action;
+  form.hidden = false;
+  form.elements.name.focus();
+  form.elements.name.select();
+}
+
+function fmProgress(text, done, total, cancellable) {
+  const box = document.getElementById("fm-progress");
+  if (text === null) { box.hidden = true; return; }
+  box.hidden = false;
+  document.getElementById("fm-progress-text").textContent = text;
+  const bar = document.getElementById("fm-progress-bar");
+  if (total > 0) bar.value = done / total;
+  else bar.removeAttribute("value");
+  document.getElementById("fm-cancel").hidden = !cancellable;
+}
+
+// Shows a running delete/copy/move until it ends, then reports (op set) and
+// reloads the folder. op is null when the view opens and nothing was started.
+async function fmWatchJob(op) {
+  clearTimeout(fmTimer);
+  if (current !== "files") return;
+  const job = await api("GET", "files/job");
+  if (job.state === "running") {
+    const amount = job.op === "delete" ? t("fm.items", { done: job.done, total: job.total })
+      : `${formatBytes(job.done)} / ${formatBytes(job.total)}`;
+    fmProgress(`${t(`fm.running_${job.op}`)} ${amount}`, job.done, job.total, true);
+    fmTimer = setTimeout(() => fmWatchJob(job.op).catch(sayError), 1000);
+    return;
+  }
+  fmProgress(null);
+  if (!op) return;
+  if (job.state === "failed") say(`${t("fm.failed")} (${job.error})`, "error");
+  else say(t(`fm.done_${op}`), "ok");
+  await fmShow(fm.root, fm.path);
+}
+
+async function fmStart(op, dest) {
+  const body = { op, root: fm.root, paths: [...fm.selected].map((n) => joinPath(fm.path, n)) };
+  if (dest) Object.assign(body, { dest_root: dest.root, dest: dest.path });
+  await api("POST", "files/start", body);
+  await fmWatchJob(op);
+}
+
+function fmUploadOne(file, overwrite) {
+  const q = fmQuery({ root: fm.root, path: fm.path, name: file.name, overwrite: overwrite ? "true" : "false" });
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", `/api/files/upload?${q}`);
+    xhr.setRequestHeader("X-Dahlia-Request", "1");
+    xhr.upload.addEventListener("progress", (e) => {
+      if (e.lengthComputable) {
+        fmProgress(t("fm.uploading", { name: file.name, done: formatBytes(e.loaded), total: formatBytes(e.total) }),
+                   e.loaded, e.total, false);
+      }
+    });
+    xhr.addEventListener("load", () => {
+      let data = {};
+      try { data = JSON.parse(xhr.responseText); } catch (_) { /* not JSON */ }
+      if (xhr.status >= 200 && xhr.status < 300) resolve(data);
+      else reject(new ApiError(xhr.status, data.error || "error.request", data.detail || ""));
+    });
+    xhr.addEventListener("error", () => reject(new ApiError(0, "error.network")));
+    xhr.send(file);
+  });
+}
+
+async function fmUpload(fileList) {
+  const files = [...fileList];
+  const names = new Set(fm.entries.map((e) => e.name));
+  try {
+    for (const file of files) {
+      let overwrite = false;
+      if (names.has(file.name)) {
+        if (fm.entries.find((e) => e.name === file.name).kind === "dir") {
+          say(t("fm.exists_dir", { name: file.name }), "error");
+          continue;
+        }
+        if (!await ask(t("fm.confirm_overwrite", { name: file.name }), "fm.overwrite", true)) continue;
+        overwrite = true;
+      }
+      fmProgress(t("fm.uploading", { name: file.name, done: formatBytes(0), total: formatBytes(file.size) }),
+                 0, file.size, false);
+      await fmUploadOne(file, overwrite);
+    }
+    if (files.length) say(t("fm.uploaded", { n: files.length }), "ok");
+  } finally {
+    fmProgress(null);
+    await fmShow(fm.root, fm.path);
+  }
+}
+
+function bindFiles() {
+  document.getElementById("fm-refresh").addEventListener("click", (e) => guarded(e.currentTarget, loadFiles));
+  document.getElementById("fm-all").addEventListener("change", (e) => {
+    fm.selected = new Set(e.target.checked ? fm.entries.map((x) => x.name) : []);
+    fmRender();
+  });
+  const fileInput = document.getElementById("fm-file");
+  document.getElementById("fm-upload").addEventListener("click", () => fileInput.click());
+  fileInput.addEventListener("change", () => {
+    const list = fileInput.files;
+    guarded(document.getElementById("fm-upload"), () => fmUpload(list)).finally(() => { fileInput.value = ""; });
+  });
+  document.getElementById("fm-mkdir").addEventListener("click", () => fmAskName("fm.folder_name", "", async (name) => {
+    await api("POST", "files/dir", { root: fm.root, path: fm.path, name });
+    await fmShow(fm.root, fm.path);
+  }));
+  document.getElementById("fm-rename").addEventListener("click", () => {
+    const [old] = fm.selected;
+    fmAskName("fm.new_name", old, async (name) => {
+      await api("POST", "files/rename", { root: fm.root, path: joinPath(fm.path, old), name });
+      await fmShow(fm.root, fm.path);
+    });
+  });
+  const form = document.getElementById("fm-name-form");
+  form.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const name = form.elements.name.value.trim();
+    if (!name || !fm.nameAction) return;
+    guarded(e.submitter, async () => {
+      await fm.nameAction(name);
+      form.hidden = true;
+    });
+  });
+  document.getElementById("fm-name-cancel").addEventListener("click", () => { form.hidden = true; });
+  document.getElementById("fm-download").addEventListener("click", () => {
+    const [name] = fm.selected;
+    const a = el("a");
+    a.href = `/api/files/download?${fmQuery({ root: fm.root, path: joinPath(fm.path, name) })}`;
+    a.download = name;
+    document.body.append(a);
+    a.click();
+    a.remove();
+  });
+  for (const op of ["copy", "move"]) {
+    document.getElementById(`fm-${op}`).addEventListener("click", (e) => {
+      const btn = e.currentTarget;
+      guarded(btn, async () => {
+        // pickFolder opens the parent of the path it gets: start in this folder.
+        const dest = await pickFolder({ root: fm.root, path: joinPath(fm.path, ".") });
+        if (dest) await fmStart(op, dest);
+      });
+    });
+  }
+  document.getElementById("fm-delete").addEventListener("click", (e) => {
+    const btn = e.currentTarget;
+    guarded(btn, async () => {
+      const names = [...fm.selected];
+      const what = names.length === 1 ? names[0] : t("fm.selected", { n: names.length });
+      if (!await ask(t("fm.confirm_delete", { what }), "fm.delete", true)) return;
+      await fmStart("delete");
+    });
+  });
+  document.getElementById("fm-cancel").addEventListener("click", (e) => guarded(e.currentTarget, async () => {
+    await api("POST", "files/cancel");
+  }));
+}
+
 // --- dashboard accounts -----------------------------------------------------------
 
 async function loadUsers() {
@@ -3935,6 +4208,7 @@ async function start() {
   bindNotifyUps();
   bindTokens();
   bindUsers();
+  bindFiles();
   bindInflux();
   bindAutoUpdates();
   bindRootSnapshots();

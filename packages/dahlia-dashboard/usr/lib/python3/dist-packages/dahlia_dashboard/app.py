@@ -11,6 +11,7 @@ from the agent or the system, shown as additional information.
 import asyncio
 import contextlib
 import json
+import os
 import re
 import socket
 import subprocess
@@ -24,9 +25,10 @@ from typing import Annotated
 
 from fastapi import Depends, FastAPI, Request, Response, WebSocket, WebSocketDisconnect
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel
 from starlette.background import BackgroundTask
+from starlette.concurrency import run_in_threadpool
 from starlette.exceptions import HTTPException
 
 from . import setupcode
@@ -64,12 +66,20 @@ AGENT_STATUS = {
 }
 
 AgentCall = Callable[[str, dict], object]
+# Like AgentCall, for actions that hand over a file descriptor: returns (result, fd).
+AgentOpen = Callable[[str, dict], tuple[object, int]]
 
 
 def default_agent_call(socket_path: str) -> AgentCall:
     from dahlia_agent.client import call
 
     return lambda action, params: call(action, params, path=socket_path)
+
+
+def default_agent_open(socket_path: str) -> AgentOpen:
+    from dahlia_agent.client import call_fd
+
+    return lambda action, params: call_fd(action, params, path=socket_path)
 
 
 @dataclass
@@ -80,6 +90,7 @@ class Config:
     terminal_socket: str = "/run/dahlia-terminal/terminal.sock"
     secure_cookie: bool = True
     agent_call: AgentCall | None = None
+    agent_open: AgentOpen | None = None
     # None: sessions.json in state_dir.
     sessions: SessionStore | None = None
     login_limiter: RateLimiter = field(default_factory=RateLimiter)
@@ -95,6 +106,21 @@ def qr_svg(text: str) -> str | None:
     except (OSError, subprocess.TimeoutExpired):
         return None
     return proc.stdout if proc.returncode == 0 and proc.stdout.lstrip().startswith("<") else None
+
+
+FILE_CHUNK = 1024 * 1024
+
+
+def write_all(fd: int, data: bytes) -> None:
+    view = memoryview(data)
+    while view:
+        view = view[os.write(fd, view):]
+
+
+def attachment(name: str) -> str:
+    """Content-Disposition for a download, with an ASCII fallback name."""
+    plain = "".join(c if 32 <= ord(c) < 127 and c not in '"\\' else "_" for c in name)
+    return f"attachment; filename=\"{plain}\"; filename*=UTF-8''{urllib.parse.quote(name, safe='')}"
 
 
 class ApiError(Exception):
@@ -167,6 +193,20 @@ class AppOpBody(BaseModel):
     location: str = ""
     # Custom container form; dahlia-apps checks its fields.
     spec: dict | None = None
+
+
+class FileNameBody(BaseModel):
+    root: str
+    path: str
+    name: str
+
+
+class FileStartBody(BaseModel):
+    op: str
+    root: str
+    paths: list[str]
+    dest_root: str = "/mnt/user"
+    dest: str = ""
 
 
 class MkdirBody(BaseModel):
@@ -378,6 +418,7 @@ def create_app(cfg: Config | None = None) -> FastAPI:
     tokens = TokenStore(cfg.state_dir / "tokens.json", clock=cfg.clock)
     limiter = cfg.login_limiter
     agent_call = cfg.agent_call or default_agent_call(cfg.agent_socket)
+    agent_open_call = cfg.agent_open or default_agent_open(cfg.agent_socket)
     setup_lock = threading.Lock()
 
     app = FastAPI(title="Dahlia Dashboard", docs_url=None, redoc_url=None, openapi_url=None)
@@ -391,6 +432,14 @@ def create_app(cfg: Config | None = None) -> FastAPI:
 
         try:
             return agent_call(action, params or {})
+        except AgentError as e:
+            raise ApiError(AGENT_STATUS.get(e.code, 500), f"agent.{e.code}", e.message) from None
+
+    def agent_open(action: str, params: dict):
+        from dahlia_agent.protocol import AgentError
+
+        try:
+            return agent_open_call(action, params)
         except AgentError as e:
             raise ApiError(AGENT_STATUS.get(e.code, 500), f"agent.{e.code}", e.message) from None
 
@@ -845,6 +894,64 @@ def create_app(cfg: Config | None = None) -> FastAPI:
     @app.get("/api/files", dependencies=authed)
     def files_browse(root: str = "/mnt/user", path: str = ""):
         return agent("files.browse", {"root": root, "path": path})
+
+    # File manager (admin only, reading too: it shows every file of the shares).
+    @app.get("/api/files/list", dependencies=admin)
+    def files_list(root: str = "/mnt/user", path: str = ""):
+        return agent("files.list", {"root": root, "path": path})
+
+    @app.get("/api/files/download", dependencies=admin)
+    def files_download(root: str, path: str):
+        info, fd = agent_open("files.open", {"root": root, "path": path})
+
+        def chunks():
+            try:
+                while data := os.read(fd, FILE_CHUNK):
+                    yield data
+            finally:
+                os.close(fd)
+
+        return StreamingResponse(chunks(), media_type="application/octet-stream", headers={
+            "Content-Length": str(info["size"]),
+            "Content-Disposition": attachment(info["name"]),
+        })
+
+    @app.post("/api/files/upload", dependencies=changing)
+    async def files_upload(request: Request, root: str, path: str, name: str,
+                           overwrite: bool = False):
+        where = {"root": root, "path": path}
+        info, fd = await run_in_threadpool(
+            agent_open, "files.upload", {**where, "name": name, "overwrite": overwrite})
+        try:
+            async for chunk in request.stream():
+                await run_in_threadpool(write_all, fd, chunk)
+        except BaseException:
+            os.close(fd)
+            await run_in_threadpool(agent, "files.upload_abort", {**where, "tmp": info["tmp"]})
+            raise
+        os.close(fd)
+        return await run_in_threadpool(agent, "files.upload_finish", {
+            **where, "name": name, "tmp": info["tmp"], "overwrite": overwrite})
+
+    @app.post("/api/files/dir", dependencies=changing)
+    def files_create_dir(body: FileNameBody):
+        return agent("files.create_dir", body.model_dump())
+
+    @app.post("/api/files/rename", dependencies=changing)
+    def files_rename(body: FileNameBody):
+        return agent("files.rename", body.model_dump())
+
+    @app.post("/api/files/start", dependencies=changing)
+    def files_start(body: FileStartBody):
+        return agent("files.start", body.model_dump())
+
+    @app.get("/api/files/job", dependencies=admin)
+    def files_job():
+        return agent("files.job")
+
+    @app.post("/api/files/cancel", dependencies=changing)
+    def files_cancel():
+        return agent("files.cancel")
 
     @app.post("/api/files/mkdir", dependencies=changing)
     def files_mkdir(body: MkdirBody):

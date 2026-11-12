@@ -530,6 +530,30 @@ last administrator can be neither demoted nor removed. Roles are stored in `user
 Endpoints (`admin` only): `GET/POST /api/users`, `POST /api/users/<name>/role`,
 `POST /api/users/<name>/password`, `POST /api/users/<name>/remove`. `/api/state` returns `role`.
 
+### File manager (from milestone 34)
+
+Files page in the dashboard, administrators only (reading too, since it shows every file of
+the shares). Locations as in the folder picker: `/mnt/user`, `/srv` and `/mnt/remotes`.
+
+| Action | Implementation |
+| --- | --- |
+| List | `files.list`: folders first, case and accents ignored, at most 5000 entries; names that are not UTF-8 are left out |
+| Download | `files.open` opens the file and passes the file descriptor over the socket (SCM_RIGHTS); the backend streams it, nginx does not buffer |
+| Upload | `files.upload` creates `.dahlia-upload-<random>` (owner and group like the folder, 0664) and passes the descriptor; the backend writes the request body into it, `files.upload_finish` renames it, on errors `files.upload_abort` removes it. No size limit (`client_max_body_size 0` for this path only) |
+| New folder, rename | `files.create_dir`, `files.rename`, immediately |
+| Delete, copy, move | `files.start` starts `dahlia-files.service` (transient, `/usr/sbin/dahlia-files`); progress in `/run/dahlia/files-progress.json`, read via `files.job`, stopped with `files.cancel` |
+
+Rules: paths are opened folder by folder with `O_NOFOLLOW`; symlinks are listed but not
+followed. Directly in a location (share, app and remote folders) and below `appdata` the file
+manager changes nothing; there it only views, downloads and copies. Existing names are never
+overwritten silently (upload asks). Copy works like `cp -a`: owner, mode and times are kept,
+symlinks are copied as symlinks. Moving to another filesystem copies, then deletes. Delete is
+permanent; the share recycle bin (M32) only applies to Samba.
+
+Endpoints: `GET /api/files/list`, `GET /api/files/download`, `POST /api/files/upload`
+(body = file content, `root`, `path`, `name`, `overwrite` as query), `POST /api/files/dir`,
+`POST /api/files/rename`, `POST /api/files/start`, `GET /api/files/job`, `POST /api/files/cancel`.
+
 ### Terminal (from milestone 12)
 
 The dashboard's Terminal page is a shell in the browser (xterm.js, MIT, in
