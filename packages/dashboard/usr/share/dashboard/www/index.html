@@ -463,8 +463,8 @@
       <section id="view-terminal" hidden>
         <article class="card terminal-card">
           <form id="terminal-form" class="filters">
-            <label><span data-i18n="terminal.user"></span><input name="user" autocomplete="username" required></label>
-            <button type="submit" class="primary" data-i18n="terminal.connect"></button>
+            <b id="terminal-account" class="terminal-account"></b>
+            <button type="submit" class="primary" data-i18n="terminal.connect" hidden></button>
             <button type="button" id="terminal-close" data-i18n="terminal.disconnect" hidden></button>
           </form>
           <p class="hint" data-i18n="terminal.hint"></p>
@@ -962,7 +962,7 @@
               </div>
             </form>
             <form id="user-form" class="inline-form">
-              <label><span data-i18n="users.name"></span><input name="name" autocomplete="off" required pattern="[a-z][a-z0-9_\-]{1,31}"></label>
+              <label><span data-i18n="users.name"></span><input name="name" autocomplete="off" required pattern="[A-Za-z][A-Za-z0-9_\-]{1,31}"></label>
               <label><span data-i18n="field.password"></span><input name="password" type="password" autocomplete="new-password" required minlength="10"></label>
               <label><span data-i18n="users.role"></span><select name="role">
                 <option value="viewer" data-i18n="role_name.viewer"></option>

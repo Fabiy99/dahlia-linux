@@ -27,7 +27,7 @@ from typing import Annotated
 from fastapi import Depends, FastAPI, Request, Response, WebSocket, WebSocketDisconnect
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
-from pydantic import BaseModel
+from pydantic import AfterValidator, BaseModel
 from starlette.background import BackgroundTask
 from starlette.concurrency import run_in_threadpool
 from starlette.exceptions import HTTPException
@@ -181,16 +181,20 @@ class ApiError(Exception):
 
 # --- request bodies -----------------------------------------------------------
 
+# Account names are Linux user names and stored in lower case; "Fabian" in a
+# form means the account fabian. The UI shows them with a capital letter.
+AccountName = Annotated[str, AfterValidator(lambda v: v.strip().lower())]
+
 
 class SetupBody(BaseModel):
     code: str
-    username: str
+    username: AccountName
     password: str
     hostname: str | None = None
 
 
 class LoginBody(BaseModel):
-    username: str
+    username: AccountName
     password: str
     code: str = ""
 
@@ -214,7 +218,7 @@ class PasswordBody(BaseModel):
 
 
 class UserBody(BaseModel):
-    name: str
+    name: AccountName
     password: str
     role: str = "viewer"
 
@@ -1506,8 +1510,8 @@ def create_app(cfg: Config | None = None) -> FastAPI:
         await ws.accept()
         q = ws.query_params
         hello = {
-            # Same name as the dashboard account unless another one is asked for.
-            "user": q.get("user") or session.username,
+            # Always the Linux account with the dashboard account's name.
+            "user": session.username,
             "cols": int(q["cols"]) if q.get("cols", "").isdigit() else 80,
             "rows": int(q["rows"]) if q.get("rows", "").isdigit() else 24,
             "by": session.username,
