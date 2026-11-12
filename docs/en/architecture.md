@@ -372,7 +372,7 @@ Protocol: one request per connection, one JSON line each way.
 | `remotes.list` | – | mounted shares of other devices with state (`mounted`, `idle`, `error`, `off`), never the password |
 | `remotes.set` | `name`, `type` (`smb`/`nfs`), `host`, `share`, `username`, `password` (left out = keep), `readonly` | test mount, then `/etc/dahlia/remotes.json`, credentials `/etc/dahlia/remotes/<name>.cred` (0600), `.mount` and `.automount` unit |
 | `remotes.remove` | `name`, `force` | delete units and credentials; without `force` refused while an app uses a folder on it |
-| `files.browse` | `root` (`/mnt/user`, `/srv` or `/mnt/remotes`), `path` (relative to it) | subfolders for the folder picker, no hidden folders or symlinks, at most 500; plus which locations can be used |
+| `files.browse` | `root` (`/mnt/user`, `/srv` or `/mnt/remotes`), `path` (relative to it) | subfolders and files for the folder picker (files only for orientation, not selectable), no hidden entries or symlinks, at most 500 each; plus which locations can be used |
 | `files.mkdir` | `root`, `path` | create a folder (group `dahlia`, 2775), not below `appdata` |
 | `domains.get` | - | mDNS aliases, names in the certificates, certificates |
 | `domains.set` | `mdns_aliases` | `domains set`, new app certificate and proxy |
@@ -594,6 +594,8 @@ the shares). Locations as in the folder picker: `/mnt/user`, `/srv` and `/mnt/re
 | Action | Implementation |
 | --- | --- |
 | List | `files.list`: folders first, case and accents ignored, at most 5000 entries; names that are not UTF-8 are left out |
+| Search | `files.search`: names below the current folder that contain the term (case and accents ignored); breadth first, symlinks not followed; at most 500 hits or 15 s, then `truncated`. Clicking a hit opens the folder, or the file's folder with the file selected |
+| Path | The full path of the folder is shown above the list and can be copied (clipboard; without HTTPS it is selected and copied) |
 | Download | `files.open` opens the file and passes the file descriptor over the socket (SCM_RIGHTS); the backend streams it, nginx does not buffer |
 | Upload | `files.upload` creates `.dahlia-upload-<random>` (owner and group like the folder, 0664) and passes the descriptor; the backend writes the request body into it, `files.upload_finish` renames it, on errors `files.upload_abort` removes it. No size limit (`client_max_body_size 0` for this path only) |
 | New folder, rename | `files.create_dir`, `files.rename`, immediately |
@@ -606,7 +608,7 @@ overwritten silently (upload asks). Copy works like `cp -a`: owner, mode and tim
 symlinks are copied as symlinks. Moving to another filesystem copies, then deletes. Delete is
 permanent; the share recycle bin (M32) only applies to Samba.
 
-Endpoints: `GET /api/files/list`, `GET /api/files/download`, `POST /api/files/upload`
+Endpoints: `GET /api/files/list`, `GET /api/files/search` (`root`, `path`, `query`), `GET /api/files/download`, `POST /api/files/upload`
 (body = file content, `root`, `path`, `name`, `overwrite` as query), `POST /api/files/dir`,
 `POST /api/files/rename`, `POST /api/files/start`, `GET /api/files/job`, `POST /api/files/cancel`.
 

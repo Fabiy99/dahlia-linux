@@ -1121,6 +1121,8 @@ def test_file_manager_routes_and_viewer(fenv):
     client, agent, _, _ = fenv
     client.get("/api/files/list", params={"path": "Filme"})
     assert agent.calls[-1] == ("files.list", {"root": "/mnt/user", "path": "Filme"})
+    client.get("/api/files/search", params={"root": "/srv", "path": "a", "query": "Ärger"})
+    assert agent.calls[-1] == ("files.search", {"root": "/srv", "path": "a", "query": "Ärger"})
     body = {"op": "move", "root": "/mnt/user", "paths": ["Filme/a"], "dest": "Serien"}
     assert client.post("/api/files/start", json=body, headers=CSRF).status_code == 200
     assert agent.calls[-1] == ("files.start", {**body, "dest_root": "/mnt/user"})
@@ -1136,6 +1138,8 @@ def test_file_manager_routes_and_viewer(fenv):
     login_as(client, "anna", "lesen-only-123")
     for path in ("/api/files/list", "/api/files/job"):
         assert client.get(path).status_code == 403
+    assert client.get("/api/files/search",
+                      params={"root": "/mnt/user", "query": "a"}).status_code == 403
     assert client.get("/api/files/download",
                       params={"root": "/mnt/user", "path": "a"}).status_code == 403
 

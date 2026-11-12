@@ -39,6 +39,44 @@ def test_list_folders_first_links_not_followed(fctx):
         assert err_code(run(fctx, "files.list", {"path": bad})) == protocol.INVALID_PARAMS, bad
 
 
+def test_search_recursive_ignores_case_and_accents(fctx):
+    (fctx.pool / "Filme/Kino/Der Ärger.mkv").write_text("x")
+    p = {"root": "/mnt/user"}
+    got = run(fctx, "files.search", {**p, "query": "ARGER"})["result"]
+    # Breadth first: the nearer hit comes first. The symlink is not followed.
+    assert [e["path"] for e in got["entries"]] == [
+        "Filme/Ärger & Co.txt", "Filme/Kino/Der Ärger.mkv"]
+    assert got["entries"][0]["kind"] == "file" and got["entries"][0]["size"] == 5
+    assert got["truncated"] is False
+    got = run(fctx, "files.search", {**p, "path": "Filme/Kino", "query": "ärger"})["result"]
+    assert [e["path"] for e in got["entries"]] == ["Filme/Kino/Der Ärger.mkv"]
+    got = run(fctx, "files.search", {**p, "query": "kin"})["result"]
+    assert [(e["path"], e["kind"]) for e in got["entries"]] == [("Filme/Kino", "dir")]
+    assert run(fctx, "files.search", {**p, "query": "secret"})["result"]["entries"] == []
+    assert [e["kind"] for e in run(fctx, "files.search", {**p, "query": "out"})["result"]
+            ["entries"]] == ["link"]
+    for bad in ("", "a/b", "a\nb", "x" * 256):
+        assert err_code(run(fctx, "files.search", {**p, "query": bad})) == protocol.INVALID_PARAMS
+    assert err_code(run(fctx, "files.search", {**p, "query": "  "})) == protocol.INVALID_PARAMS
+    assert err_code(run(fctx, "files.search", {**p, "path": "../etc", "query": "a"})) \
+        == protocol.INVALID_PARAMS
+    assert err_code(run(fctx, "files.search", {**p, "path": "Filme/out", "query": "a"})) \
+        == protocol.FAILED
+    assert err_code(run(fctx, "files.search", {"root": "/etc", "query": "a"})) \
+        == protocol.INVALID_PARAMS
+
+
+def test_search_stops_at_limits(fctx, monkeypatch):
+    for i in range(5):
+        (fctx.pool / f"Filme/treffer-{i}").write_text("x")
+    monkeypatch.setattr(files, "SEARCH_MAX", 3)
+    got = run(fctx, "files.search", {"root": "/mnt/user", "query": "treffer"})["result"]
+    assert len(got["entries"]) == 3 and got["truncated"] is True
+    monkeypatch.setattr(files, "SEARCH_SECONDS", -1)
+    got = run(fctx, "files.search", {"root": "/mnt/user", "query": "treffer"})["result"]
+    assert got["entries"] == [] and got["truncated"] is True
+
+
 def test_open_passes_descriptor_and_refuses_links(fctx):
     reply = run(fctx, "files.open", {"root": "/mnt/user", "path": "Filme/Ärger & Co.txt"})
     assert reply["result"] == {"name": "Ärger & Co.txt", "size": 5}
