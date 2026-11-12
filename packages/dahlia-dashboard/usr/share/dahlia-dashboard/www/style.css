@@ -482,3 +482,7 @@ code.pubkey { display: block; font-size: .78rem; overflow-wrap: anywhere; backgr
 .custom-row > [hidden] { display: none; }
 @media (max-width: 40rem) { .custom-grid { grid-template-columns: 1fr; } }
 #custom-form > button[type="button"] { width: auto; justify-self: start; }
+
+/* own firewall rules */
+.fw-rule-form { display: grid; gap: .6rem 1rem; grid-template-columns: repeat(auto-fill, minmax(10rem, 1fr)); align-items: end; margin-top: 1rem; }
+.fw-rules { margin-top: .5rem; }
