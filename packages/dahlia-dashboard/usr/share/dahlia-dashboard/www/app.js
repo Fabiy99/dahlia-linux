@@ -3105,6 +3105,77 @@ async function loadFirewall() {
   document.getElementById("firewall-ports").textContent = data.enabled
     ? t("settings.firewall_ports", { ports: ports.join(", ") })
     : t("settings.firewall_off");
+  firewallRules = data.rules;
+  renderFirewallRules();
+}
+
+let firewallRules = [];
+
+function ruleSource(r) {
+  return r.source === "local" || r.source === "any" ? t(`fwrules.${r.source}`) : r.source;
+}
+
+function renderFirewallRules() {
+  const body = document.getElementById("fw-rules");
+  body.replaceChildren();
+  if (!firewallRules.length) {
+    const tr = el("tr");
+    const td = cell(tr, t("fwrules.none"));
+    td.colSpan = 5;
+    td.className = "hint";
+    body.append(tr);
+  }
+  firewallRules.forEach((r, i) => {
+    const tr = el("tr");
+    cell(tr, badge(t(`fwrules.${r.action}`), r.action === "accept" ? "ok" : "crit"));
+    cell(tr, r.protocol === "all" ? t("fwrules.all") : `${r.ports}/${r.protocol}`).dataset.label = t("fwrules.port");
+    cell(tr, ruleSource(r)).dataset.label = t("fwrules.source");
+    cell(tr, r.comment || "–").dataset.label = t("fwrules.comment");
+    const ops = el("div", "row-ops");
+    const move = (to) => saveFirewallRules(firewallRules.map((x, j) => (j === i ? firewallRules[to] : j === to ? r : x)));
+    const up = button("fwrules.up", () => move(i - 1));
+    up.disabled = i === 0;
+    const down = button("fwrules.down", () => move(i + 1));
+    down.disabled = i === firewallRules.length - 1;
+    ops.append(up, down, button("shares.remove", () => saveFirewallRules(firewallRules.filter((_, j) => j !== i)), "danger"));
+    cell(tr, ops);
+    body.append(tr);
+  });
+}
+
+async function saveFirewallRules(rules) {
+  const res = await api("POST", "settings/firewall/rules", { rules });
+  say(t("fwrules.saved"), "ok");
+  firewallRules = res.rules;
+  renderFirewallRules();
+}
+
+function renderRuleForm() {
+  const f = document.getElementById("fw-rule-form").elements;
+  f.ports.disabled = f.protocol.value === "all";
+  document.getElementById("fw-rule-net").hidden = f.source_kind.value !== "net";
+}
+
+function bindFirewallRules() {
+  const form = document.getElementById("fw-rule-form");
+  form.elements.protocol.addEventListener("change", renderRuleForm);
+  form.elements.source_kind.addEventListener("change", renderRuleForm);
+  renderRuleForm();
+  form.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const f = form.elements;
+    const kind = f.source_kind.value;
+    const rule = { action: f.action.value, protocol: f.protocol.value,
+                   ports: f.protocol.value === "all" ? "" : f.ports.value.trim(),
+                   source: kind === "net" ? f.network.value.trim() : kind, comment: f.comment.value.trim() };
+    guarded(e.submitter, async () => {
+      if (rule.action === "accept" && rule.source === "any"
+          && !await ask(t("fwrules.any_confirm", { ports: rule.ports }), "fwrules.add", true)) return;
+      await saveFirewallRules([...firewallRules, rule]);
+      form.reset();
+      renderRuleForm();
+    });
+  });
 }
 
 // --- settings: remote access (WireGuard, Tailscale) -------------------------------
@@ -3759,6 +3830,7 @@ function bindForms() {
     });
   });
 
+  bindFirewallRules();
   document.getElementById("firewall-form").addEventListener("submit", (e) => {
     e.preventDefault();
     const f = e.target.elements;
