@@ -878,8 +878,18 @@ def apps_catalog(ctx: Context, refresh: bool):
 
 @action("apps.list", mutating=False)
 def apps_list(ctx: Context):
-    """Installed apps with container status and available updates."""
-    return {"apps": dahlia_apps(ctx, "list")}
+    """Installed apps with container status and available updates.
+
+    While an app's install/update job is still running, its container may
+    not exist yet (status "missing") or be mid-recreate (anything but
+    "running"); report "busy" instead so the dashboard does not show a
+    normal in-progress job as broken.
+    """
+    apps = dahlia_apps(ctx, "list")
+    for app in apps:
+        if app["status"] != "running" and is_running(ctx, app_unit(app["id"])):
+            app["status"] = "busy"
+    return {"apps": apps}
 
 
 def folder_args(folders: dict) -> list[str]:

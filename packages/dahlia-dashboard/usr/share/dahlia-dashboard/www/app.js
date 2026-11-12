@@ -554,7 +554,7 @@ function setSidebar(info) {
 }
 
 const STATUS_KIND = { running: "ok", partial: "warn", restarting: "warn", exited: "", created: "",
-                      paused: "warn", dead: "crit", missing: "crit" };
+                      paused: "warn", dead: "crit", missing: "crit", busy: "warn" };
 const DOT_KIND = { ok: "ok", warn: "warn", crit: "crit", "": "" };
 
 function primaryUrl(app) {
@@ -1364,11 +1364,14 @@ function bindCrypt() {
 let catalogApps = [];
 let gpuAvailable = false;
 
-// Install and update run in the background on the server; poll until done.
+// Install and update run in the background on the server; poll until done,
+// refreshing the visible list each time so progress (e.g. the "busy"
+// status) is not just shown once at the start and once at the end.
 async function waitForAppJob(id) {
   for (let i = 0; i < 360; i++) {
     await new Promise((r) => setTimeout(r, 5000));
     const job = await api("GET", `apps/${id}/job`);
+    if (current === "apps") await loadApps();
     if (!["active", "activating"].includes(job.active)) return job;
   }
   return null;

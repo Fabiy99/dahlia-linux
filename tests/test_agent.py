@@ -971,6 +971,16 @@ def test_apps_busy(ctx):
     assert err_code(run(ctx, "apps.remove", {"id": "jellyfin"})) == protocol.BUSY
 
 
+def test_apps_list_marks_running_job_as_busy(ctx):
+    """While install/update still runs, a missing/created container must not
+    look broken; the agent overrides its status to "busy"."""
+    ctx.runner.answers[("dahlia-apps", "list")] = (
+        0, '[{"id": "x1", "status": "missing"}, {"id": "x2", "status": "running"}]', "")
+    ctx.runner.answers[("systemctl", "show")] = (0, RUNNING, "")
+    apps = run(ctx, "apps.list")["result"]["apps"]
+    assert {a["id"]: a["status"] for a in apps} == {"x1": "busy", "x2": "running"}
+
+
 def test_apps_remove_and_list(ctx):
     ctx.runner.answers[("dahlia-apps", "remove")] = (0, '{"id": "x1", "data_deleted": true}', "")
     ctx.runner.answers[("dahlia-apps", "list")] = (0, "[]", "")

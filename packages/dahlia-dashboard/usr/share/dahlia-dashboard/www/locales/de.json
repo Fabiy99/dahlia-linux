@@ -172,6 +172,7 @@
   "app_status.paused": "pausiert",
   "app_status.dead": "defekt",
   "app_status.missing": "kein Container",
+  "app_status.busy": "wird eingerichtet",
   "nav.domains": "Adressen",
   "common.save": "Speichern",
   "domains.title": "Adressen der Apps",

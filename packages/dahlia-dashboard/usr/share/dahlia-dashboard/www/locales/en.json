@@ -172,6 +172,7 @@
   "app_status.paused": "paused",
   "app_status.dead": "broken",
   "app_status.missing": "no container",
+  "app_status.busy": "setting up",
   "nav.domains": "Addresses",
   "common.save": "Save",
   "domains.title": "App addresses",
