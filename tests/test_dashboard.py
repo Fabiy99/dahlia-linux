@@ -1,4 +1,5 @@
 import json
+import os
 import re
 from pathlib import Path
 
@@ -1050,3 +1051,75 @@ def test_old_accounts_are_admins(env):
     path.write_text(json.dumps(data))
     assert client.get("/api/state").json()["role"] == "admin"
     assert client.get("/api/users").status_code == 200
+
+
+# --- file manager -------------------------------------------------------------
+
+
+@pytest.fixture
+def fenv(tmp_path):
+    agent = FakeAgent()
+    opened = []
+
+    def agent_open(action, params):
+        opened.append((action, params))
+        if action == "files.open":
+            src = tmp_path / "src.txt"
+            src.write_bytes(b"hallo welt")
+            return {"name": "Ärger \"1\".txt", "size": 10}, os.open(src, os.O_RDONLY)
+        dst = tmp_path / "upload.tmp"
+        return {"tmp": ".dahlia-upload-0123456789abcdef"}, os.open(dst, os.O_WRONLY | os.O_CREAT)
+
+    cfg = Config(state_dir=tmp_path / "state", run_dir=tmp_path / "run", secure_cookie=False,
+                 agent_call=agent, agent_open=agent_open)
+    cfg.state_dir.mkdir()
+    code = setupcode.prepare(cfg.run_dir)
+    client = TestClient(create_app(cfg))
+    assert do_setup(client, code).status_code == 200
+    return client, agent, opened, tmp_path
+
+
+def test_file_download_streams_descriptor(fenv):
+    client, _, opened, _ = fenv
+    r = client.get("/api/files/download", params={"root": "/mnt/user", "path": "Filme/x.txt"})
+    assert r.status_code == 200 and r.content == b"hallo welt"
+    assert r.headers["content-disposition"] == (
+        "attachment; filename=\"_rger _1_.txt\"; filename*=UTF-8''%C3%84rger%20%221%22.txt")
+    assert opened == [("files.open", {"root": "/mnt/user", "path": "Filme/x.txt"})]
+
+
+def test_file_upload_writes_then_finishes(fenv):
+    client, agent, opened, tmp_path = fenv
+    params = {"root": "/mnt/user", "path": "Filme", "name": "neu.bin"}
+    r = client.post("/api/files/upload", params=params, content=b"z" * 300000)
+    assert r.status_code == 403  # CSRF header missing
+    r = client.post("/api/files/upload", params=params, content=b"z" * 300000, headers=CSRF)
+    assert r.status_code == 200
+    assert (tmp_path / "upload.tmp").read_bytes() == b"z" * 300000
+    assert opened[-1] == ("files.upload", {**params, "overwrite": False})
+    assert agent.calls[-1] == ("files.upload_finish", {
+        "root": "/mnt/user", "path": "Filme", "name": "neu.bin",
+        "tmp": ".dahlia-upload-0123456789abcdef", "overwrite": False})
+
+
+def test_file_manager_routes_and_viewer(fenv):
+    client, agent, _, _ = fenv
+    client.get("/api/files/list", params={"path": "Filme"})
+    assert agent.calls[-1] == ("files.list", {"root": "/mnt/user", "path": "Filme"})
+    body = {"op": "move", "root": "/mnt/user", "paths": ["Filme/a"], "dest": "Serien"}
+    assert client.post("/api/files/start", json=body, headers=CSRF).status_code == 200
+    assert agent.calls[-1] == ("files.start", {**body, "dest_root": "/mnt/user"})
+    client.post("/api/files/rename", json={"root": "/srv", "path": "a/b", "name": "c"},
+                headers=CSRF)
+    assert agent.calls[-1] == ("files.rename", {"root": "/srv", "path": "a/b", "name": "c"})
+    client.post("/api/files/dir", json={"root": "/srv", "path": "a", "name": "n"}, headers=CSRF)
+    assert agent.calls[-1][0] == "files.create_dir"
+    client.get("/api/files/job")
+    assert agent.calls[-1][0] == "files.job"
+    client.post("/api/users", json={"name": "anna", "password": "lesen-only-123",
+                                    "role": "viewer"}, headers=CSRF)
+    login_as(client, "anna", "lesen-only-123")
+    for path in ("/api/files/list", "/api/files/job"):
+        assert client.get(path).status_code == 403
+    assert client.get("/api/files/download",
+                      params={"root": "/mnt/user", "path": "a"}).status_code == 403

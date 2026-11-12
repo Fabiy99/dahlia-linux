@@ -1141,6 +1141,7 @@ from . import (  # noqa: E402, F401
     containers,
     diagnostics,
     disktest,
+    files,
     hardware,
     health,
     history,
