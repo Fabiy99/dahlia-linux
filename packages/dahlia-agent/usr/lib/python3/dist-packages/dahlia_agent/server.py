@@ -26,6 +26,7 @@ from .protocol import (
     MAX_REQUEST,
     SOCKET_GROUP,
     AgentError,
+    PassFd,
     encode,
     error,
     ok,
@@ -60,6 +61,13 @@ def group_authorizer(gid: int, proc: Path = Path("/proc")) -> Authorizer:
     return authorize
 
 
+def reply(result) -> dict:
+    """ok() reply; a passed descriptor rides along under "fd" (see Server._send)."""
+    if isinstance(result, PassFd):
+        return {**ok(result.result), "fd": result.fd}
+    return ok(result)
+
+
 def dispatch(ctx: actions.Context, data: bytes, lock: threading.Lock) -> tuple[str, dict]:
     """Handle one raw request. Returns the action name (for the log) and the reply."""
     name = "-"
@@ -70,8 +78,8 @@ def dispatch(ctx: actions.Context, data: bytes, lock: threading.Lock) -> tuple[s
         if act.mutating:
             # One change at a time: storage and update actions must not overlap.
             with lock:
-                return name, ok(act.func(ctx, **checked))
-        return name, ok(act.func(ctx, **checked))
+                return name, reply(act.func(ctx, **checked))
+        return name, reply(act.func(ctx, **checked))
     except AgentError as e:
         return name, error(e.code, e.message)
     except Exception as e:
@@ -127,11 +135,21 @@ class Server:
 
     @staticmethod
     def _send(conn: socket.socket, reply: dict) -> None:
+        fd = reply.pop("fd", None)
         try:
             conn.settimeout(READ_TIMEOUT)
-            conn.sendall(encode(reply))
+            data = encode(reply)
+            if fd is None:
+                conn.sendall(data)
+            else:
+                # The descriptor goes with the first byte, the rest follows.
+                sent = socket.send_fds(conn, [data[:1]], [fd])
+                conn.sendall(data[sent:])
         except OSError:
             pass
+        finally:
+            if fd is not None:
+                os.close(fd)
 
     def serve_forever(self) -> None:
         while True:

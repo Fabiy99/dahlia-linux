@@ -9,6 +9,10 @@ authenticator app understands it. The secret is stored in users.json next to
 the password hash; a code is accepted once (the last used time step is kept)
 and one step early or late. Ten recovery codes, stored as SHA-256 hashes
 (they are random, so a slow hash adds nothing), each work once.
+
+Roles: "admin" may change everything; "viewer" sees the dashboard but
+changes nothing except its own password and second factor. Accounts from
+before roles existed are admins. At least one admin always remains.
 """
 
 import base64
@@ -28,6 +32,8 @@ from urllib.parse import quote
 USERNAME_RE = re.compile(r"^[a-z][a-z0-9_-]{1,31}$")
 MIN_PASSWORD = 10
 MAX_PASSWORD = 1024
+ROLES = ("admin", "viewer")
+MAX_USERS = 20
 
 SCRYPT_N = 2**14
 SCRYPT_R = 8
@@ -149,13 +155,64 @@ class UserStore:
     def has_users(self) -> bool:
         return bool(self._load()["users"])
 
-    def create(self, username: str, password: str) -> None:
+    def create(self, username: str, password: str, role: str = "admin") -> None:
         check_new_credentials(username, password)
+        if role not in ROLES:
+            raise AuthError("role")
         with self.lock:
             data = self._load()
             if username in data["users"]:
                 raise AuthError("exists")
-            data["users"][username] = {"password": hash_password(password)}
+            if len(data["users"]) >= MAX_USERS:
+                raise AuthError("user_limit")
+            data["users"][username] = {"password": hash_password(password), "role": role}
+            self._save(data)
+
+    def role(self, username: str) -> str | None:
+        user = self._load()["users"].get(username)
+        if user is None:
+            return None
+        return user.get("role") if user.get("role") in ROLES else "admin"
+
+    def list_users(self) -> list[dict]:
+        users = self._load()["users"]
+        return [{"name": name, "role": u.get("role") if u.get("role") in ROLES else "admin",
+                 "totp": bool(u.get("totp"))} for name, u in sorted(users.items())]
+
+    def _admins(self, data: dict) -> list[str]:
+        return [n for n, u in data["users"].items() if u.get("role", "admin") == "admin"]
+
+    def set_role(self, username: str, role: str) -> None:
+        if role not in ROLES:
+            raise AuthError("role")
+        with self.lock:
+            data = self._load()
+            user = data["users"].get(username)
+            if user is None:
+                raise AuthError("unknown_user")
+            if role != "admin" and self._admins(data) == [username]:
+                raise AuthError("last_admin")
+            user["role"] = role
+            self._save(data)
+
+    def delete(self, username: str) -> None:
+        with self.lock:
+            data = self._load()
+            if username not in data["users"]:
+                raise AuthError("unknown_user")
+            if self._admins(data) == [username]:
+                raise AuthError("last_admin")
+            del data["users"][username]
+            self._save(data)
+
+    def reset_password(self, username: str, new: str) -> None:
+        """Set by an admin, without the old password."""
+        check_new_credentials(username, new)
+        with self.lock:
+            data = self._load()
+            if username not in data["users"]:
+                raise AuthError("unknown_user")
+            data["users"][username]["password"] = hash_password(new)
             self._save(data)
 
     def verify(self, username: str, password: str) -> bool:

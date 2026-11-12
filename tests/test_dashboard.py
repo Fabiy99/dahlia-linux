@@ -1,4 +1,5 @@
 import json
+import os
 import re
 from pathlib import Path
 
@@ -74,7 +75,7 @@ def logged_in(env):
 def test_state_before_setup(env):
     client, *_ = env
     assert client.get("/api/state").json() == {"setup_required": True, "user": None,
-                                                 "account": "fabian"}
+                                                 "account": "fabian", "role": None}
 
 
 def test_installer_account_is_first_valid_sudo_member(monkeypatch):
@@ -104,7 +105,8 @@ def test_setup_creates_account_once(env):
     r = do_setup(client, code.lower().replace("-", " "), hostname="nas")
     assert r.status_code == 200
     assert ("system.set_hostname", {"hostname": "nas"}) in agent.calls
-    assert client.get("/api/state").json() == {"setup_required": False, "user": "fabian"}
+    assert client.get("/api/state").json() == {"setup_required": False, "user": "fabian",
+                                                 "role": "admin"}
     assert setupcode.current(cfg.run_dir) is None
     assert not (cfg.run_dir / setupcode.ISSUE_FILE).exists()
     assert (cfg.state_dir / "users.json").stat().st_mode & 0o777 == 0o600
@@ -972,3 +974,167 @@ def test_token_store_limit(tmp_path):
     with pytest.raises(auth.AuthError, match="token_limit"):
         store.create("one more")
     assert store.verify(None) is None and store.verify("dahlia_" + "x" * 200) is None
+
+
+# --- accounts and roles -----------------------------------------------------------
+
+
+def login_as(client, name, password):
+    client.cookies.clear()
+    r = client.post("/api/login", json={"username": name, "password": password}, headers=CSRF)
+    assert r.status_code == 200, r.text
+    return r
+
+
+def test_viewer_account_reads_but_cannot_change(env):
+    client, agent, _ = logged_in(env)
+    r = client.post("/api/users", json={"name": "anna", "password": "lesen-only-123",
+                                        "role": "viewer"}, headers=CSRF)
+    assert r.status_code == 200
+    users = client.get("/api/users").json()["users"]
+    assert users == [{"name": "anna", "role": "viewer", "totp": False},
+                     {"name": "fabian", "role": "admin", "totp": False}]
+    login_as(client, "anna", "lesen-only-123")
+    assert client.get("/api/state").json()["role"] == "viewer"
+    assert client.get("/api/system").status_code == 200
+    agent.calls.clear()
+    assert client.post("/api/system/reboot", headers=CSRF).status_code == 403
+    assert client.post("/api/apps/kuma/stop", headers=CSRF).status_code == 403
+    assert client.post("/api/settings/firewall", json={"enabled": False},
+                       headers=CSRF).json()["error"] == "error.admin_only"
+    assert agent.calls == []
+    for path in ("/api/users", "/api/tokens", "/api/diagnostics"):
+        assert client.get(path).status_code == 403, path
+    agent.replies["apps.list"] = {"apps": [{"id": "db", "login": {"password": "s3cret"},
+                                            "custom": {"env": {"A": "b"}}}]}
+    app = client.get("/api/apps").json()["installed"][0]
+    assert app["login"] is None and app["custom"] is None
+    # Own password stays possible.
+    assert client.post("/api/account/password", json={"old": "lesen-only-123",
+                                                      "new": "neues-passwort-1"},
+                       headers=CSRF).status_code == 200
+
+
+def test_user_management_guards(env):
+    client, _, _ = logged_in(env)
+    assert client.post("/api/users", json={"name": "fabian", "password": "x" * 12},
+                       headers=CSRF).status_code == 409
+    assert client.post("/api/users", json={"name": "Bad Name", "password": "x" * 12},
+                       headers=CSRF).status_code == 400
+    assert client.post("/api/users", json={"name": "ben", "password": "x" * 12,
+                                           "role": "root"}, headers=CSRF).status_code == 400
+    # the only admin can neither be demoted nor removed
+    assert client.post("/api/users/fabian/role", json={"role": "viewer"},
+                       headers=CSRF).json()["error"] == "error.last_admin"
+    assert client.post("/api/users/fabian/remove", headers=CSRF).json()["error"] \
+        == "error.remove_self"
+    client.post("/api/users", json={"name": "ben", "password": "x" * 12, "role": "admin"},
+                headers=CSRF)
+    assert client.post("/api/users/fabian/role", json={"role": "viewer"},
+                       headers=CSRF).status_code == 200
+    # fabian is a viewer now and cannot undo that himself
+    assert client.post("/api/users/fabian/role", json={"role": "admin"},
+                       headers=CSRF).status_code == 403
+    login_as(client, "ben", "x" * 12)
+    assert client.post("/api/users/ben/role", json={"role": "viewer"},
+                       headers=CSRF).json()["error"] == "error.last_admin"
+    assert client.post("/api/users/nobody/remove", headers=CSRF).status_code == 400
+
+
+def test_admin_resets_password_and_removes_user(env):
+    client, _, cfg = logged_in(env)
+    client.post("/api/users", json={"name": "anna", "password": "lesen-only-123"}, headers=CSRF)
+    other = TestClient(client.app)
+    login_as(other, "anna", "lesen-only-123")
+    assert other.get("/api/system").status_code == 200
+    assert client.post("/api/users/anna/password", json={"password": "kurz"},
+                       headers=CSRF).status_code == 400
+    assert client.post("/api/users/anna/password", json={"password": "neu-gesetzt-123"},
+                       headers=CSRF).status_code == 200
+    assert other.get("/api/system").status_code == 401  # logged out
+    login_as(other, "anna", "neu-gesetzt-123")
+    assert client.post("/api/users/anna/remove", headers=CSRF).status_code == 200
+    assert other.get("/api/system").status_code == 401
+    assert [u["name"] for u in client.get("/api/users").json()["users"]] == ["fabian"]
+
+
+def test_old_accounts_are_admins(env):
+    client, _, cfg = logged_in(env)
+    path = cfg.state_dir / "users.json"
+    data = json.loads(path.read_text())
+    data["users"]["fabian"].pop("role")
+    path.write_text(json.dumps(data))
+    assert client.get("/api/state").json()["role"] == "admin"
+    assert client.get("/api/users").status_code == 200
+
+
+# --- file manager -------------------------------------------------------------
+
+
+@pytest.fixture
+def fenv(tmp_path):
+    agent = FakeAgent()
+    opened = []
+
+    def agent_open(action, params):
+        opened.append((action, params))
+        if action == "files.open":
+            src = tmp_path / "src.txt"
+            src.write_bytes(b"hallo welt")
+            return {"name": "Ärger \"1\".txt", "size": 10}, os.open(src, os.O_RDONLY)
+        dst = tmp_path / "upload.tmp"
+        return {"tmp": ".dahlia-upload-0123456789abcdef"}, os.open(dst, os.O_WRONLY | os.O_CREAT)
+
+    cfg = Config(state_dir=tmp_path / "state", run_dir=tmp_path / "run", secure_cookie=False,
+                 agent_call=agent, agent_open=agent_open)
+    cfg.state_dir.mkdir()
+    code = setupcode.prepare(cfg.run_dir)
+    client = TestClient(create_app(cfg))
+    assert do_setup(client, code).status_code == 200
+    return client, agent, opened, tmp_path
+
+
+def test_file_download_streams_descriptor(fenv):
+    client, _, opened, _ = fenv
+    r = client.get("/api/files/download", params={"root": "/mnt/user", "path": "Filme/x.txt"})
+    assert r.status_code == 200 and r.content == b"hallo welt"
+    assert r.headers["content-disposition"] == (
+        "attachment; filename=\"_rger _1_.txt\"; filename*=UTF-8''%C3%84rger%20%221%22.txt")
+    assert opened == [("files.open", {"root": "/mnt/user", "path": "Filme/x.txt"})]
+
+
+def test_file_upload_writes_then_finishes(fenv):
+    client, agent, opened, tmp_path = fenv
+    params = {"root": "/mnt/user", "path": "Filme", "name": "neu.bin"}
+    r = client.post("/api/files/upload", params=params, content=b"z" * 300000)
+    assert r.status_code == 403  # CSRF header missing
+    r = client.post("/api/files/upload", params=params, content=b"z" * 300000, headers=CSRF)
+    assert r.status_code == 200
+    assert (tmp_path / "upload.tmp").read_bytes() == b"z" * 300000
+    assert opened[-1] == ("files.upload", {**params, "overwrite": False})
+    assert agent.calls[-1] == ("files.upload_finish", {
+        "root": "/mnt/user", "path": "Filme", "name": "neu.bin",
+        "tmp": ".dahlia-upload-0123456789abcdef", "overwrite": False})
+
+
+def test_file_manager_routes_and_viewer(fenv):
+    client, agent, _, _ = fenv
+    client.get("/api/files/list", params={"path": "Filme"})
+    assert agent.calls[-1] == ("files.list", {"root": "/mnt/user", "path": "Filme"})
+    body = {"op": "move", "root": "/mnt/user", "paths": ["Filme/a"], "dest": "Serien"}
+    assert client.post("/api/files/start", json=body, headers=CSRF).status_code == 200
+    assert agent.calls[-1] == ("files.start", {**body, "dest_root": "/mnt/user"})
+    client.post("/api/files/rename", json={"root": "/srv", "path": "a/b", "name": "c"},
+                headers=CSRF)
+    assert agent.calls[-1] == ("files.rename", {"root": "/srv", "path": "a/b", "name": "c"})
+    client.post("/api/files/dir", json={"root": "/srv", "path": "a", "name": "n"}, headers=CSRF)
+    assert agent.calls[-1][0] == "files.create_dir"
+    client.get("/api/files/job")
+    assert agent.calls[-1][0] == "files.job"
+    client.post("/api/users", json={"name": "anna", "password": "lesen-only-123",
+                                    "role": "viewer"}, headers=CSRF)
+    login_as(client, "anna", "lesen-only-123")
+    for path in ("/api/files/list", "/api/files/job"):
+        assert client.get(path).status_code == 403
+    assert client.get("/api/files/download",
+                      params={"root": "/mnt/user", "path": "a"}).status_code == 403

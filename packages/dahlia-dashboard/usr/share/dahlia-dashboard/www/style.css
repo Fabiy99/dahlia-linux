@@ -531,3 +531,34 @@ code.pubkey { display: block; font-size: .78rem; overflow-wrap: anywhere; backgr
 .chart .legend { display: inline-flex; gap: .6rem; margin-left: .4rem; }
 .chart .legend i { display: inline-block; width: .7rem; height: .2rem; vertical-align: middle; margin-right: .25rem; background: var(--accent); }
 .chart .legend i.second { background: var(--ok); }
+
+/* read-only accounts: the server refuses changes; the page greys out the controls */
+body.viewer main :is(button, input, select, textarea) { pointer-events: none; opacity: .45; }
+body.viewer main :is(.viewer-ok, .viewer-ok *, [data-viewer-ok], [data-goto], .link-btn, .seg button) {
+  pointer-events: auto; opacity: 1;
+}
+body.viewer .admin-only, body.viewer #nav [data-view="terminal"],
+body.viewer #nav [data-view="files"] { display: none; }
+
+/* file manager */
+#view-files .section-head .row-ops { margin-left: auto; }
+#view-files .section-head .row-ops button { margin-left: 0; }
+#view-files .places { grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr)); }
+table.files { width: 100%; }
+table.files .pick { width: 2rem; }
+table.files .num { text-align: right; white-space: nowrap; }
+table.files .folder { display: inline-flex; align-items: center; gap: .4rem; margin: 0; padding-left: 0; text-align: left; }
+table.files .folder svg { width: 1.1rem; height: 1.1rem; flex: none; }
+table.files .fname { overflow-wrap: anywhere; }
+.fm-actions { justify-content: flex-start; align-items: center; margin: .4rem 0; }
+.fm-actions .hint { margin-right: .4rem; }
+#fm-progress { display: flex; flex-wrap: wrap; align-items: center; gap: .6rem; }
+#fm-progress[hidden] { display: none; }
+#fm-progress progress { flex: 1 1 10rem; }
+@media (max-width: 48rem) {
+  table.files tr { display: grid; grid-template-columns: 2rem minmax(0, 1fr) auto; align-items: center; gap: 0 .5rem; }
+  table.files td:nth-child(2) { grid-column: 2; grid-row: 1; }
+  table.files td:nth-child(3) { grid-column: 3; grid-row: 1; }
+  table.files td:nth-child(4) { grid-column: 2 / -1; grid-row: 2; color: var(--muted); font-size: .82rem; }
+  table.files td.pick { grid-row: 1 / 3; }
+}
