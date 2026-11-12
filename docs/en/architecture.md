@@ -197,8 +197,17 @@ after every change.
   Closed ports answer the LAN at once with `admin-prohibited`.
 - Forwarded (`forward`): ports Docker hands to containers via DNAT, only for local sources.
 
-Settings in `/etc/dahlia/firewall.json` (`enabled`, `networks`), in the dashboard under
-Settings. The loaded ruleset is `/run/dahlia/firewall.nft`.
+Settings in `/etc/dahlia/firewall.json` (`enabled`, `networks`, `rules`), in the dashboard
+under Settings. The loaded ruleset is `/run/dahlia/firewall.nft`.
+
+Own rules (M27, at most 50) sit in chain `input` right after `established`/`lo` and before
+all generated rules, in their order. Each rule: `action` (`accept`/`drop`), `protocol`
+(`tcp`/`udp`/`all`), `ports` (`8080` or `8000-8100`, tcp/udp only), `source` (`local` = the
+local networks, `any` = every address, or a network/address) and `comment` (an nft comment in
+the ruleset). Refused: `drop` for `local` or `any` (would also block the dashboard and SSH),
+`accept` for everything from anywhere (that is firewall off) and comments with quotes. An
+`accept` with `any` opens the port for every address; it is reachable from the internet only
+with a port forward on the router.
 
 ```
 dahlia-firewall status     # settings, local networks, open ports (JSON)
@@ -273,6 +282,7 @@ Protocol: one request per connection, one JSON line each way.
 | `vpn.wireguard_add_peer`, `vpn.wireguard_remove_peer` | `name` | new device (configuration and QR code once) or remove it |
 | `vpn.tailscale_install`, `vpn.tailscale_up`, `vpn.tailscale_logout` | for `up`: `routes`, `exit_node` | install Tailscale, connect, log out |
 | `settings.firewall` / `settings.set_firewall` | `enabled`, `networks` (CIDR list, at most 20) | `/etc/dahlia/firewall.json`, `nft -c -f` and `nft -f` with `/run/dahlia/firewall.nft` |
+| `settings.set_firewall_rules` | `rules` (list, at most 50) | check own rules, save, reload the ruleset |
 | `settings.schedules` / `settings.set_schedule` | `job`, `frequency`, `time`, `weekday`, `monthday` | drop-in `OnCalendar=` for the timers |
 | `shares.list` | – | shares, SMB users, whether `/mnt/user` is mounted, whether `smbd` and `nfs-server` run |
 | `shares.set` / `shares.remove` | `name`, `comment`, `security` (`public`/`secure`/`private`), `users` (name → `rw`/`ro`), `time_machine`, `time_machine_size` (GB, 0 = no limit), `nfs` | generates `/etc/samba/smb.conf`, checks it with `testparm`, starts `smbd`; with `nfs` `/etc/exports.d/dahlia.exports`, `exportfs -ra`, `nfs-server` |

@@ -84,12 +84,13 @@ def test_check_networks_rejects(bad):
 
 
 def test_load_settings_defaults(tmp_path):
-    assert firewall.load_settings(tmp_path / "missing.json") == {"enabled": True, "networks": []}
+    empty = {"enabled": True, "networks": [], "rules": []}
+    assert firewall.load_settings(tmp_path / "missing.json") == empty
     p = tmp_path / "firewall.json"
     p.write_text("[1, 2]")
-    assert firewall.load_settings(p) == {"enabled": True, "networks": []}
-    p.write_text(json.dumps({"enabled": False, "networks": ["bad"]}))
-    assert firewall.load_settings(p) == {"enabled": False, "networks": []}
+    assert firewall.load_settings(p) == empty
+    p.write_text(json.dumps({"enabled": False, "networks": ["bad"], "rules": [{"action": "x"}]}))
+    assert firewall.load_settings(p) == {**empty, "enabled": False}
 
 
 # --- what is open ---------------------------------------------------------------
@@ -159,13 +160,83 @@ def test_ruleset_without_udp_ports():
     assert "udp_ports" not in text
 
 
+OWN_RULES = [
+    {"action": "accept", "protocol": "tcp", "ports": "25565", "source": "any",
+     "comment": "Minecraft"},
+    {"action": "accept", "protocol": "udp", "ports": "27015-27030", "source": "local"},
+    {"action": "drop", "protocol": "all", "source": "192.168.178.66", "comment": "Kids PC"},
+    {"action": "drop", "protocol": "tcp", "ports": "22", "source": "2a02:810d:1:2::/64"},
+]
+
+
 @pytest.mark.skipif(os.geteuid() != 0 or not shutil.which("nft"), reason="needs root and nft")
 def test_ruleset_parses(tmp_path):
     rules = tmp_path / "firewall.nft"
     rules.write_text(firewall.ruleset(list(firewall.BASE_PORTS + firewall.SMB_PORTS),
-                                      ["192.168.178.0/24", "2a02:810d:1:2::/64"]))
+                                      ["192.168.178.0/24", "2a02:810d:1:2::/64"],
+                                      rules=firewall.check_rules(OWN_RULES)))
     proc = subprocess.run(["nft", "-c", "-f", str(rules)], capture_output=True, text=True)
     assert proc.returncode == 0, proc.stderr
+
+
+def test_check_rules_normalizes():
+    got = firewall.check_rules(OWN_RULES)
+    assert got[0] == {"action": "accept", "protocol": "tcp", "ports": "25565", "source": "any",
+                      "comment": "Minecraft"}
+    assert got[1]["source"] == "local" and got[1]["comment"] == ""
+    assert got[2] == {"action": "drop", "protocol": "all", "ports": "", "source":
+                      "192.168.178.66/32", "comment": "Kids PC"}
+    assert firewall.check_rule({"action": "accept", "protocol": "tcp", "ports": "80-80",
+                                "source": "0.0.0.0/0"})["source"] == "any"
+    assert firewall.check_rule({"action": "accept", "protocol": "tcp", "ports": "80-80"}
+                               )["ports"] == "80"
+
+
+@pytest.mark.parametrize("bad,why", [
+    ({"action": "reject"}, "action"),
+    ({"protocol": "icmp"}, "protocol"),
+    ({"ports": "0"}, "1 to 65535"),
+    ({"ports": "9000-8000"}, "lower one first"),
+    ({"ports": "80,443"}, "not a port"),
+    ({"protocol": "all", "ports": "80"}, "need tcp or udp"),
+    ({"protocol": "all", "ports": "", "source": "any"}, "turns the firewall off"),
+    ({"action": "drop", "protocol": "all", "ports": "", "source": "local"}, "single device"),
+    ({"action": "drop", "source": "any"}, "single device"),
+    ({"source": "nas.local"}, "not local, any or a network"),
+    ({"comment": 'a" accept'}, "comment"),
+    ({"comment": "x" * 65}, "comment"),
+])
+def test_check_rule_rejects(bad, why):
+    rule = {"action": "accept", "protocol": "tcp", "ports": "8080", "source": "local", **bad}
+    with pytest.raises(FirewallError, match=why):
+        firewall.check_rule(rule)
+
+
+def test_own_rules_come_first():
+    text = firewall.ruleset(list(firewall.BASE_PORTS), [], {"port": 51820, "subnet":
+                            "10.253.0.0/24", "interface": "dahlia-wg"},
+                            firewall.check_rules(OWN_RULES))
+    lines = [ln.strip() for ln in text.splitlines()]
+    assert 'tcp dport 25565 accept comment "Minecraft"' in lines
+    assert "ip saddr @local4 udp dport 27015-27030 accept" in lines
+    assert "ip6 saddr @local6 udp dport 27015-27030 accept" in lines
+    assert 'ip saddr 192.168.178.66/32 drop comment "Kids PC"' in lines
+    assert "ip6 saddr 2a02:810d:1:2::/64 tcp dport 22 drop" in lines
+    # Before WireGuard and the generated port rules.
+    first_own = lines.index('tcp dport 25565 accept comment "Minecraft"')
+    assert first_own < lines.index("udp dport 51820 accept")
+    assert first_own < lines.index("ip saddr @local4 tcp dport @tcp_ports accept")
+    assert first_own > lines.index("ct state established,related accept")
+
+
+def test_set_rules_keeps_networks(fw):
+    fw.set(True, ["10.20.0.0/16"])
+    status = fw.set_rules(OWN_RULES[:1])
+    assert status["networks"] == ["10.20.0.0/16"] and status["rules"][0]["ports"] == "25565"
+    assert "tcp dport 25565 accept" in (fw.run_dir / "firewall.nft").read_text()
+    # Changing the networks keeps the rules.
+    fw.set(True, [])
+    assert json.loads(fw.config.read_text())["rules"][0]["comment"] == "Minecraft"
 
 
 # --- apply ----------------------------------------------------------------------
@@ -183,7 +254,7 @@ def test_disable_removes_table(fw):
     status = fw.set(False, [])
     assert status["enabled"] is False
     assert (fw.run_dir / "firewall.nft").read_text() == firewall.disabled_ruleset()
-    assert json.loads(fw.config.read_text()) == {"enabled": False, "networks": []}
+    assert json.loads(fw.config.read_text()) == {"enabled": False, "networks": [], "rules": []}
 
 
 def test_set_restores_settings_when_nft_fails(fw):
@@ -248,3 +319,14 @@ def test_action_set_nft_failure_rolls_back(ctx):
     res = run(ctx, "settings.set_firewall", {"enabled": False})
     assert err_code(res) == protocol.FAILED
     assert not (ctx.etc / "dahlia/firewall.json").exists()
+
+
+def test_action_set_rules(ctx):
+    res = run(ctx, "settings.set_firewall_rules", {"rules": OWN_RULES})
+    assert res["ok"], res
+    assert len(res["result"]["rules"]) == 4
+    assert 'drop comment "Kids PC"' in (ctx.run_dir / "firewall.nft").read_text()
+    bad = run(ctx, "settings.set_firewall_rules",
+              {"rules": [{"action": "drop", "protocol": "all", "source": "local"}]})
+    assert err_code(bad) == protocol.INVALID_PARAMS
+    assert len(run(ctx, "settings.firewall")["result"]["rules"]) == 4

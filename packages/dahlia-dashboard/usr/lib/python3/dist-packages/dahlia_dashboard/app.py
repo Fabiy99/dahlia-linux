@@ -227,6 +227,10 @@ class FirewallBody(BaseModel):
     networks: list[str] = []
 
 
+class FirewallRulesBody(BaseModel):
+    rules: list[dict]
+
+
 class ShareBody(BaseModel):
     comment: str = ""
     security: str
@@ -863,6 +867,10 @@ def create_app(cfg: Config | None = None) -> FastAPI:
     @app.post("/api/settings/firewall", dependencies=changing)
     def settings_set_firewall(body: FirewallBody):
         return agent("settings.set_firewall", body.model_dump())
+
+    @app.post("/api/settings/firewall/rules", dependencies=changing)
+    def settings_set_firewall_rules(body: FirewallRulesBody):
+        return agent("settings.set_firewall_rules", {"rules": body.rules})
 
     @app.get("/api/vpn", dependencies=authed)
     def vpn_status():
