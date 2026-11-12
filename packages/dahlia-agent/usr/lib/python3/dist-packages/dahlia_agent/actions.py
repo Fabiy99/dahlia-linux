@@ -1197,6 +1197,7 @@ from . import (  # noqa: E402, F401
     hardware,
     health,
     history,
+    netlayout,
     network,
     notify,
     power,

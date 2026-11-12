@@ -483,6 +483,10 @@ code.pubkey { display: block; font-size: .78rem; overflow-wrap: anywhere; backgr
 @media (max-width: 40rem) { .custom-grid { grid-template-columns: 1fr; } }
 #custom-form > button[type="button"] { width: auto; justify-self: start; }
 
+/* network layout */
+.vlan-row { display: grid; grid-template-columns: 6rem 10rem 1fr auto; gap: .6rem; align-items: end; }
+@media (max-width: 640px) { .vlan-row { grid-template-columns: 1fr 1fr; } }
+
 /* health check */
 .health-summary { margin: 0 0 .6rem; color: var(--muted); }
 .health-summary.ok { color: var(--ok); }
