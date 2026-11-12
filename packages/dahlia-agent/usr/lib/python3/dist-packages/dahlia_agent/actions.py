@@ -1115,6 +1115,7 @@ from . import (  # noqa: E402, F401
     hardware,
     network,
     notify,
+    power,
     remotes,
     settings,
     smb,

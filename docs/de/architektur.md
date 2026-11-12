@@ -268,6 +268,8 @@ Protokoll: eine Anfrage pro Verbindung, je eine JSON-Zeile hin und zurück.
 | `settings.network` / `settings.set_network` | `mode` (`dhcp`/`static`), `address` (CIDR), `gateway`, `dns` | `/etc/network/interfaces`, Anwendung über `dahlia-network` mit Rückfall |
 | `settings.confirm_network` | – | bestätigt die neue Netzwerkeinstellung |
 | `settings.spindown` / `settings.set_spindown` | `default`, `disks` (Seriennummer → Minuten) | `/etc/dahlia/spindown.json`, `hdparm -S` |
+| `power.get` / `power.set_governor` | `governor` (einer der vom Kernel angebotenen) | cpufreq in `/sys`, dauerhaft über `/etc/tmpfiles.d/dahlia-cpu-governor.conf` |
+| `system.devices` | - | PCI (`lspci -vmm -nn -k`: Klasse, IDs, Treiber, IOMMU-Gruppe) und USB (`lsusb`) |
 | `vpn.status` | - | WireGuard (Einstellungen, Geräte mit letztem Handshake und Daten) und Tailscale (installiert, Zustand, Anmelde-Link, Adressen) |
 | `vpn.wireguard_set` | `enabled`, `port`, `endpoint`, `route` (`lan`/`all`), `dns`, `subnet` | schreibt die Konfiguration, lädt Firewall und Interface |
 | `vpn.wireguard_add_peer`, `vpn.wireguard_remove_peer` | `name` | neues Gerät (Konfiguration und QR-Code einmal) bzw. entfernen |
@@ -667,6 +669,19 @@ dahlia-domains show
 dahlia-domains set --mdns off     # nur noch Port-Links
 dahlia-domains apply              # Zertifikat und Proxy prüfen, nur bei Bedarf neu
 ```
+
+## Energiesparmodus und Geräte (ab Meilenstein 28)
+
+Einstellungen > Energiesparmodus setzt den CPU-Governor auf allen cpufreq-Policies
+(`/sys/devices/system/cpu/cpufreq/policy*/scaling_governor`). Damit er nach dem Neustart
+gilt, schreibt der Agent eine `w`-Zeile nach `/etc/tmpfiles.d/dahlia-cpu-governor.conf`;
+systemd-tmpfiles setzt den Wert beim Booten. Zur Wahl stehen nur die Governor, die der
+Kernel in `scaling_available_governors` anbietet (bei `intel_pstate` meist nur `powersave`
+und `performance`). Ohne cpufreq, wie in den meisten VMs, zeigt die Karte nur einen Hinweis.
+
+Einstellungen > Geräte listet PCI- und USB-Geräte (`pciutils`, `usbutils`) mit Treiber und
+IOMMU-Gruppe. Die Gruppe ist für das Durchreichen an VMs ab Version 2 wichtig; ohne aktives
+IOMMU (VT-d/AMD-Vi im UEFI) gibt es keine Gruppen.
 
 ## Diagnosepaket (ab Meilenstein 16)
 
