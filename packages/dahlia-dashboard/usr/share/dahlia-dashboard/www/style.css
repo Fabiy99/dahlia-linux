@@ -494,6 +494,11 @@ code.pubkey { display: block; font-size: .78rem; overflow-wrap: anywhere; backgr
 .health-list .meta small { color: var(--muted); }
 .health-list button { flex: none; }
 
+/* API tokens */
+.token-list { list-style: none; padding: 0; margin: 0 0 1rem; display: grid; gap: .5rem; }
+.token-list .token { display: flex; justify-content: space-between; align-items: center; gap: 1rem; }
+#token-new pre { white-space: pre-wrap; word-break: break-all; font-size: .78rem; }
+
 /* history charts */
 .seg { display: inline-flex; border: 1px solid var(--line); border-radius: .5rem; overflow: hidden; }
 .seg button { border: 0; border-radius: 0; background: transparent; padding: .3rem .7rem; font-size: .82rem; }
