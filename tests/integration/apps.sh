@@ -66,6 +66,12 @@ wait_job() {
     jq -e '.result == "success"' <<<"$state" >/dev/null || fail "app job did not succeed"
 }
 
+step "catalog shipped with the package"
+# postinst copied /usr/share/agent/apps-catalog; apps are offered at once.
+call apps.catalog '{"refresh": false}' | jq -e '(.apps | length) > 50 and .refreshed != null' \
+    >/dev/null || fail "no catalog after installing the package"
+test -n "$(ls /var/lib/dahlia/apps-catalog/icons)" || fail "no icons in the shipped catalog"
+
 step "array from a loop disk"
 truncate -s 512M "$WORK/disk.img"
 LOOP="$(losetup --find --show "$WORK/disk.img")"

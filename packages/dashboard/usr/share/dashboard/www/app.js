@@ -541,13 +541,38 @@ async function pollStats() {
   }
 }
 
+// Calls fn every ms; the next call starts only after the last one finished.
+// With setInterval a slow server gets a new request before it answered the
+// last one, and the queue makes it slower still. A throwing fn stops it.
+function poller(fn, ms) {
+  let timer = null;
+  let stopped = false;
+  const next = () => {
+    timer = setTimeout(async () => {
+      try {
+        await fn();
+      } catch (_) {
+        stopped = true;
+      }
+      if (!stopped) next();
+    }, ms);
+  };
+  next();
+  return {
+    stop() {
+      stopped = true;
+      clearTimeout(timer);
+    },
+  };
+}
+
 function startStats() {
   stopStats();
-  statsTimer = setInterval(pollStats, STATS_INTERVAL);
+  statsTimer = poller(pollStats, STATS_INTERVAL);
 }
 
 function stopStats() {
-  if (statsTimer) clearInterval(statsTimer);
+  if (statsTimer) statsTimer.stop();
   statsTimer = null;
 }
 
@@ -631,7 +656,7 @@ async function loadOverview() {
   stats.at = Date.now();
   renderStats(stats);
   // Apps and jobs come from slower calls; the tiles fill in when they arrive.
-  api("GET", "apps").then((data) => {
+  api("GET", "apps?catalog=false").then((data) => {
     renderOverviewApps(data.installed);
     updateAppsBadge(data.installed);
   }).catch(tileError("overview-apps"));
@@ -1564,7 +1589,7 @@ async function waitForAppJob(id) {
   for (let i = 0; i < 360; i++) {
     await new Promise((r) => setTimeout(r, 5000));
     const job = await api("GET", `apps/${id}/job`);
-    if (current === "apps") await loadApps();
+    if (current === "apps") await loadApps(false);
     if (!["active", "activating"].includes(job.active)) return job;
   }
   return null;
@@ -1573,12 +1598,12 @@ async function waitForAppJob(id) {
 async function appJob(id, op, name, body) {
   await api("POST", `apps/${id}/${op}`, body);
   say(t(`apps.${op}_running`, { name }), "");
-  await loadApps();
+  await loadApps(false);
   const job = await waitForAppJob(id);
   if (job && job.result === "success") say(t(`apps.${op}_done`, { name }), "ok");
   else if (job && job.error) say(t("apps.job_failed_reason", { name, error: job.error }), "error");
   else say(t("apps.job_failed", { name, unit: `dahlia-app-${id}` }), "error");
-  if (current === "apps") await loadApps();
+  if (current === "apps") await loadApps(false);
 }
 
 // Domain name, mDNS alias and port link; the port link uses the address
@@ -1639,12 +1664,12 @@ function renderInstalled(installed) {
     if (app.status === "running") {
       ops.append(iconButton("stop", "apps.stop", async () => {
         await api("POST", `apps/${app.id}/stop`);
-        await loadApps();
+        await loadApps(false);
       }));
     } else {
       ops.append(iconButton("play", "apps.start", async () => {
         await api("POST", `apps/${app.id}/start`);
-        await loadApps();
+        await loadApps(false);
       }));
     }
     ops.append(iconButton("updates", "apps.update", () => appJob(app.id, "update", app.name),
@@ -1657,7 +1682,7 @@ function renderInstalled(installed) {
                                    "apps.delete_data", true);
       await api("POST", `apps/${app.id}/remove`, { delete_data: deleteData });
       say(t("apps.removed", { name: app.name }), "ok");
-      await loadApps();
+      await loadApps(false);
     }, "danger icon-btn push-right");
     // Icon only, so the three buttons fit on one line.
     remove.title = remove.textContent;
@@ -1705,7 +1730,7 @@ function watchAppsAll() {
         return;
       }
       if (job.error) say(t("apps.all_failed", { error: job.error }), "error");
-      if (current === "apps") await loadApps();
+      if (current === "apps") await loadApps(false);
     } catch (err) {
       sayError(err);
     }
@@ -2165,10 +2190,21 @@ function fillCategories() {
   select.value = used.includes(chosen) ? chosen : "";
 }
 
-async function loadApps() {
-  const data = await api("GET", "apps");
-  gpuAvailable = data.gpu_available;
+// The catalog changes only with a refresh. While a job runs (withCatalog
+// false) only the installed apps are fetched; the catalog cards are drawn
+// again only when the set of installed apps changed.
+async function loadApps(withCatalog = true) {
+  const data = await api("GET", withCatalog ? "apps" : "apps?catalog=false");
   renderInstalled(data.installed);
+  if (!withCatalog) {
+    const have = new Set(data.installed.map((a) => a.id));
+    if (catalogApps.some((a) => a.installed !== have.has(a.id))) {
+      catalogApps = catalogApps.map((a) => ({ ...a, installed: have.has(a.id) }));
+      renderCatalog();
+    }
+    return;
+  }
+  gpuAvailable = data.gpu_available;
   catalogApps = data.catalog;
   fillCategories();
   const when = data.catalog_refreshed ? new Date(data.catalog_refreshed).toLocaleString(lang) : "-";
@@ -2186,7 +2222,7 @@ const CONTAINER_KIND = { running: "ok", restarting: "warn", paused: "warn", exit
                          created: "", dead: "crit", removing: "warn" };
 
 function stopDockerStats() {
-  if (dockerTimer) clearInterval(dockerTimer);
+  if (dockerTimer) dockerTimer.stop();
   dockerTimer = null;
 }
 
@@ -2269,7 +2305,7 @@ async function loadDocker() {
   renderContainers();
   stopDockerStats();
   await loadDockerStats().catch(() => {});
-  dockerTimer = setInterval(() => loadDockerStats().catch(stopDockerStats), 5000);
+  dockerTimer = poller(loadDockerStats, 5000);
 }
 
 async function refreshLogs() {
@@ -2825,7 +2861,7 @@ function renderBackupType() {
 
 async function loadBackup() {
   clearTimeout(backupTimer);
-  const [data, list] = await Promise.all([api("GET", "backup"), api("GET", "apps")]);
+  const [data, list] = await Promise.all([api("GET", "backup"), api("GET", "apps?catalog=false")]);
   backupApps = list.installed.map((a) => ({ id: a.id, name: a.name }));
   const f = document.getElementById("backup-form");
   const target = data.target || { type: "folder" };

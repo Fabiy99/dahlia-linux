@@ -119,6 +119,20 @@ def test_weather_reports_errors_per_place():
     assert p["error"] == "offline" and p["name"] == "Hamburg"
 
 
+def test_weather_waits_before_retrying_a_failed_place():
+    fetch = FakeFetch()
+    fetch.fail = True
+    now = [1000.0]
+    weather = home.Weather(fetch=fetch, clock=lambda: now[0])
+    weather.all([HAMBURG])
+    [p] = weather.all([HAMBURG])
+    assert p["error"] == "offline" and len(fetch.urls) == 1
+    fetch.fail = False
+    now[0] += home.RETRY_SECONDS + 1
+    [p] = weather.all([HAMBURG])
+    assert "error" not in p and len(fetch.urls) == 2
+
+
 # --- endpoints ----------------------------------------------------------------
 
 

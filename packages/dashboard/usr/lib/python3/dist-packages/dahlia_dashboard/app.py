@@ -1103,19 +1103,23 @@ def create_app(cfg: Config | None = None) -> FastAPI:
     # --- apps -----------------------------------------------------------------
 
     @app.get("/api/apps", dependencies=readable)
-    def apps(request: Request):
+    def apps(request: Request, catalog: bool = True):
+        """Installed apps and the catalog. catalog=false leaves the catalog out
+        (overview, polling while a job runs)."""
         installed = agent("apps.list")["apps"]
         session = sessions.get(request.cookies.get(COOKIE))
         if session is None or users.role(session.username) != "admin":
             # API token or read-only account: no generated app passwords,
             # no custom container settings.
             installed = [{**a, "login": None, "custom": None} for a in installed]
-        catalog = agent("apps.catalog", {"refresh": False})
+        if not catalog:
+            return {"installed": installed}
+        offered = agent("apps.catalog", {"refresh": False})
         return {
             "installed": installed,
-            "catalog": catalog["apps"],
-            "catalog_refreshed": catalog.get("refreshed"),
-            "gpu_available": catalog.get("gpu_available", False),
+            "catalog": offered["apps"],
+            "catalog_refreshed": offered.get("refreshed"),
+            "gpu_available": offered.get("gpu_available", False),
         }
 
     @app.post("/api/apps/catalog/refresh", dependencies=changing)

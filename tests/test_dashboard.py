@@ -427,6 +427,14 @@ def test_no_hardcoded_text_in_html():
     assert text.split() == []
 
 
+def test_apps_without_catalog(env):
+    client, agent, _ = logged_in(env)
+    agent.calls.clear()
+    data = client.get("/api/apps?catalog=false").json()
+    assert data == {"installed": data["installed"]} and data["installed"][0]["id"] == "whoami"
+    assert [c[0] for c in agent.calls] == ["apps.list"]
+
+
 def test_apps_endpoints(env):
     client, agent, _ = logged_in(env)
     agent.calls.clear()

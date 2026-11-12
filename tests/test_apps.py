@@ -1,6 +1,9 @@
 import hashlib
 import json
 import os
+import shutil
+import subprocess
+import threading
 from pathlib import Path
 
 import pytest
@@ -55,7 +58,12 @@ class FakeDocker:
         return ""
 
     def state(self, container):
+        self.calls.append(("state", container))
         return self.states.get(container, "running")
+
+    def container_states(self, names):
+        self.calls.append(("ps", tuple(names)))
+        return {n: self.states.get(n, "running") for n in names}
 
     def remove_image(self, image):
         self.removed.append(image)
@@ -671,6 +679,29 @@ def test_status_partial(stack_env):
     assert env.list()[0]["status"] == "exited"
 
 
+def test_list_asks_docker_once(stack_env):
+    env = stack_env
+    env.install("notes")
+    env.install("whoami")
+    env.docker.calls.clear()
+    env.list()
+    assert [c[0] for c in env.docker.calls] == ["ps"]
+    assert set(env.docker.calls[0][1]) == {
+        "dahlia-notes", "dahlia-notes-db", "dahlia-notes-cache", "dahlia-whoami"}
+
+
+def test_container_states_parses_docker_ps(monkeypatch):
+    out = "dahlia-whoami\trunning\ndahlia-notes-db\texited\nother\tcreated\n"
+
+    def run(cmd, **kw):
+        assert cmd[:3] == ["docker", "ps", "-a"]
+        return subprocess.CompletedProcess(cmd, 0, out, "")
+
+    monkeypatch.setattr(apps.subprocess, "run", run)
+    assert apps.Docker().container_states(["dahlia-whoami", "dahlia-notes-db", "dahlia-x"]) == {
+        "dahlia-whoami": "running", "dahlia-notes-db": "exited", "dahlia-x": "missing"}
+
+
 def test_remove_stack(stack_env):
     env = stack_env
     env.install("notes")
@@ -741,6 +772,103 @@ def test_refresh_catalog_icons(env, tmp_path):
     icon_catalog(src, {"whoami.svg": SVG, "notes.png": PNG + b"x"})
     apps.refresh_catalog(env.paths, icon_fetcher=icon_fetcher)
     assert fetched == [f"file://{src}/icons/notes.png"]
+
+
+def test_refresh_catalog_fetches_icons_in_parallel(env, tmp_path, monkeypatch):
+    src = tmp_path / "src"
+    icon_catalog(src, {"whoami.svg": SVG, "notes.png": PNG})
+    env.paths.config.write_text(json.dumps({"catalog": f"file://{src}/"}))
+    barrier = threading.Barrier(2, timeout=5)
+
+    def icon_fetcher(url, limit):
+        barrier.wait()  # both downloads must be under way at the same time
+        return apps.fetch_bytes(url, limit)
+
+    apps.refresh_catalog(env.paths, icon_fetcher=icon_fetcher)
+    assert sorted(f.name for f in (env.paths.catalog / "icons").iterdir()) == [
+        "notes.png", "whoami.svg"]
+
+
+def test_refresh_does_not_block_installs_while_downloading(env, tmp_path):
+    src = tmp_path / "src"
+    make_catalog(src, {"whoami": WHOAMI})
+    env.paths.config.write_text(json.dumps({"catalog": f"file://{src}/"}))
+    inside = threading.Event()
+    release = threading.Event()
+
+    def fetcher(url, limit=apps.MAX_FILE):
+        inside.set()
+        release.wait(5)
+        return apps.fetch(url, limit)
+
+    t = threading.Thread(target=apps.refresh_catalog, args=(env.paths, fetcher))
+    t.start()
+    try:
+        assert inside.wait(5)
+        # A reader (install) gets the catalog lock during the download.
+        with apps.catalog_lock(env.paths, exclusive=False):
+            pass
+    finally:
+        release.set()
+        t.join(10)
+    assert (env.paths.catalog / "meta.json").is_file()
+
+
+def make_seed(root: Path, refreshed: str, source: str = "https://example.org/apps/",
+              text: str = WHOAMI) -> Path:
+    seed = root / "seed"
+    (seed / "icons").mkdir(parents=True)
+    (seed / "whoami.yaml").write_text(text)
+    (seed / "icons" / "whoami.svg").write_bytes(SVG)
+    (seed / "meta.json").write_text(json.dumps({
+        "refreshed": refreshed, "source": source, "skipped": [],
+        "icons": {"whoami": {"file": "whoami.svg", "sha256": hashlib.sha256(SVG).hexdigest()}}}))
+    return seed
+
+
+def test_seed_fills_an_empty_catalog(env, tmp_path):
+    shutil.rmtree(env.paths.catalog)
+    assert env.catalog()["apps"] == []
+    seed = make_seed(tmp_path, "2026-11-12T20:00:00Z")
+    assert apps.seed_catalog(env.paths, seed)
+    listed = env.catalog()
+    assert [a["id"] for a in listed["apps"]] == ["whoami"]
+    assert listed["refreshed"] == "2026-11-12T20:00:00Z"
+    assert listed["apps"][0]["icon"].startswith("whoami.svg?v=")
+    assert (env.paths.catalog / "icons").stat().st_mode & 0o777 == 0o755
+    # Same seed again: nothing to do.
+    assert not apps.seed_catalog(env.paths, seed)
+
+
+def test_seed_replaces_only_an_older_catalog_from_the_same_source(env, tmp_path):
+    (env.paths.catalog / "meta.json").write_text(json.dumps(
+        {"refreshed": "2026-11-10T00:00:00Z", "source": "https://example.org/apps/"}))
+    newer = WHOAMI.replace("v1.11.0", "v2.0.0")
+    seed = make_seed(tmp_path, "2026-11-12T20:00:00Z", text=newer)
+    assert apps.seed_catalog(env.paths, seed)
+    assert "v2.0.0" in (env.paths.catalog / "whoami.yaml").read_text()
+
+    # A newer download stays.
+    (env.paths.catalog / "meta.json").write_text(json.dumps(
+        {"refreshed": "2026-11-13T00:00:00Z", "source": "https://example.org/apps/"}))
+    assert not apps.seed_catalog(env.paths, seed)
+    # So does a catalog from another URL, even an older one.
+    (env.paths.catalog / "meta.json").write_text(json.dumps(
+        {"refreshed": "2026-01-01T00:00:00Z", "source": "https://other.example/"}))
+    assert not apps.seed_catalog(env.paths, seed)
+
+
+def test_seed_with_a_bad_template_changes_nothing(env, tmp_path):
+    seed = make_seed(tmp_path, "2026-11-12T20:00:00Z", text="schema: 2\nid: whoami\n")
+    shutil.rmtree(env.paths.catalog)
+    with pytest.raises(AppError):
+        apps.seed_catalog(env.paths, seed)
+    assert not env.paths.catalog.exists()
+
+
+def test_missing_seed_is_ignored(env, tmp_path):
+    assert not apps.seed_catalog(env.paths, tmp_path / "nothing")
+    assert (env.paths.catalog / "whoami.yaml").is_file()
 
 
 def test_refresh_catalog_drops_bad_icons(env, tmp_path):

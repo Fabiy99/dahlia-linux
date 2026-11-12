@@ -80,6 +80,7 @@ Layout:
 """
 
 import argparse
+import concurrent.futures
 import contextlib
 import datetime
 import fcntl
@@ -104,9 +105,16 @@ import yaml
 
 from . import domains, firewall
 
+# libyaml when available (python3-yaml has it): parsing the catalog is about
+# ten times faster than with the pure Python loader.
+SAFE_LOADER = getattr(yaml, "CSafeLoader", yaml.SafeLoader)
+
 CONFIG_FILE = Path("/etc/dahlia/apps.json")
 APPS_DIR = Path("/var/lib/dahlia/apps")
 CATALOG_DIR = Path("/var/lib/dahlia/apps-catalog")
+# Catalog shipped with the package (tools/build-packages.sh): a new server has
+# apps to offer before the first download.
+SEED_DIR = Path("/usr/share/agent/apps-catalog")
 USER_POOL = Path("/mnt/user")
 SYSTEM_DATA = Path("/srv")
 # Shares of other devices: folders for apps, never app data.
@@ -129,6 +137,8 @@ DRI = Path("/dev/dri")
 GPU_GROUPS = ("render", "video")
 BUNDLE_FORMAT = 1
 MAX_ICON = 64 * 1024
+# Parallel icon downloads on a refresh; one by one a first refresh takes minutes.
+ICON_WORKERS = 8
 ICON_RE = re.compile(r"icons/([a-z0-9][a-z0-9-]*)\.(svg|png)")
 MAX_SERVICES = 8
 MAIN = "app"
@@ -331,7 +341,7 @@ def _image(value, where: str) -> str:
 def template_schema(text: str):
     """The schema number of a template, without validating anything else."""
     with contextlib.suppress(yaml.YAMLError):
-        data = yaml.safe_load(text)
+        data = yaml.load(text, Loader=SAFE_LOADER)  # noqa: S506 - safe loader
         if isinstance(data, dict):
             return data.get("schema")
     return None
@@ -429,7 +439,7 @@ SERVICE_FIELDS = {"image", "lan_ports", "volumes", "environment", "command", "us
 
 def parse_template(text: str, expected_id: str | None = None) -> Template:
     try:
-        data = yaml.safe_load(text)
+        data = yaml.load(text, Loader=SAFE_LOADER)  # noqa: S506 - safe loader
     except yaml.YAMLError as e:
         raise AppError(f"template is not valid YAML: {e}") from None
     if not isinstance(data, dict):
@@ -994,17 +1004,22 @@ def _fetch_icons(paths: Paths, base: str, wanted: dict, target: Path, fetcher) -
     old = catalog_meta(paths).get("icons") or {}
     target.mkdir()
     target.chmod(0o755)  # nginx (www-data) serves them
-    out = {}
-    for app_id, (name, sha) in sorted(wanted.items()):
+
+    def get(app_id: str, name: str, sha: str) -> bytes | None:
         cached = paths.catalog / "icons" / name
         if old.get(app_id, {}).get("sha256") == sha and cached.is_file():
-            data = cached.read_bytes()
-        else:
-            try:
-                data = fetcher(f"{base}icons/{name}", MAX_ICON)
-            except AppError:
-                continue
-        if hashlib.sha256(data).hexdigest() != sha or not icon_ok(name, data):
+            return cached.read_bytes()
+        try:
+            return fetcher(f"{base}icons/{name}", MAX_ICON)
+        except AppError:
+            return None
+
+    items = sorted(wanted.items())
+    with concurrent.futures.ThreadPoolExecutor(ICON_WORKERS) as pool:
+        got = list(pool.map(lambda item: get(item[0], *item[1]), items))
+    out = {}
+    for (app_id, (name, sha)), data in zip(items, got, strict=True):
+        if data is None or hashlib.sha256(data).hexdigest() != sha or not icon_ok(name, data):
             continue
         (target / name).write_bytes(data)
         (target / name).chmod(0o644)
@@ -1013,9 +1028,7 @@ def _fetch_icons(paths: Paths, base: str, wanted: dict, target: Path, fetcher) -
 
 
 @contextlib.contextmanager
-def catalog_lock(paths: Paths, exclusive: bool):
-    """Between a refresh (swaps the catalog directory) and readers in other processes."""
-    lock = paths.catalog.with_name(paths.catalog.name + ".lock")
+def _flock(lock: Path, exclusive: bool):
     lock.parent.mkdir(parents=True, exist_ok=True)
     with open(lock, "a") as f:
         fcntl.flock(f, fcntl.LOCK_EX if exclusive else fcntl.LOCK_SH)
@@ -1025,10 +1038,57 @@ def catalog_lock(paths: Paths, exclusive: bool):
             fcntl.flock(f, fcntl.LOCK_UN)
 
 
+def catalog_lock(paths: Paths, exclusive: bool):
+    """Between the swap of the catalog directory and readers in other processes."""
+    return _flock(paths.catalog.with_name(paths.catalog.name + ".lock"), exclusive)
+
+
+def refresh_lock(paths: Paths):
+    """One refresh or seed at a time (timer, dashboard, postinst)."""
+    return _flock(paths.catalog.with_name(paths.catalog.name + ".refresh.lock"), True)
+
+
 def refresh_catalog(paths: Paths, fetcher=fetch, icon_fetcher=fetch_bytes) -> list[Template]:
-    # One refresh at a time (timer and dashboard); readers wait only for the swap.
-    with catalog_lock(paths, exclusive=True):
+    # Installs wait only for the swap, not for the downloads.
+    with refresh_lock(paths):
         return _refresh_catalog(paths, fetcher, icon_fetcher)
+
+
+def _swap_catalog(paths: Paths, new: Path) -> None:
+    old = paths.catalog.with_name(paths.catalog.name + ".old")
+    with catalog_lock(paths, exclusive=True):
+        _clear(old)
+        if paths.catalog.exists():
+            paths.catalog.replace(old)
+        new.replace(paths.catalog)
+    _clear(old)
+
+
+def seed_catalog(paths: Paths, seed: Path = SEED_DIR) -> bool:
+    """Install the shipped catalog if there is none yet, or if the one here is
+    older and from the same source (a catalog from another URL stays).
+
+    Templates are checked like a download; a broken seed raises and changes nothing.
+    """
+    with refresh_lock(paths):
+        offered = read_json(seed / "meta.json", {}) or {}
+        if not offered.get("refreshed"):
+            return False
+        if paths.catalog.is_dir():
+            have = catalog_meta(paths)
+            if (have.get("source") != offered.get("source")
+                    or str(have.get("refreshed", "")) >= offered["refreshed"]):
+                return False
+        for f in seed.glob("*.yaml"):
+            parse_template(f.read_text(), f.stem)
+        new = paths.catalog.with_name(paths.catalog.name + ".new")
+        _clear(new)
+        shutil.copytree(seed, new)
+        for d in (new, new / "icons"):
+            if d.is_dir():
+                d.chmod(0o755)  # nginx (www-data) serves the icons
+        _swap_catalog(paths, new)
+        return True
 
 
 def _refresh_catalog(paths: Paths, fetcher, icon_fetcher) -> list[Template]:
@@ -1056,12 +1116,7 @@ def _refresh_catalog(paths: Paths, fetcher, icon_fetcher) -> list[Template]:
         "icons": _fetch_icons(paths, base, icons, new / "icons", icon_fetcher),
     }
     (new / "meta.json").write_text(json.dumps(meta) + "\n")
-    old = paths.catalog.with_name(paths.catalog.name + ".old")
-    _clear(old)
-    if paths.catalog.exists():
-        paths.catalog.replace(old)
-    new.replace(paths.catalog)
-    _clear(old)
+    _swap_catalog(paths, new)
     return templates
 
 
@@ -1135,6 +1190,19 @@ class Docker:
             capture_output=True, text=True, timeout=30, stdin=subprocess.DEVNULL,
         )
         return proc.stdout.strip() if proc.returncode == 0 else "missing"
+
+    def container_states(self, names: list[str]) -> dict[str, str]:
+        """State of each container in one call ("missing" if it does not exist)."""
+        proc = subprocess.run(
+            ["docker", "ps", "-a", "--format", "{{.Names}}\t{{.State}}"],
+            capture_output=True, text=True, timeout=30, stdin=subprocess.DEVNULL,
+        )
+        found = {}
+        if proc.returncode == 0:
+            for line in proc.stdout.splitlines():
+                name, _, state = line.partition("\t")
+                found[name] = state.strip()
+        return {n: found.get(n, "missing") for n in names}
 
     def remove_image(self, image: str) -> None:
         """Best effort: an image another app still uses stays."""
@@ -1229,11 +1297,15 @@ class Apps:
             if port in taken_public:
                 raise AppError(f"port {port} is used by another app")
 
-    def status(self, t: Template) -> str:
-        main = self.docker.state(container_name(t.id, MAIN))
-        if main == "running" and any(
-            self.docker.state(container_name(t.id, n)) != "running" for n in t.services if n != MAIN
-        ):
+    def status(self, t: Template, states: dict[str, str] | None = None) -> str:
+        """running, partial (a helper is down), or the main container's state.
+        states: from Docker.container_states, else docker is asked per container."""
+        def state(name: str) -> str:
+            c = container_name(t.id, name)
+            return states.get(c, "missing") if states is not None else self.docker.state(c)
+
+        main = state(MAIN)
+        if main == "running" and any(state(n) != "running" for n in t.services if n != MAIN):
             return "partial"
         return main
 
@@ -1427,8 +1499,10 @@ class Apps:
         settings = self.naming.settings()
         host = self.naming._host()
         icons = icon_urls(self.paths)
-        for app_id in installed(self.paths):
-            t, state = load_installed(self.paths, app_id)
+        loaded = [(app_id, *load_installed(self.paths, app_id)) for app_id in installed(self.paths)]
+        states = self.docker.container_states(
+            [container_name(t.id, n) for _, t, _ in loaded for n in t.services])
+        for app_id, t, state in loaded:
             login = {}
             if t.login:
                 sec = self._secrets(app_id)
@@ -1441,7 +1515,7 @@ class Apps:
                 if custom else None,
                 "enabled": state.get("enabled", True),
                 "location": self._placement(t, state)[0],
-                "status": self.status(t),
+                "status": self.status(t, states),
                 "urls": domains.app_urls(app_id, t.public_port, settings, host)
                 if t.public_port else None,
                 "update": None if custom else update_info(t, cached_template(self.paths, app_id)),
@@ -1521,6 +1595,8 @@ def main(argv: list[str] | None = None) -> int:
     sub = p.add_subparsers(dest="command", required=True)
     s = sub.add_parser("catalog", help="show the catalog")
     s.add_argument("--refresh", action="store_true", help="download it first")
+    s.add_argument("--seed", action="store_true",
+                   help=f"take the catalog shipped in {SEED_DIR} if there is none or it is newer")
     s.add_argument("--quiet", action="store_true",
                    help="print one summary line instead of the catalog (timer)")
     sub.add_parser("list", help="installed apps")
@@ -1557,6 +1633,8 @@ def main(argv: list[str] | None = None) -> int:
     apps = Apps()
     try:
         if args.command == "catalog":
+            if args.seed and seed_catalog(apps.paths):
+                print(f"apps: catalog taken from {SEED_DIR}", file=sys.stderr)
             result = apps.catalog(refresh=args.refresh)
             if args.quiet:
                 pending = apps.updates()
