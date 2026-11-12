@@ -1,0 +1,10 @@
+Package: archive-keyring
+Version: @VERSION@
+Architecture: all
+Maintainer: Dahlia Linux <https://github.com/Fabiy99/dahlia-linux>
+Section: admin
+Priority: optional
+Description: Dahlia Linux apt repository key and source
+ Public signing key of the Dahlia Linux apt repository and the apt source
+ that points to it. With this package installed, new Dahlia releases are
+ installed with "apt update && apt upgrade".

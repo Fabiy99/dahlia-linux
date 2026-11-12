@@ -1,0 +1,88 @@
+#!/bin/bash
+# agent postinst
+set -euo pipefail
+
+case "$1" in
+    configure)
+        if ! getent group agent >/dev/null; then
+            groupadd --system agent
+        fi
+        # Containers get this user's UID/GID through {PUID}/{PGID}.
+        if ! getent passwd apps >/dev/null; then
+            adduser --system --group --no-create-home --home /nonexistent \
+                --shell /usr/sbin/nologin apps
+        fi
+        # avahi-publish fails over D-Bus as a systemd DynamicUser
+        # ("Failed to create client object"), so mdns gets a fixed one.
+        if ! getent passwd mdns >/dev/null; then
+            adduser --system --group --no-create-home --home /nonexistent \
+                --shell /usr/sbin/nologin mdns
+        fi
+        # SMB users managed by the dashboard (see dahlia_agent/smb.py).
+        if ! getent group smb >/dev/null; then
+            groupadd --system smb
+        fi
+        mkdir -p /var/lib/dahlia/apps
+        # App data on the system SSD: /srv, on Btrfs its own subvolume @srv.
+        /usr/lib/dahlia/system-data.sh || echo "agent: /srv setup failed" >&2
+        chmod 0755 /var/lib/dahlia
+        chmod 0700 /var/lib/dahlia/apps
+        systemctl enable firewall.service >/dev/null 2>&1 || true
+        # Weekly short SMART self-test: on once for new and upgraded systems,
+        # after that the schedule in the dashboard decides (settings.set_schedule).
+        if [ ! -e /var/lib/dahlia/smart-timers-set ]; then
+            systemctl enable smart-short.timer >/dev/null 2>&1 || true
+            mkdir -p /var/lib/dahlia
+            touch /var/lib/dahlia/smart-timers-set
+        fi
+        systemctl enable agent.socket apps.service mdns.service \
+            domains.timer apps-catalog.timer spindown.service notify.timer history.service recycle.timer >/dev/null 2>&1 || true
+        # Local CA, server certificate, app proxies. nginx may not be
+        # configured yet; dashboard runs this again.
+        domains apply >/dev/null || echo "agent: domains apply failed" >&2
+        if [ -d /run/systemd/system ]; then
+            systemctl daemon-reload
+            # Firewall: only local networks, only ports in use (dahlia_agent/firewall.py).
+            systemctl restart firewall.service || echo "agent: firewall not loaded" >&2
+            sysctl -q -p /usr/lib/sysctl.d/50-apps.conf || true
+            # A running agent keeps the old code until restarted.
+            systemctl try-restart agent.service || true
+            systemctl start agent.socket domains.timer apps-catalog.timer notify.timer recycle.timer || true
+            if systemctl is-enabled --quiet smart-short.timer; then
+                systemctl start smart-short.timer || true
+            fi
+            systemctl restart mdns.service || true
+            systemctl restart history.service || true
+            # Samba stays off until the first share is created in the dashboard.
+            if [ ! -e /etc/dahlia/shares.json ]; then
+                systemctl disable --now smbd.service nmbd.service >/dev/null 2>&1 || true
+            fi
+            # nfs-server stays off until a share is exported over NFS.
+            if ! grep -q '"nfs": true' /etc/dahlia/shares.json 2>/dev/null; then
+                systemctl disable --now nfs-server.service >/dev/null 2>&1 || true
+            fi
+            # rsyslog only forwards to a remote syslog server; off until that is set up.
+            if [ ! -e /etc/rsyslog.d/90-remote.conf ]; then
+                systemctl disable --now rsyslog.service >/dev/null 2>&1 || true
+            fi
+            # NUT stays off until a UPS is set up in the dashboard.
+            if [ ! -e /etc/dahlia/ups.json ]; then
+                systemctl disable --now nut-monitor.service nut-server.service \
+                    nut-driver.target >/dev/null 2>&1 || true
+            fi
+            # daemon.json (ports on 127.0.0.1 only) applies after a restart.
+            # Only while no app is installed: a restart stops containers.
+            if [ -z "$(ls -A /var/lib/dahlia/apps)" ]; then
+                systemctl try-restart docker.service || true
+            fi
+        fi
+        ;;
+    abort-upgrade|abort-remove|abort-deconfigure)
+        ;;
+    *)
+        echo "postinst called with unknown argument '$1'" >&2
+        exit 1
+        ;;
+esac
+
+exit 0

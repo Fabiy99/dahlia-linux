@@ -1,4 +1,4 @@
-"""dahlia-mover against plain directories standing in for cache and pool."""
+"""mover against plain directories standing in for cache and pool."""
 
 import os
 import time

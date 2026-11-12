@@ -1,0 +1,7 @@
+#!/bin/bash
+# ifupdown hook: an interface got (new) addresses, so the local subnets the
+# firewall allows may have changed.
+set -euo pipefail
+[ "${IFACE:-}" = lo ] && exit 0
+command -v firewall >/dev/null 2>&1 || exit 0
+firewall apply || true

@@ -1,0 +1,11 @@
+[Unit]
+Description=Long SMART self-test on all disks once a month
+
+[Timer]
+OnCalendar=*-*-15 05:00:00
+RandomizedDelaySec=15min
+Persistent=true
+Unit=smart-test@long.service
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,43 @@
+[Unit]
+Description=Dahlia dashboard backend
+After=network.target agent.socket
+Wants=agent.socket
+# The setup code must exist before tty1 prints its banner.
+Before=getty@tty1.service
+
+[Service]
+User=ui
+Group=ui
+StateDirectory=dashboard
+StateDirectoryMode=0700
+RuntimeDirectory=dashboard
+RuntimeDirectoryMode=0700
+ExecStartPre=/usr/sbin/dashboard --prepare
+ExecStart=/usr/sbin/dashboard
+Restart=on-failure
+
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged
+CapabilityBoundingSet=
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

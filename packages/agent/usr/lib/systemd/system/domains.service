@@ -1,0 +1,9 @@
+[Unit]
+Description=Dahlia certificate renewal and app proxies
+Documentation=https://github.com/Fabiy99/dahlia-linux
+After=network-online.target nginx.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/sbin/domains apply

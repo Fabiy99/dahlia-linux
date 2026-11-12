@@ -1,4 +1,4 @@
-"""system.health of dahlia-agent: every check against fake files and commands."""
+"""system.health of agent: every check against fake files and commands."""
 
 import json
 import os
@@ -155,12 +155,12 @@ def test_parity_not_set_up(ctx):
 def test_services_and_time(ctx):
     healthy(ctx)
     ctx.runner.answers[("systemctl", "list-units")] = (
-        0, "dahlia-mover.service loaded failed failed Dahlia mover\n"
+        0, "mover.service loaded failed failed Dahlia mover\n"
            "smbd.service loaded failed failed Samba\n", "")
     ctx.runner.answers[("timedatectl",)] = (0, "NTP=yes\nNTPSynchronized=no\n", "")
     out = run(ctx, "system.health")["result"]
     assert ids(out) == ["units_failed", "time_unsynced"]
-    assert out["findings"][0]["params"] == {"units": "dahlia-mover.service, smbd.service",
+    assert out["findings"][0]["params"] == {"units": "mover.service, smbd.service",
                                             "count": 2}
 
 

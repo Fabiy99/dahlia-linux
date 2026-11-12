@@ -1,0 +1,21 @@
+[Unit]
+Description=Dahlia terminal sessions for the dashboard
+Documentation=https://github.com/Fabiy99/dahlia-linux
+After=dashboard.service
+
+# Each session is "su -l <user>" in a pty: the Linux password of that
+# account is asked in the terminal. The service itself has no privileges;
+# su is setuid, so NoNewPrivileges must stay off. No further sandboxing:
+# the shells inherit it and must behave like an SSH login.
+[Service]
+User=term
+Group=term
+SupplementaryGroups=ui
+RuntimeDirectory=terminal
+RuntimeDirectoryMode=0755
+ExecStart=/usr/sbin/terminal
+Restart=on-failure
+KillMode=mixed
+
+[Install]
+WantedBy=multi-user.target

@@ -1,9 +1,0 @@
-[Unit]
-Description=Dahlia mover: cache to data disks
-After=dahlia-storage.target
-
-[Service]
-Type=oneshot
-ExecStart=/usr/sbin/dahlia-mover
-Nice=19
-IOSchedulingClass=idle

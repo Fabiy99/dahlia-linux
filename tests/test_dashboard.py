@@ -15,7 +15,7 @@ from dahlia_dashboard.app import Config, create_app  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
-WWW = ROOT / "packages/dahlia-dashboard/usr/share/dahlia-dashboard/www"
+WWW = ROOT / "packages/dashboard/usr/share/dashboard/www"
 CSRF = {"X-Dahlia-Request": "1"}
 PASSWORD = "correct horse battery"
 
@@ -381,7 +381,7 @@ def test_locales_have_same_keys():
 def used_keys():
     html = (WWW / "index.html").read_text()
     js = (WWW / "app.js").read_text()
-    py = (ROOT / "packages/dahlia-dashboard/usr/lib/python3/dist-packages/dahlia_dashboard/app.py")
+    py = (ROOT / "packages/dashboard/usr/lib/python3/dist-packages/dahlia_dashboard/app.py")
     keys = set(re.findall(r'data-i18n(?:-placeholder|-title)?="([^"]+)"', html))
     keys |= set(re.findall(r'\bt\("([a-z_.-]+)"', js))
     keys |= set(re.findall(r'\["(overview\.[a-z_]+)",', js))
@@ -727,7 +727,7 @@ def test_notify_and_ups_endpoints(env):
 
 
 def test_nginx_ui_is_revalidated_and_keeps_security_headers():
-    conf = (ROOT / "packages/dahlia-dashboard/etc/nginx/sites-available/dahlia").read_text()
+    conf = (ROOT / "packages/dashboard/etc/nginx/sites-available/dahlia").read_text()
     root = conf[conf.index("location / {"):]
     root = root[:root.index("}")]
     assert "Cache-Control no-cache" in root
@@ -746,7 +746,7 @@ def test_diagnostics_download_once(env):
     r = client.get("/api/diagnostics")
     assert r.status_code == 200 and r.content == b"\x1f\x8bbundle"
     assert r.headers["content-type"] == "application/gzip"
-    assert 'filename="dahlia-diagnostics-dahlia-' in r.headers["content-disposition"]
+    assert 'filename="diagnostics-dahlia-' in r.headers["content-disposition"]
     assert not (cfg.run_dir / "diagnostics.tar.gz").exists()
     assert client.get("/api/diagnostics").status_code == 404
 

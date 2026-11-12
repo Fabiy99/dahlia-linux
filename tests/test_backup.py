@@ -201,7 +201,7 @@ def ctx(tmp_path):
 def test_action_set_and_get(ctx):
     res = run(ctx, "backup.set", {"target": {"type": "folder", "path": "/mnt/disk2/backup"}})
     assert res["ok"], res
-    assert ["systemctl", "enable", "dahlia-backup.timer"] in ctx.runner.calls
+    assert ["systemctl", "enable", "backup.timer"] in ctx.runner.calls
     got = run(ctx, "backup.get")["result"]
     assert got["target"] == {"type": "folder", "path": "/mnt/disk2/backup"} and got["stop_apps"]
     assert len(run(ctx, "backup.key")["result"]["password"]) == 64
@@ -226,7 +226,7 @@ def test_action_restore_starts_unit(ctx):
     res = run(ctx, "backup.restore", {"snapshot": "abc12345", "what": "whoami"})
     assert res["ok"], res
     cmd = ctx.runner.calls[-1]
-    assert cmd[:4] == ["systemd-run", "--unit", "dahlia-backup-restore.service", "--no-block"]
+    assert cmd[:4] == ["systemd-run", "--unit", "backup-restore.service", "--no-block"]
     assert cmd[-3:] == ["restore", "abc12345", "whoami"]
     assert err_code(run(ctx, "backup.restore", {"snapshot": "abc12345", "what": "nope"})) \
         == "invalid_params"

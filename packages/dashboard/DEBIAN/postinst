@@ -1,0 +1,64 @@
+#!/bin/bash
+# dashboard postinst
+set -euo pipefail
+
+TLS_DIR=/etc/dahlia/tls
+SITE=/etc/nginx/sites-available/dahlia
+
+setup_user() {
+    if ! getent passwd ui >/dev/null; then
+        adduser --system --group --home /var/lib/dashboard --no-create-home \
+            --shell /usr/sbin/nologin ui
+    fi
+    # The agent socket is root:agent 0660.
+    adduser ui agent >/dev/null
+    # Terminal sessions (terminal.service): no privileges, su asks the password.
+    if ! getent passwd term >/dev/null; then
+        adduser --system --group --home /nonexistent --no-create-home \
+            --shell /usr/sbin/nologin term
+    fi
+}
+
+setup_tls() {
+    # Up to 0.2 the dashboard had its own self-signed certificate.
+    rm -f "$TLS_DIR/dashboard.crt" "$TLS_DIR/dashboard.key"
+    # CA and server certificate come from agent.
+    domains apply >/dev/null || echo "dashboard: domains apply failed" >&2
+}
+
+setup_nginx() {
+    ln -sf "$SITE" /etc/nginx/sites-enabled/dahlia
+    # Debian's default site also listens on port 80.
+    if [ -L /etc/nginx/sites-enabled/default ]; then
+        rm -f /etc/nginx/sites-enabled/default
+    fi
+}
+
+case "$1" in
+    configure)
+        setup_user
+        setup_nginx
+        setup_tls
+        systemd-tmpfiles --create dashboard.conf >/dev/null 2>&1 || true
+        systemctl enable dashboard.service terminal.service >/dev/null 2>&1 || true
+        if [ -d /run/systemd/system ]; then
+            systemctl daemon-reload
+            systemctl restart dashboard.service || true
+            # Restarting would end open terminal sessions; start only if stopped.
+            systemctl start terminal.service || true
+            if nginx -t >/dev/null 2>&1; then
+                systemctl reload-or-restart nginx.service || true
+            else
+                echo "dashboard: nginx configuration test failed, see nginx -t" >&2
+            fi
+        fi
+        ;;
+    abort-upgrade|abort-remove|abort-deconfigure)
+        ;;
+    *)
+        echo "postinst called with unknown argument '$1'" >&2
+        exit 1
+        ;;
+esac
+
+exit 0

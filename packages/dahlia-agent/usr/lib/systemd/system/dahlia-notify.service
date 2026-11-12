@@ -1,8 +1,0 @@
-[Unit]
-Description=Dahlia checks: SMART, disk temperatures and usage
-Documentation=https://github.com/Fabiy99/dahlia-linux
-After=dahlia-storage.target
-
-[Service]
-Type=oneshot
-ExecStart=/usr/sbin/dahlia-notify check

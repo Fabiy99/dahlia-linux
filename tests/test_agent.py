@@ -115,7 +115,7 @@ def test_storage_add_runs_dahlia_disk(ctx):
     uuid = "0b9f3c4e-1a2b-4c5d-8e9f-0123456789ab"
     reply = run(ctx, "storage.add", {"uuid": uuid, "role": "data"})
     assert reply == {"ok": True, "result": {"uuid": uuid, "role": "data"}}
-    assert ctx.runner.calls == [["dahlia-disk", "add", uuid, "--role", "data"]]
+    assert ctx.runner.calls == [["disk", "add", uuid, "--role", "data"]]
 
 
 def test_storage_add_accepts_ntfs_serial(ctx):
@@ -138,11 +138,11 @@ def test_storage_format_rejects(ctx, params):
 
 def test_storage_format_runs_dahlia_disk(ctx):
     out = '{"device": "/dev/sdb", "partition": "/dev/sdb1", "fstype": "xfs", "uuid": "1234-ABCD"}'
-    ctx.runner.answers[("dahlia-disk", "format")] = (0, out, "")
+    ctx.runner.answers[("disk", "format")] = (0, out, "")
     params = {"device": "/dev/sdb", "filesystem": "xfs", "confirm": "sdb"}
     reply = run(ctx, "storage.format", params)
     assert reply["result"]["uuid"] == "1234-ABCD"
-    assert ctx.runner.calls[-1] == ["dahlia-disk", "format", "/dev/sdb", "--fs", "xfs", "--json"]
+    assert ctx.runner.calls[-1] == ["disk", "format", "/dev/sdb", "--fs", "xfs", "--json"]
     assert run(ctx, "storage.format", {"device": "/dev/nvme0n1", "filesystem": "btrfs",
                                        "confirm": "nvme0n1"})["ok"]
 
@@ -150,7 +150,7 @@ def test_storage_format_runs_dahlia_disk(ctx):
 def test_storage_encryption_actions_pass_keys_on_stdin(ctx):
     out = json.dumps({"device": "/dev/sdb", "partition": "/dev/sdb1", "fstype": "xfs",
                       "uuid": "u", "luks": "L"})
-    ctx.runner.answers[("dahlia-disk", "format")] = (0, out, "")
+    ctx.runner.answers[("disk", "format")] = (0, out, "")
     base = {"device": "/dev/sdb", "filesystem": "xfs", "confirm": "sdb", "encrypt": True}
     assert err_code(run(ctx, "storage.format", base)) == protocol.INVALID_PARAMS
     assert err_code(run(ctx, "storage.format", {**base, "passphrase": "kurz"})) \
@@ -162,19 +162,19 @@ def test_storage_encryption_actions_pass_keys_on_stdin(ctx):
     assert ctx.runner.calls[-1][-1] == "--encrypt"
     assert ctx.runner.inputs[-1] == "Grüne Wiese 42\n"
     assert "Grüne Wiese 42" not in " ".join(ctx.runner.calls[-1])
-    ctx.runner.answers[("dahlia-disk", "unlock")] = (0, '{"opened": ["/mnt/disk1"]}', "")
+    ctx.runner.answers[("disk", "unlock")] = (0, '{"opened": ["/mnt/disk1"]}', "")
     assert run(ctx, "storage.unlock", {"passphrase": "Grüne Wiese 42"})["result"]["opened"] \
         == ["/mnt/disk1"]
     assert ctx.runner.inputs[-1] == "Grüne Wiese 42\n"
     assert err_code(run(ctx, "storage.auto_unlock", {"enabled": True})) == protocol.INVALID_PARAMS
     run(ctx, "storage.auto_unlock", {"enabled": True, "passphrase": "Grüne Wiese 42"})
-    assert ctx.runner.calls[-1] == ["dahlia-disk", "auto-unlock", "on"]
+    assert ctx.runner.calls[-1] == ["disk", "auto-unlock", "on"]
     run(ctx, "storage.auto_unlock", {"enabled": False})
-    assert ctx.runner.calls[-1] == ["dahlia-disk", "auto-unlock", "off"]
+    assert ctx.runner.calls[-1] == ["disk", "auto-unlock", "off"]
     run(ctx, "storage.change_passphrase", {"old": "Grüne Wiese 42", "new": "Blaue Wiese 43"})
     assert ctx.runner.inputs[-1] == "Grüne Wiese 42\nBlaue Wiese 43\n"
     status = '{"auto_unlock": false, "disks": []}'
-    ctx.runner.answers[("dahlia-disk", "crypt-status")] = (0, status, "")
+    ctx.runner.answers[("disk", "crypt-status")] = (0, status, "")
     assert run(ctx, "storage.encryption")["result"] == {"auto_unlock": False, "disks": []}
 
 
@@ -185,10 +185,10 @@ def test_storage_import_starts_background_job(ctx):
     assert ctx.runner.calls == []
     res = run(ctx, "storage.import", {"uuid": "1234-ABCD", "target": "old-sdb"})["result"]
     assert res == {"uuid": "1234-ABCD", "target": "/mnt/user/old-sdb"}
-    assert ["dahlia-disk", "import", "1234-ABCD", "--to", "old-sdb", "--check"] in ctx.runner.calls
+    assert ["disk", "import", "1234-ABCD", "--to", "old-sdb", "--check"] in ctx.runner.calls
     job = ctx.runner.calls[-1]
-    assert job[:2] == ["systemd-run", "--unit=dahlia-import"]
-    assert job[-5:] == ["dahlia-disk", "import", "1234-ABCD", "--to", "old-sdb"]
+    assert job[:2] == ["systemd-run", "--unit=import"]
+    assert job[-5:] == ["disk", "import", "1234-ABCD", "--to", "old-sdb"]
 
 
 def test_storage_import_refuses_second_job_and_bad_source(ctx):
@@ -196,7 +196,7 @@ def test_storage_import_refuses_second_job_and_bad_source(ctx):
     assert err_code(run(ctx, "storage.import", {"uuid": "1234-ABCD", "target": "a"})) == \
         protocol.BUSY
     ctx.runner.answers[("systemctl", "is-active")] = (3, "inactive\n", "")
-    ctx.runner.answers[("dahlia-disk", "import")] = (1, "", "dahlia-disk: not mounted\n")
+    ctx.runner.answers[("disk", "import")] = (1, "", "disk: not mounted\n")
     reply = run(ctx, "storage.import", {"uuid": "1234-ABCD", "target": "a"})
     assert err_code(reply) == protocol.FAILED and "not mounted" in reply["error"]["message"]
     assert not any(c[0] == "systemd-run" for c in ctx.runner.calls)
@@ -217,9 +217,9 @@ def test_storage_remove_force_must_be_bool(ctx):
     params = {"uuid": "1234-ABCD", "force": "yes"}
     assert err_code(run(ctx, "storage.remove", params)) == protocol.INVALID_PARAMS
     assert run(ctx, "storage.remove", {"uuid": "1234-ABCD", "force": True})["ok"]
-    assert ctx.runner.calls[-1] == ["dahlia-disk", "remove", "1234-ABCD", "--force"]
+    assert ctx.runner.calls[-1] == ["disk", "remove", "1234-ABCD", "--force"]
     assert run(ctx, "storage.remove", {"uuid": "1234-ABCD"})["ok"]
-    assert ctx.runner.calls[-1] == ["dahlia-disk", "remove", "1234-ABCD"]
+    assert ctx.runner.calls[-1] == ["disk", "remove", "1234-ABCD"]
 
 
 def test_storage_set_option(ctx):
@@ -232,11 +232,11 @@ def test_storage_set_option(ctx):
     for params in bad:
         assert err_code(run(ctx, "storage.set_option", params)) == protocol.INVALID_PARAMS
     assert run(ctx, "storage.set_option", {"name": "scrub_percent", "value": 12})["ok"]
-    assert ctx.runner.calls == [["dahlia-disk", "set-option", "scrub_percent", "12"]]
+    assert ctx.runner.calls == [["disk", "set-option", "scrub_percent", "12"]]
 
 
 def test_storage_settings(ctx):
-    ctx.runner.answers[("dahlia-disk", "settings")] = (0, '{"minfreespace": "50G"}', "")
+    ctx.runner.answers[("disk", "settings")] = (0, '{"minfreespace": "50G"}', "")
     assert run(ctx, "storage.settings")["result"] == {"settings": {"minfreespace": "50G"}}
 
 
@@ -245,16 +245,16 @@ def test_storage_set_minfreespace(ctx):
         reply = run(ctx, "storage.set_minfreespace", {"size": size})
         assert err_code(reply) == protocol.INVALID_PARAMS, size
     assert run(ctx, "storage.set_minfreespace", {"size": "100G"})["ok"]
-    assert ctx.runner.calls == [["dahlia-disk", "set-minfreespace", "100G"]]
+    assert ctx.runner.calls == [["disk", "set-minfreespace", "100G"]]
 
 
 def test_storage_list_parses_json(ctx):
-    ctx.runner.answers[("dahlia-disk", "list")] = (0, '[{"path": "/dev/sdb"}]', "")
+    ctx.runner.answers[("disk", "list")] = (0, '[{"path": "/dev/sdb"}]', "")
     assert run(ctx, "storage.list")["result"] == {"disks": [{"path": "/dev/sdb"}]}
 
 
 def test_command_failure_is_reported(ctx):
-    ctx.runner.answers[("dahlia-disk", "add")] = (1, "", "dahlia-disk: no filesystem with UUID x\n")
+    ctx.runner.answers[("disk", "add")] = (1, "", "disk: no filesystem with UUID x\n")
     reply = run(ctx, "storage.add", {"uuid": "1234-ABCD", "role": "data"})
     assert err_code(reply) == protocol.FAILED
     assert "no filesystem with UUID" in reply["error"]["message"]
@@ -369,7 +369,7 @@ def test_set_hostname(ctx):
     assert ["systemctl", "try-restart", "avahi-daemon.service"] in ctx.runner.calls
     assert ctx.hosts_file.read_text() == "127.0.0.1\tlocalhost\n127.0.1.1\tnas-01\n::1\tlocalhost\n"
     # New certificate for nas-01.local.
-    assert ctx.runner.calls[-1] == ["dahlia-domains", "apply"]
+    assert ctx.runner.calls[-1] == ["domains", "apply"]
 
 
 def test_rewrite_hosts():
@@ -389,11 +389,11 @@ def test_reboot_is_non_blocking(ctx):
 
 def test_job_start(ctx):
     assert run(ctx, "job.start", {"job": "mover"})["ok"]
-    assert ctx.runner.calls[-1] == ["systemctl", "start", "--no-block", "dahlia-mover.service"]
+    assert ctx.runner.calls[-1] == ["systemctl", "start", "--no-block", "mover.service"]
 
 
 def test_job_start_refuses_update_and_unknown(ctx):
-    for job in ("update", "sshd", "dahlia-mover.service"):
+    for job in ("update", "sshd", "mover.service"):
         assert err_code(run(ctx, "job.start", {"job": job})) == protocol.INVALID_PARAMS
 
 
@@ -408,18 +408,18 @@ def test_parity_get(ctx):
     info = run(ctx, "parity.get")["result"]
     assert info["configured"] and info["status"] == {"bad": 0}
     assert set(info["jobs"]) == {"sync", "scrub", "mover", "repair"}
-    assert ["systemctl", "show", "dahlia-parity.service"] in [c[:3] for c in ctx.runner.calls]
+    assert ["systemctl", "show", "parity.service"] in [c[:3] for c in ctx.runner.calls]
 
 
 def test_parity_sync_plain_and_forced(ctx):
     assert run(ctx, "parity.sync")["ok"]
     assert ctx.runner.calls[-1] == ["systemctl", "start", "--no-block",
-                                    "dahlia-snapraid-sync.service"]
+                                    "snapraid-sync.service"]
     assert run(ctx, "parity.sync", {"force": True})["result"]["force"]
     cmd = ctx.runner.calls[-1]
-    assert cmd[:3] == ["systemd-run", "--unit", "dahlia-parity.service"]
+    assert cmd[:3] == ["systemd-run", "--unit", "parity.service"]
     assert cmd[-3:] == ["/usr/sbin/dahlia-snapraid", "sync", "--force"]
-    assert "OnFailure=dahlia-notify-failure@dahlia-parity.service.service" in cmd
+    assert "OnFailure=notify-failure@parity.service.service" in cmd
 
 
 def test_parity_fix(ctx):
@@ -445,7 +445,7 @@ def test_job_status(ctx):
     assert status["active"] == "inactive"
     assert status["result"] == "success"
     assert status["exit_status"] == 0
-    assert ctx.runner.calls[0][:3] == ["systemctl", "show", "dahlia-update.service"]
+    assert ctx.runner.calls[0][:3] == ["systemctl", "show", "update.service"]
     assert status["started"] == "Tue 2026-11-10 19:33:40 CET"
 
 
@@ -522,7 +522,7 @@ def started_update(ctx, clock=1000.0):
 
 def test_updates_apply(ctx):
     started_update(ctx)
-    assert ["systemctl", "start", "--no-block", "dahlia-update.service"] in ctx.runner.calls
+    assert ["systemctl", "start", "--no-block", "update.service"] in ctx.runner.calls
     plan = json.loads((ctx.run_dir / "update.json").read_text())
     assert plan == {"packages": ["libc6", "dahlia-base", "newpkg"], "started": 1000,
                     "previous": OLD_RUN}
@@ -545,7 +545,7 @@ def test_updates_progress_starting(ctx):
 def test_updates_progress_running(ctx):
     started_update(ctx)
     set_invocation(ctx, NEW_RUN)
-    answer_first(ctx, ("systemctl", "show", "dahlia-update.service"), (0, RUNNING, ""))
+    answer_first(ctx, ("systemctl", "show", "update.service"), (0, RUNNING, ""))
     ctx.runner.answers[("journalctl",)] = (0, UPDATE_LOG, "")
     res = run(ctx, "updates.progress")["result"]
     assert res["state"] == "running"
@@ -561,11 +561,11 @@ def test_updates_progress_running(ctx):
 def test_updates_progress_finished(ctx):
     started_update(ctx)
     set_invocation(ctx, NEW_RUN)
-    answer_first(ctx, ("systemctl", "show", "dahlia-update.service"), (0, INACTIVE, ""))
+    answer_first(ctx, ("systemctl", "show", "update.service"), (0, INACTIVE, ""))
     assert run(ctx, "updates.progress")["result"]["state"] == "done"
     assert run(ctx, "updates.progress")["result"]["percent"] == 100
     failed = INACTIVE.replace("Result=success", "Result=exit-code")
-    answer_first(ctx, ("systemctl", "show", "dahlia-update.service"), (0, failed, ""))
+    answer_first(ctx, ("systemctl", "show", "update.service"), (0, failed, ""))
     assert run(ctx, "updates.progress")["result"]["state"] == "failed"
 
 
@@ -579,14 +579,14 @@ def test_updates_apply_busy(ctx):
 
 
 def test_domains_get(ctx):
-    ctx.runner.answers[("dahlia-domains", "show")] = (0, '{"mdns_aliases": true}', "")
+    ctx.runner.answers[("domains", "show")] = (0, '{"mdns_aliases": true}', "")
     assert run(ctx, "domains.get")["result"] == {"mdns_aliases": True}
 
 
 def test_domains_set(ctx):
-    ctx.runner.answers[("dahlia-domains", "set")] = (0, '{"ca_renewed": false}', "")
+    ctx.runner.answers[("domains", "set")] = (0, '{"ca_renewed": false}', "")
     assert run(ctx, "domains.set", {"mdns_aliases": False})["ok"]
-    assert ctx.runner.calls[-1] == ["dahlia-domains", "set", "--mdns", "off"]
+    assert ctx.runner.calls[-1] == ["domains", "set", "--mdns", "off"]
 
 
 def test_domains_set_rejects_domain(ctx):
@@ -598,7 +598,7 @@ def test_domains_set_rejects_domain(ctx):
 
 
 def test_domains_set_error_passes_through(ctx):
-    ctx.runner.answers[("dahlia-domains", "set")] = (1, "", "dahlia-domains: nginx broken\n")
+    ctx.runner.answers[("domains", "set")] = (1, "", "domains: nginx broken\n")
     reply = run(ctx, "domains.set", {"mdns_aliases": True})
     assert err_code(reply) == protocol.FAILED
     assert "nginx broken" in reply["error"]["message"]
@@ -830,8 +830,8 @@ def test_client_cli(tmp_path, ctx, capsys):
 
 
 def test_entry_points_exist():
-    root = Path(__file__).resolve().parent.parent / "packages" / "dahlia-agent"
-    for exe in ("usr/sbin/dahlia-agent", "usr/bin/dahlia-agent-call"):
+    root = Path(__file__).resolve().parent.parent / "packages" / "agent"
+    for exe in ("usr/sbin/agent", "usr/bin/agent-call"):
         assert os.access(root / exe, os.X_OK)
 
 
@@ -842,7 +842,7 @@ def test_apps_install_runs_in_background(ctx):
     assert run(ctx, "apps.install", {"id": "jellyfin"})["ok"]
     cmd = ctx.runner.calls[-1]
     assert cmd[:2] == ["systemd-run", "--unit=dahlia-app-jellyfin.service"]
-    assert cmd[-3:] == ["/usr/sbin/dahlia-apps", "install", "jellyfin"]
+    assert cmd[-3:] == ["/usr/sbin/apps", "install", "jellyfin"]
 
 
 def test_apps_install_with_folders(ctx):
@@ -851,11 +851,11 @@ def test_apps_install_with_folders(ctx):
     assert run(ctx, "apps.install", params)["ok"]
     extra = ["--folder", "media=/mnt/user/Filme und Serien", "--folder", "photos=/srv/Fotos/2024",
              "--location", "/srv"]
-    assert ["dahlia-apps", "precheck", "install", "jellyfin", *extra] in ctx.runner.calls
+    assert ["apps", "precheck", "install", "jellyfin", *extra] in ctx.runner.calls
     assert ctx.runner.calls[-1][-7:] == ["jellyfin", *extra]
     ctx.runner.calls.clear()
     assert run(ctx, "apps.install", {"id": "jellyfin"})["ok"]
-    assert ["dahlia-apps", "precheck", "install", "jellyfin"] in ctx.runner.calls
+    assert ["apps", "precheck", "install", "jellyfin"] in ctx.runner.calls
     reply = run(ctx, "apps.install", {"id": "jellyfin", "location": "/media/usb"})
     assert err_code(reply) == protocol.INVALID_PARAMS
     for bad in ({"media": "/mnt/user/../etc"}, {"media": "/etc"}, {"media": "/srv/a/../../b"},
@@ -873,8 +873,8 @@ def test_apps_custom_install_and_update(ctx):
     f = ctx.run_dir / "apps-custom" / "kuma.json"
     assert json.loads(f.read_text()) == spec and f.stat().st_mode & 0o777 == 0o600
     extra = ["--spec", str(f), "--location", "/srv"]
-    assert ["dahlia-apps", "precheck", "install", "kuma", *extra] in ctx.runner.calls
-    assert ctx.runner.calls[-1][-7:] == ["/usr/sbin/dahlia-apps", "install", "kuma", *extra]
+    assert ["apps", "precheck", "install", "kuma", *extra] in ctx.runner.calls
+    assert ctx.runner.calls[-1][-7:] == ["/usr/sbin/apps", "install", "kuma", *extra]
     assert run(ctx, "apps.custom_update", {"id": "kuma", "spec": spec})["ok"]
     assert ctx.runner.calls[-1][-4:] == ["update", "kuma", "--spec", str(f)]
     for params in ({"id": "Kuma!", "spec": spec}, {"id": "kuma", "spec": "x"},
@@ -933,10 +933,10 @@ def test_files_on_system_ssd(ctx, tmp_path, monkeypatch):
 
 def test_apps_install_checks_before_starting_job(ctx):
     run(ctx, "apps.install", {"id": "jellyfin"})
-    assert ["dahlia-apps", "precheck", "install", "jellyfin"] in ctx.runner.calls
+    assert ["apps", "precheck", "install", "jellyfin"] in ctx.runner.calls
     ctx.runner.calls.clear()
-    ctx.runner.answers[("dahlia-apps", "precheck")] = (
-        1, "", "dahlia-apps: /mnt/user is not mounted; add a data disk first\n")
+    ctx.runner.answers[("apps", "precheck")] = (
+        1, "", "apps: /mnt/user is not mounted; add a data disk first\n")
     reply = run(ctx, "apps.install", {"id": "jellyfin"})
     assert err_code(reply) == protocol.FAILED
     assert "add a data disk" in reply["error"]["message"]
@@ -947,7 +947,7 @@ def test_apps_job_reports_error_of_failed_job(ctx):
     ctx.runner.answers[("systemctl", "show")] = (
         0, "ActiveState=failed\nSubState=failed\nResult=exit-code\nExecMainStatus=1\n", "")
     ctx.runner.answers[("journalctl",)] = (
-        0, "pulling\ndahlia-apps: old\ndahlia-apps: image pull failed: timeout\n", "")
+        0, "pulling\napps: old\napps: image pull failed: timeout\n", "")
     job = run(ctx, "apps.job", {"id": "jellyfin"})["result"]
     assert job["error"] == "image pull failed: timeout"
 
@@ -974,7 +974,7 @@ def test_apps_busy(ctx):
 def test_apps_list_marks_running_job_as_busy(ctx):
     """While install/update still runs, a missing/created container must not
     look broken; the agent overrides its status to "busy"."""
-    ctx.runner.answers[("dahlia-apps", "list")] = (
+    ctx.runner.answers[("apps", "list")] = (
         0, '[{"id": "x1", "status": "missing"}, {"id": "x2", "status": "running"}]', "")
     ctx.runner.answers[("systemctl", "show")] = (0, RUNNING, "")
     apps = run(ctx, "apps.list")["result"]["apps"]
@@ -982,17 +982,17 @@ def test_apps_list_marks_running_job_as_busy(ctx):
 
 
 def test_apps_remove_and_list(ctx):
-    ctx.runner.answers[("dahlia-apps", "remove")] = (0, '{"id": "x1", "data_deleted": true}', "")
-    ctx.runner.answers[("dahlia-apps", "list")] = (0, "[]", "")
+    ctx.runner.answers[("apps", "remove")] = (0, '{"id": "x1", "data_deleted": true}', "")
+    ctx.runner.answers[("apps", "list")] = (0, "[]", "")
     assert run(ctx, "apps.remove", {"id": "x1", "delete_data": True})["ok"]
-    assert ["dahlia-apps", "remove", "x1", "--delete-data"] in ctx.runner.calls
+    assert ["apps", "remove", "x1", "--delete-data"] in ctx.runner.calls
     assert run(ctx, "apps.list")["result"] == {"apps": []}
 
 
 def test_apps_catalog_refresh(ctx):
-    ctx.runner.answers[("dahlia-apps", "catalog")] = (0, "[]", "")
+    ctx.runner.answers[("apps", "catalog")] = (0, "[]", "")
     assert run(ctx, "apps.catalog", {"refresh": True})["ok"]
-    assert ctx.runner.calls[-1] == ["dahlia-apps", "catalog", "--refresh"]
+    assert ctx.runner.calls[-1] == ["apps", "catalog", "--refresh"]
 
 
 def test_catalog_refresh_does_not_hold_the_change_lock():

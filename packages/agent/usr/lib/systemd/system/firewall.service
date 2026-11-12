@@ -1,0 +1,15 @@
+[Unit]
+Description=Dahlia firewall (nftables table inet dahlia)
+DefaultDependencies=no
+Wants=network-pre.target
+Before=network-pre.target shutdown.target
+After=local-fs.target
+Conflicts=shutdown.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/sbin/firewall apply
+
+[Install]
+WantedBy=sysinit.target

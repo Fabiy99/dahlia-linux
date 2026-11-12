@@ -12,8 +12,8 @@ Beide Fassungen inhaltlich gleich halten.
 
 - Basis Debian 13. Kein Backports-Kernel, kein Debian 12.
 - Installation auf SSD über Debian-Installer mit Preseed. Kein Live-System.
-- Auslieferung als .deb-Pakete (`dahlia-base`, `dahlia-agent`, `dahlia-dashboard`,
-  `dahlia-storage`, `dahlia-archive-keyring`) über ein signiertes apt-Repo.
+- Auslieferung als .deb-Pakete (`base`, `agent`, `dashboard`,
+  `storage`, `archive-keyring`) über ein signiertes apt-Repo.
   Kein `git pull` auf dem Zielsystem.
 - Root-Dateisystem Btrfs mit snapper und grub-btrfs.
 - Storage: Datenplatten einzeln unter `/mnt/diskN`, Parity unter `/mnt/parityN`,
@@ -21,10 +21,10 @@ Beide Fassungen inhaltlich gleich halten.
   `/mnt/user` = mergerfs Cache + HDDs. Freigaben nutzen nur `/mnt/user`. Apps liegen wahlweise
   auf `/mnt/user` oder auf der System-SSD unter `/srv` (auf Btrfs eigenes Subvolume `@srv`).
 - Platten über generierte systemd-Mount-Units mit `nofail`, nicht über `/etc/fstab`.
-- Web-UI (`dahlia-dashboard`) läuft unprivilegiert. Alles, was root braucht, geht über
-  `dahlia-agent` (Unix-Socket, feste Aktionsliste, Parameter werden geprüft).
+- Web-UI (`dashboard`) läuft unprivilegiert. Alles, was root braucht, geht über
+  `agent` (Unix-Socket, feste Aktionsliste, Parameter werden geprüft).
   Das UI bekommt keinen Docker-Socket und führt keine freien Shell-Befehle aus.
-  Einzige Shell: das Terminal (`dahlia-terminal`, unprivilegiert) startet `su -l <Benutzer>`;
+  Einzige Shell: das Terminal (`terminal`, unprivilegiert) startet `su -l <Benutzer>`;
   ohne das Linux-Passwort dieses Kontos gibt es keine Shell.
 - Firewall: nftables, verwaltet von Dahlia. Docker veröffentlicht Ports nur auf 127.0.0.1.
 - Namen: Server `dahlia.local`; Apps über Port-Links und einstufige mDNS-Aliase

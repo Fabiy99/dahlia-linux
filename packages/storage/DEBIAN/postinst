@@ -1,0 +1,33 @@
+#!/bin/bash
+# storage postinst
+set -euo pipefail
+
+case "$1" in
+    configure)
+        mkdir -p /etc/dahlia /mnt/external
+        # Pull in all Dahlia disk and pool units at boot.
+        systemctl enable storage.target >/dev/null 2>&1 || true
+        # Nightly mover and SnapRAID sync, weekly scrub. Without cache or
+        # parity the jobs exit right away.
+        timers="mover.timer snapraid-sync.timer snapraid-scrub.timer"
+        # shellcheck disable=SC2086 # word splitting intended
+        systemctl enable $timers >/dev/null 2>&1 || true
+        if [ -d /run/systemd/system ]; then
+            systemctl daemon-reload
+            # shellcheck disable=SC2086
+            systemctl start $timers || true
+            # Upgrades: rewrite units and pool options for existing layouts.
+            if [ -n "${2:-}" ] && [ -f /etc/dahlia/storage.json ]; then
+                disk apply >/dev/null || true
+            fi
+        fi
+        ;;
+    abort-upgrade|abort-remove|abort-deconfigure)
+        ;;
+    *)
+        echo "postinst called with unknown argument '$1'" >&2
+        exit 1
+        ;;
+esac
+
+exit 0

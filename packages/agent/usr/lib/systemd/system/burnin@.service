@@ -1,0 +1,8 @@
+[Unit]
+Description=Dahlia disk test of /dev/%i (erases the disk)
+OnFailure=notify-failure@%n.service
+
+[Service]
+Type=exec
+ExecStart=/usr/lib/dahlia/disk-burnin.sh %i
+Nice=10

@@ -84,9 +84,9 @@ def test_rollback_starts_unit(ctx):
     assert run(ctx, "snapshots.rollback", {"number": 4})["result"] == {
         "started": True, "number": 4}
     cmd = ctx.runner.calls[-1]
-    assert cmd[:4] == ["systemd-run", "--unit", "dahlia-rollback.service", "--no-block"]
+    assert cmd[:4] == ["systemd-run", "--unit", "rollback.service", "--no-block"]
     assert cmd[-3:] == ["/usr/lib/dahlia/rollback.sh", "4", "--reboot"]
-    assert "OnFailure=dahlia-notify-failure@dahlia-rollback.service.service" in cmd
+    assert "OnFailure=notify-failure@rollback.service.service" in cmd
 
 
 def test_rollback_busy(ctx):

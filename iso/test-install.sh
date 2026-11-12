@@ -244,7 +244,7 @@ else
 fi
 
 # Dashboard: nginx with TLS, setup wizard with the code from the console
-# banner, login, and one call that goes through dahlia-agent.
+# banner, login, and one call that goes through agent.
 echo "== dashboard ($MODE, $INSTALL)"
 BASE="https://127.0.0.1:$HTTPS_PORT"
 JAR="$OUTDIR/cookies.txt"
@@ -278,8 +278,8 @@ web "$BASE/api/setup" -H 'Content-Type: application/json' \
 
 info="$(web "$BASE/api/system")"
 echo "$info"
-grep -q "\"version\":\"$VERSION\"" <<<"$info" || dashboard_fail "system info via dahlia-agent failed"
-web "$BASE/api/jobs" | grep -q '"mover"' || dashboard_fail "job status via dahlia-agent failed"
+grep -q "\"version\":\"$VERSION\"" <<<"$info" || dashboard_fail "system info via agent failed"
+web "$BASE/api/jobs" | grep -q '"mover"' || dashboard_fail "job status via agent failed"
 # Live values from /proc and statvfs on the real system: the root
 # filesystem is btrfs and the CPU counters are filled.
 stats="$(web "$BASE/api/stats")"
@@ -289,8 +289,8 @@ grep -q '"mountpoint":"/","source":"[^"]*","fstype":"btrfs"' <<<"$stats" \
 grep -qE '"cpu":\{"model":[^}]*"cores":[1-9]' <<<"$stats" || dashboard_fail "system stats lack the CPU"
 # Hardware (lsblk and smartctl, a virtio disk has no SMART), Docker and journal.
 web "$BASE/api/hardware" | grep -q '"path":"/dev/vda"' || dashboard_fail "hardware lacks the system disk"
-web "$BASE/api/docker" | grep -q '"containers":' || dashboard_fail "docker list via dahlia-agent failed"
-web "$BASE/api/log?lines=20" | grep -q '"lines":\["' || dashboard_fail "system log via dahlia-agent failed"
+web "$BASE/api/docker" | grep -q '"containers":' || dashboard_fail "docker list via agent failed"
+web "$BASE/api/log?lines=20" | grep -q '"lines":\["' || dashboard_fail "system log via agent failed"
 # Settings: time zones from timedatectl, the ifupdown interface, the timers.
 web "$BASE/api/settings/time" | grep -q '"timezones":\["' || dashboard_fail "settings.time failed"
 web "$BASE/api/settings/network" | grep -q '"iface":"' || dashboard_fail "settings.network failed"
@@ -328,5 +328,5 @@ curl -sf --max-time 30 --cacert "$OUTDIR/dahlia-ca.crt" \
     || dashboard_fail "server certificate does not verify against the local CA"
 domains="$(web "$BASE/api/domains")"
 echo "$domains"
-grep -q '"mdns_aliases":true' <<<"$domains" || dashboard_fail "domains via dahlia-agent failed"
+grep -q '"mdns_aliases":true' <<<"$domains" || dashboard_fail "domains via agent failed"
 echo "OK: local CA and server certificate"

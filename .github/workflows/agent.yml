@@ -3,8 +3,8 @@ name: agent
 on:
   pull_request:
     paths:
-      - "packages/dahlia-agent/**"
-      - "packages/dahlia-storage/**"
+      - "packages/agent/**"
+      - "packages/storage/**"
       - "tests/integration/agent.sh"
       - "tests/integration/apps.sh"
       - "tests/integration/system-data.sh"
@@ -38,12 +38,12 @@ jobs:
           sudo systemctl daemon-reload
           sudo systemctl reset-failed mnt.mount || true
 
-      - name: Build and install dahlia-storage and dahlia-agent
+      - name: Build and install storage and agent
         run: |
           tools/build-packages.sh
           # The runner has Docker from its own packages, not docker.io.
           sudo dpkg --force-depends --force-confnew -i \
-            build/pool/dahlia-storage_*_all.deb build/pool/dahlia-agent_*_all.deb
+            build/pool/storage_*_all.deb build/pool/agent_*_all.deb
           docker info --format '{{.Name}} {{.ServerVersion}}'
           docker compose version
 
@@ -62,7 +62,7 @@ jobs:
       - name: Agent journal on failure
         if: failure()
         run: |
-          sudo journalctl -u dahlia-agent.service -u dahlia-agent.socket --no-pager | tail -100
+          sudo journalctl -u agent.service -u agent.socket --no-pager | tail -100
           sudo journalctl -n 100 --no-pager -u 'mnt-*' || true
           sudo journalctl -n 60 --no-pager -u docker.service || true
-          sudo journalctl -n 40 --no-pager -u dahlia-mdns.service -u nginx.service || true
+          sudo journalctl -n 40 --no-pager -u mdns.service -u nginx.service || true

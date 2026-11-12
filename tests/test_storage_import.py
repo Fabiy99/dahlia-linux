@@ -1,4 +1,4 @@
-"""dahlia-disk import: checks before copying and parsing of rsync output."""
+"""disk import: checks before copying and parsing of rsync output."""
 
 import shutil
 import subprocess

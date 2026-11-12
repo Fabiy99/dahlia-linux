@@ -1,0 +1,10 @@
+[Unit]
+Description=Dahlia apps: download the app catalog and look for updates
+Documentation=https://github.com/Fabiy99/dahlia-linux
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/sbin/apps catalog --refresh --quiet
+TimeoutStartSec=10min

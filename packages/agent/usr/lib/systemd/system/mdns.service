@@ -1,0 +1,30 @@
+[Unit]
+Description=Dahlia mDNS aliases for apps (<app>.local)
+Documentation=https://github.com/Fabiy99/dahlia-linux
+Wants=avahi-daemon.service
+After=avahi-daemon.service network-online.target
+
+[Service]
+ExecStart=/usr/sbin/domains mdns
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=on-failure
+RestartSec=10s
+User=mdns
+Group=mdns
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_UNIX AF_NETLINK AF_INET AF_INET6
+RestrictNamespaces=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+CapabilityBoundingSet=
+
+[Install]
+WantedBy=multi-user.target

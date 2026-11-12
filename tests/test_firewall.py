@@ -1,4 +1,4 @@
-"""dahlia-firewall: settings, open ports, the nftables ruleset and the agent actions.
+"""firewall: settings, open ports, the nftables ruleset and the agent actions.
 
 The tests never call the real nft or ip; Firewall gets a fake run. Only
 test_ruleset_parses runs `nft -c` (check only, nothing is loaded), as root.
@@ -214,7 +214,7 @@ def test_check_rule_rejects(bad, why):
 
 def test_own_rules_come_first():
     text = firewall.ruleset(list(firewall.BASE_PORTS), [], {"port": 51820, "subnet":
-                            "10.253.0.0/24", "interface": "dahlia-wg"},
+                            "10.253.0.0/24", "interface": "wg"},
                             firewall.check_rules(OWN_RULES))
     lines = [ln.strip() for ln in text.splitlines()]
     assert 'tcp dport 25565 accept comment "Minecraft"' in lines
@@ -277,7 +277,7 @@ def test_set_without_old_settings_removes_file(fw):
 def test_apply_quietly_reports_error(fw, capsys):
     fw.run.fail = ["nft"]
     assert "syntax error" in firewall.apply_quietly(fw)
-    assert "dahlia-firewall" in capsys.readouterr().err
+    assert "firewall" in capsys.readouterr().err
     fw.run.fail = None
     assert firewall.apply_quietly(fw) == ""
 

@@ -65,15 +65,15 @@ def test_enable_writes_conf_firewall_and_starts(ctx):
     assert "PostUp = /usr/lib/dahlia/wireguard-forward.sh up %i" in text
     assert vpn.key_file(ctx).read_text().strip() == PRIV
     assert vpn.config_file(ctx).stat().st_mode & 0o777 == 0o600
-    assert "net.ipv4.ip_forward = 1" in (ctx.etc / "sysctl.d/60-dahlia-forward.conf").read_text()
-    assert ["systemctl", "enable", "wg-quick@dahlia-wg.service"] in ctx.runner.calls
-    assert ["systemctl", "restart", "wg-quick@dahlia-wg.service"] in ctx.runner.calls
+    assert "net.ipv4.ip_forward = 1" in (ctx.etc / "sysctl.d/60-forward.conf").read_text()
+    assert ["systemctl", "enable", "wg-quick@wg.service"] in ctx.runner.calls
+    assert ["systemctl", "restart", "wg-quick@wg.service"] in ctx.runner.calls
     rules = (ctx.run_dir / "firewall.nft").read_text()
     assert "udp dport 51820 accept" in rules
-    assert 'ip saddr 10.253.0.0/24 oifname != "dahlia-wg" masquerade' in rules
+    assert 'ip saddr 10.253.0.0/24 oifname != "wg" masquerade' in rules
     ctx.runner.calls.clear()
     run(ctx, "vpn.wireguard_set", {**ON, "enabled": False})
-    assert ["systemctl", "disable", "--now", "wg-quick@dahlia-wg.service"] in ctx.runner.calls
+    assert ["systemctl", "disable", "--now", "wg-quick@wg.service"] in ctx.runner.calls
     assert "51820" not in (ctx.run_dir / "firewall.nft").read_text()
 
 
@@ -93,9 +93,9 @@ def test_add_and_remove_peer(ctx):
     assert "Endpoint = home.example.org:51820" in client
     assert "AllowedIPs = 10.253.0.0/24, 192.168.1.0/24" in client
     # Peers change without restarting the tunnel of the others.
-    assert ["systemctl", "restart", "wg-quick@dahlia-wg.service"] not in ctx.runner.calls
+    assert ["systemctl", "restart", "wg-quick@wg.service"] not in ctx.runner.calls
     sync = [c for c in ctx.runner.calls if c[:2] == ["wg", "syncconf"]]
-    assert sync and not (ctx.run_dir / "dahlia-wg.sync").exists()
+    assert sync and not (ctx.run_dir / "wg.sync").exists()
     saved = json.loads(vpn.config_file(ctx).read_text())["peers"][0]
     assert saved["public_key"] == PUB and "private" not in json.dumps(saved).lower()
     assert saved["created"] == "2026-11-06T21:20:00+00:00"
@@ -153,7 +153,7 @@ def test_firewall_keeps_nat_when_disabled(tmp_path):
     (tmp_path / "dahlia/wireguard.json").write_text(json.dumps(
         {"enabled": True, "port": 51820, "subnet": "10.253.0.0/24"}))
     vpn_rules = firewall.wireguard(tmp_path)
-    assert vpn_rules == {"port": 51820, "subnet": "10.253.0.0/24", "interface": "dahlia-wg"}
+    assert vpn_rules == {"port": 51820, "subnet": "10.253.0.0/24", "interface": "wg"}
     off = firewall.disabled_ruleset(vpn_rules)
     assert "delete table inet dahlia" in off and "masquerade" in off and "dport" not in off
     (tmp_path / "dahlia/wireguard.json").write_text('{"enabled": true, "port": "x"}')
@@ -165,7 +165,7 @@ def test_tailscale(ctx, monkeypatch, tmp_path):
     monkeypatch.setattr(vpn, "TAILSCALE", ts)
     assert run(ctx, "vpn.tailscale_install")["ok"]
     cmd = ctx.runner.calls[-1]
-    assert cmd[:3] == ["systemd-run", "--unit", "dahlia-tailscale-install.service"]
+    assert cmd[:3] == ["systemd-run", "--unit", "tailscale-install.service"]
     assert cmd[-1] == "/usr/lib/dahlia/tailscale-install.sh"
     assert err_code(run(ctx, "vpn.tailscale_up", {"routes": False, "exit_node": False})) == (
         protocol.FAILED)
@@ -182,11 +182,11 @@ def test_tailscale(ctx, monkeypatch, tmp_path):
     ctx.runner.calls.clear()
     assert run(ctx, "vpn.tailscale_up", {"routes": True, "exit_node": True})["ok"]
     up = ctx.runner.calls[-1]
-    assert up[:3] == ["systemd-run", "--unit", "dahlia-tailscale-up.service"]
+    assert up[:3] == ["systemd-run", "--unit", "tailscale-up.service"]
     assert up[up.index(str(ts)):] == [str(ts), "up", "--reset", "--timeout=600s",
                                       "--advertise-routes=192.168.1.0/24",
                                       "--advertise-exit-node"]
-    assert (ctx.etc / "sysctl.d/60-dahlia-forward.conf").exists()
+    assert (ctx.etc / "sysctl.d/60-forward.conf").exists()
 
     ctx.runner.answers[(str(ts), "status")] = (0, json.dumps({
         "BackendState": "Running", "AuthURL": "",

@@ -1,4 +1,4 @@
-"""History of system values (dahlia-history) and the InfluxDB export."""
+"""History of system values (history) and the InfluxDB export."""
 
 import json
 import urllib.parse

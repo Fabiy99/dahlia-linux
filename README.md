@@ -88,11 +88,11 @@ Details: [docs/de/architektur.md](docs/de/architektur.md)
 
 | Paket | Inhalt |
 | --- | --- |
-| `dahlia-base` | Grundkonfiguration, Firewall, Benutzer und Gruppen |
-| `dahlia-agent` | root-Dienst mit fester Aktionsliste |
-| `dahlia-dashboard` | Web-UI (FastAPI, Vanilla JS) |
-| `dahlia-storage` | disk-manager, Mover, SnapRAID-Wrapper |
-| `dahlia-archive-keyring` | Signaturschlüssel des apt-Repos |
+| `base` | Grundkonfiguration, Firewall, Benutzer und Gruppen |
+| `agent` | root-Dienst mit fester Aktionsliste |
+| `dashboard` | Web-UI (FastAPI, Vanilla JS) |
+| `storage` | disk-manager, Mover, SnapRAID-Wrapper |
+| `archive-keyring` | Signaturschlüssel des apt-Repos |
 
 ### Meilensteine
 
@@ -100,8 +100,8 @@ Erledigt: 1 bis 36.
 
 1. Repo-Gerüst, Lizenz, CI-Linting
 2. Pakete und apt-Repo, ISO mit Preseed installiert sich in QEMU
-3. `dahlia-storage` als CLI, getestet mit Loop-Devices
-4. `dahlia-agent` mit Aktionsliste
+3. `storage` als CLI, getestet mit Loop-Devices
+4. `agent` mit Aktionsliste
 5. Dashboard: Backend, Login, Frontend mit DE/EN
 6. App-Store (eigenes Repo `dahlia-apps`), später mit Stacks (App mit Datenbank usw.) und
    Update-Anzeige
@@ -235,11 +235,11 @@ Details: [docs/en/architecture.md](docs/en/architecture.md)
 
 | Package | Contents |
 | --- | --- |
-| `dahlia-base` | Base configuration, firewall, users and groups |
-| `dahlia-agent` | Root service with a fixed action list |
-| `dahlia-dashboard` | Web UI (FastAPI, vanilla JS) |
-| `dahlia-storage` | disk-manager, mover, SnapRAID wrapper |
-| `dahlia-archive-keyring` | apt repository signing key |
+| `base` | Base configuration, firewall, users and groups |
+| `agent` | Root service with a fixed action list |
+| `dashboard` | Web UI (FastAPI, vanilla JS) |
+| `storage` | disk-manager, mover, SnapRAID wrapper |
+| `archive-keyring` | apt repository signing key |
 
 ### Milestones
 
@@ -247,8 +247,8 @@ Done: 1 to 36.
 
 1. Repository skeleton, license, CI linting
 2. Packages and apt repository, preseeded ISO installs in QEMU
-3. `dahlia-storage` as CLI, tested with loop devices
-4. `dahlia-agent` with action list
+3. `storage` as CLI, tested with loop devices
+4. `agent` with action list
 5. Dashboard: backend, login, frontend with DE/EN
 6. App store (separate repository `dahlia-apps`), later with stacks (app with database etc.)
    and update notices

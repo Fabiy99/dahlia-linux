@@ -85,7 +85,7 @@ def test_state_keeps_luks_and_reads_old_files():
 
 @pytest.fixture
 def fake(monkeypatch):
-    """dahlia-disk with fake cryptsetup and systemd: records what happens."""
+    """disk with fake cryptsetup and systemd: records what happens."""
     st = state.State(disks=[enc_disk(1, uuid="fs-1", luks="L1"), enc_disk(2, uuid="fs-2",
                                                                             luks="L2"),
                             state.Disk(uuid="plain", role="data", index=3, fstype="ext4")])

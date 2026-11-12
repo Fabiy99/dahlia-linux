@@ -1,0 +1,12 @@
+[Unit]
+Description=Dahlia system update
+Documentation=https://github.com/Fabiy99/dahlia-linux
+After=network-online.target
+Wants=network-online.target
+
+# Started by agent (updates.apply). snapper's apt hook takes the
+# snapshots before and after.
+[Service]
+Type=oneshot
+Environment=DEBIAN_FRONTEND=noninteractive LC_ALL=C.UTF-8
+ExecStart=/usr/bin/apt-get -y -q -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold full-upgrade

@@ -5,7 +5,7 @@
 Installierte Systeme holen neue Dahlia-Versionen aus einem signierten apt-Repo auf
 GitHub Pages: `https://fabiy99.github.io/dahlia-linux/`. Die Quelle steht in
 `/etc/apt/sources.list.d/dahlia.sources`, der öffentliche Schlüssel in
-`/usr/share/keyrings/dahlia-archive-keyring.asc` (beides aus `dahlia-archive-keyring`).
+`/usr/share/keyrings/dahlia-archive-keyring.asc` (beides aus `archive-keyring`).
 
 Update auf dem Server:
 
@@ -23,8 +23,8 @@ snapper legt vorher und nachher einen Snapshot an.
    signiert das Repo mit dem Secret `DAHLIA_SIGNING_KEY` und veröffentlicht es auf
    GitHub Pages.
 
-`tools/sign-repo.sh` bricht ab, wenn die Signatur nicht zum Schlüssel in
-`dahlia-archive-keyring` passt. So kann kein Repo veröffentlicht werden, dem die Server
+`tools/sign-repo.sh` bricht ab, wenn die Signatur nicht zum Schlüssel im Paket
+`archive-keyring` passt. So kann kein Repo veröffentlicht werden, dem die Server
 nicht vertrauen.
 
 ## Signierschlüssel einrichten (einmalig)
@@ -40,7 +40,7 @@ gpg --armor --export-secret-keys > dahlia-signing-key-PRIVAT.asc
 ```
 
 - `dahlia-archive-keyring.asc` (öffentlich) kommt ins Repo nach
-  `packages/dahlia-archive-keyring/usr/share/keyrings/`.
+  `packages/archive-keyring/usr/share/keyrings/`.
 - Den Inhalt von `dahlia-signing-key-PRIVAT.asc` unter Settings → Secrets and variables →
   Actions als Secret `DAHLIA_SIGNING_KEY` speichern. Danach die Datei offline sichern
   (z. B. USB-Stick) und vom Rechner löschen.

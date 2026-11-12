@@ -4,13 +4,13 @@
 # Usage: DAHLIA_SIGNING_KEY="$(cat private.asc)" tools/sign-repo.sh
 # Env:   DAHLIA_SIGNING_KEY  ASCII-armored private key without passphrase (required)
 #        DAHLIA_KEYRING      public key the signature must verify against
-#                            (default: the key shipped in dahlia-archive-keyring)
+#                            (default: the key shipped in the archive-keyring package)
 # Needs: gpg, gpgv
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 REPO="$ROOT/build/repo"
-KEYRING="${DAHLIA_KEYRING:-$ROOT/packages/dahlia-archive-keyring/usr/share/keyrings/dahlia-archive-keyring.asc}"
+KEYRING="${DAHLIA_KEYRING:-$ROOT/packages/archive-keyring/usr/share/keyrings/dahlia-archive-keyring.asc}"
 
 if [ -z "${DAHLIA_SIGNING_KEY:-}" ]; then
     echo "DAHLIA_SIGNING_KEY is empty" >&2

@@ -5,7 +5,7 @@
 Installed systems get new Dahlia versions from a signed apt repository on GitHub Pages:
 `https://fabiy99.github.io/dahlia-linux/`. The source is
 `/etc/apt/sources.list.d/dahlia.sources`, the public key
-`/usr/share/keyrings/dahlia-archive-keyring.asc` (both from `dahlia-archive-keyring`).
+`/usr/share/keyrings/dahlia-archive-keyring.asc` (both from `archive-keyring`).
 
 Updating a server:
 
@@ -23,8 +23,8 @@ snapper takes a snapshot before and after.
    packages, signs the repository with the secret `DAHLIA_SIGNING_KEY` and publishes it on
    GitHub Pages.
 
-`tools/sign-repo.sh` aborts if the signature does not verify against the key in
-`dahlia-archive-keyring`, so a repository the servers do not trust is never published.
+`tools/sign-repo.sh` aborts if the signature does not verify against the key in the
+`archive-keyring` package, so a repository the servers do not trust is never published.
 
 ## Setting up the signing key (once)
 
@@ -39,7 +39,7 @@ gpg --armor --export-secret-keys > dahlia-signing-key-PRIVATE.asc
 ```
 
 - `dahlia-archive-keyring.asc` (public) goes into the repository under
-  `packages/dahlia-archive-keyring/usr/share/keyrings/`.
+  `packages/archive-keyring/usr/share/keyrings/`.
 - Store the content of `dahlia-signing-key-PRIVATE.asc` as the secret `DAHLIA_SIGNING_KEY`
   under Settings → Secrets and variables → Actions. Then back the file up offline
   (e.g. a USB stick) and delete it from the computer.
