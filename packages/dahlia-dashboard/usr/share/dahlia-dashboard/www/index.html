@@ -175,6 +175,20 @@
             <div id="overview-jobs" class="job-mini-list"></div>
           </article>
         </div>
+
+        <article class="card">
+          <div class="section-head">
+            <h2 data-i18n="history.title"></h2>
+            <div id="history-range" class="seg" role="group"></div>
+          </div>
+          <p id="history-empty" class="hint" data-i18n="history.empty" hidden></p>
+          <div class="charts">
+            <figure class="chart" id="chart-cpu"><figcaption><b data-i18n="history.cpu"></b><small></small></figcaption><div class="plot"></div></figure>
+            <figure class="chart" id="chart-mem"><figcaption><b data-i18n="history.mem"></b><small></small></figcaption><div class="plot"></div></figure>
+            <figure class="chart" id="chart-net"><figcaption><b data-i18n="history.net"></b><small></small></figcaption><div class="plot"></div></figure>
+            <figure class="chart" id="chart-temp"><figcaption><b data-i18n="history.temp"></b><small></small></figcaption><div class="plot"></div></figure>
+          </div>
+        </article>
       </section>
 
       <section id="view-shares" hidden>
@@ -743,6 +757,34 @@
             <div id="notify-events" class="check-row"></div>
             <h3 data-i18n="notify.history"></h3>
             <ul id="notify-history" class="history"></ul>
+          </article>
+          <article class="card">
+            <h2 data-i18n="influx.title"></h2>
+            <p class="hint" data-i18n="influx.hint"></p>
+            <dl id="influx-status" class="facts"></dl>
+            <form id="influx-form">
+              <label class="check"><input name="enabled" type="checkbox"><span data-i18n="influx.enabled"></span></label>
+              <div id="influx-fields" class="field-group">
+                <label><span data-i18n="influx.version"></span>
+                  <select name="version">
+                    <option value="2" data-i18n="influx.v2"></option>
+                    <option value="1" data-i18n="influx.v1"></option>
+                  </select>
+                </label>
+                <label><span data-i18n="influx.url"></span><input name="url" autocomplete="off" placeholder="http://192.168.1.10:8086"></label>
+                <div id="influx-v2" class="field-group">
+                  <label><span data-i18n="influx.org"></span><input name="org" autocomplete="off"></label>
+                  <label><span data-i18n="influx.bucket"></span><input name="bucket" autocomplete="off"></label>
+                  <label><span data-i18n="influx.token"></span><input name="token" type="password" autocomplete="off"></label>
+                </div>
+                <div id="influx-v1" class="field-group">
+                  <label><span data-i18n="influx.database"></span><input name="database" autocomplete="off"></label>
+                  <label><span data-i18n="influx.username"></span><input name="username" autocomplete="off"></label>
+                  <label><span data-i18n="influx.password"></span><input name="password" type="password" autocomplete="off"></label>
+                </div>
+              </div>
+              <button type="submit" data-i18n="common.save"></button>
+            </form>
           </article>
           <article class="card">
             <h2 data-i18n="ups.title"></h2>

@@ -36,7 +36,7 @@ case "$1" in
             touch /var/lib/dahlia/smart-timers-set
         fi
         systemctl enable dahlia-agent.socket dahlia-apps.service dahlia-mdns.service \
-            dahlia-domains.timer dahlia-apps-catalog.timer dahlia-spindown.service dahlia-notify.timer >/dev/null 2>&1 || true
+            dahlia-domains.timer dahlia-apps-catalog.timer dahlia-spindown.service dahlia-notify.timer dahlia-history.service >/dev/null 2>&1 || true
         # Local CA, server certificate, app proxies. nginx may not be
         # configured yet; dahlia-dashboard runs this again.
         dahlia-domains apply >/dev/null || echo "dahlia-agent: dahlia-domains apply failed" >&2
@@ -52,6 +52,7 @@ case "$1" in
                 systemctl start dahlia-smart-short.timer || true
             fi
             systemctl restart dahlia-mdns.service || true
+            systemctl restart dahlia-history.service || true
             # Samba stays off until the first share is created in the dashboard.
             if [ ! -e /etc/dahlia/shares.json ]; then
                 systemctl disable --now smbd.service nmbd.service >/dev/null 2>&1 || true

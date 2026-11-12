@@ -267,6 +267,19 @@ class NotifyEventsBody(BaseModel):
     events: dict[str, bool]
 
 
+class InfluxBody(BaseModel):
+    enabled: bool
+    url: str = ""
+    version: int = 2
+    org: str = ""
+    bucket: str = ""
+    database: str = ""
+    username: str = ""
+    # None keeps the saved secret.
+    token: str | None = None
+    password: str | None = None
+
+
 class UpsBody(BaseModel):
     mode: str
     host: str = ""
@@ -521,6 +534,18 @@ def create_app(cfg: Config | None = None) -> FastAPI:
     @app.get("/api/stats", dependencies=authed)
     def stats():
         return agent("system.stats")
+
+    @app.get("/api/history", dependencies=authed)
+    def history(range: str = "day"):
+        return agent("history.get", {"range": range})
+
+    @app.get("/api/history/influx", dependencies=authed)
+    def history_influx():
+        return agent("history.influx")
+
+    @app.post("/api/history/influx", dependencies=changing)
+    def history_set_influx(body: InfluxBody):
+        return agent("history.set_influx", body.model_dump(exclude_none=True))
 
     @app.post("/api/system/hostname", dependencies=changing)
     def hostname(body: HostnameBody):
