@@ -14,11 +14,20 @@ has no login without Kerberos, so private shares are never exported. All
 clients are mapped to nobody:dahlia (all_squash), like SMB guests. Exports
 live in /etc/exports.d/dahlia.exports; NFSv3 is off (/etc/nfs.conf.d/dahlia.conf),
 so only 2049/tcp is needed. nfs-server runs only while an export exists.
+
+Recycle bin: a share with recycle_days > 0 moves files deleted over SMB to
+<share>/.recycle (vfs_recycle, folder tree kept, access time set to the
+deletion). dahlia-recycle.timer deletes files older than that many days
+once a day; shares.empty_recycle empties it at once. NFS deletes are final.
 """
 
+import argparse
 import json
 import os
 import re
+import stat
+import sys
+import time
 import zlib
 from pathlib import Path
 
@@ -40,6 +49,8 @@ MAX_TM_SIZE = 1_000_000
 NOBODY = 65534
 # Names Samba or Windows treat specially.
 RESERVED_SHARES = {"global", "homes", "printers", "print$", "ipc$"}
+RECYCLE_DIR = ".recycle"
+MAX_RECYCLE_DAYS = 365
 
 
 def shares_file(ctx: Context) -> Path:
@@ -77,6 +88,8 @@ def load_shares(ctx: Context) -> list[dict]:
             "time_machine": s.get("time_machine") is True,
             "time_machine_size": size if type(size) is int and 0 <= size <= MAX_TM_SIZE else 0,
             "nfs": s.get("nfs") is True and security != "private",
+            "recycle_days": recycle if type(recycle := s.get("recycle_days")) is int
+            and 0 <= recycle <= MAX_RECYCLE_DAYS else 0,
         })
     return out
 
@@ -149,6 +162,18 @@ def render_share(pool: Path, s: dict) -> str:
         lines.append("   fruit:time machine = yes")
         if s.get("time_machine_size"):
             lines.append(f"   fruit:time machine max size = {s['time_machine_size']}G")
+    if s.get("recycle_days"):
+        lines += [
+            # A share's vfs objects replace the global list, so repeat it.
+            "   vfs objects = catia fruit streams_xattr recycle",
+            f"   recycle:repository = {RECYCLE_DIR}",
+            "   recycle:keeptree = yes",
+            "   recycle:versions = yes",
+            "   recycle:touch = yes",
+            "   recycle:directory_mode = 2775",
+            "   recycle:exclude = *.tmp,*.temp,~$*,.DS_Store,Thumbs.db",
+            f"   recycle:exclude_dir = {RECYCLE_DIR},.TemporaryItems",
+        ]
     return "\n".join(ln for ln in lines if ln) + "\n"
 
 
@@ -281,10 +306,12 @@ def shares_list(ctx: Context):
         "time_machine_size": Param(int, required=False, default=0, minimum=0,
                                    maximum=MAX_TM_SIZE),
         "nfs": Param(bool, required=False, default=False),
+        "recycle_days": Param(int, required=False, default=0, minimum=0,
+                              maximum=MAX_RECYCLE_DAYS),
     },
 )
 def shares_set(ctx: Context, name: str, comment: str, security: str, users: dict | None,
-               time_machine: bool, time_machine_size: int, nfs: bool):
+               time_machine: bool, time_machine_size: int, nfs: bool, recycle_days: int):
     """Create or change a share of /mnt/user/<name>. Data is never touched."""
     if name.lower() in RESERVED_SHARES:
         raise AgentError(INVALID_PARAMS, f"'{name}' is a reserved name")
@@ -309,12 +336,88 @@ def shares_set(ctx: Context, name: str, comment: str, security: str, users: dict
         os.chown(path, 0, data_gid(ctx))
     share = {"name": name, "comment": comment, "security": security, "users": access,
              "time_machine": time_machine,
-             "time_machine_size": time_machine_size if time_machine else 0, "nfs": nfs}
+             "time_machine_size": time_machine_size if time_machine else 0, "nfs": nfs,
+             "recycle_days": recycle_days}
     shares.append(share)
     apply(ctx, shares)
     save_shares(ctx, shares)
     reload_firewall(ctx)
     return share
+
+
+# --- recycle bin ------------------------------------------------------------------
+
+
+def recycle_path(ctx: Context, name: str) -> Path | None:
+    """<pool>/<share>/.recycle if it is a real directory (no symlink), else None."""
+    path = ctx.pool / name / RECYCLE_DIR
+    try:
+        st = path.lstat()
+    except OSError:
+        return None
+    return path if stat.S_ISDIR(st.st_mode) else None
+
+
+def clean_tree(root: Path, older_than: float | None) -> tuple[int, int]:
+    """Delete files (all, or last accessed before older_than) and empty folders
+    below root, without following symlinks. Returns (files, bytes)."""
+    files = size = 0
+    for dirpath, dirnames, filenames in os.walk(root, topdown=False):
+        for f in filenames:
+            p = os.path.join(dirpath, f)
+            try:
+                st = os.lstat(p)
+                if older_than is None or st.st_atime < older_than:
+                    os.unlink(p)
+                    files += 1
+                    size += st.st_size if stat.S_ISREG(st.st_mode) else 0
+            except OSError:
+                continue
+        for d in dirnames:
+            p = os.path.join(dirpath, d)
+            try:
+                if os.path.islink(p):
+                    if older_than is None:
+                        os.unlink(p)
+                else:
+                    os.rmdir(p)  # only succeeds when empty
+            except OSError:
+                continue
+    return files, size
+
+
+def clean_recycle(ctx: Context) -> dict[str, dict]:
+    """Daily: drop what lies in a recycle bin longer than the share allows."""
+    out = {}
+    for s in load_shares(ctx):
+        path = recycle_path(ctx, s["name"])
+        if not s["recycle_days"] or path is None:
+            continue
+        files, size = clean_tree(path, ctx.clock() - s["recycle_days"] * 86400)
+        out[s["name"]] = {"files": files, "bytes": size}
+    return out
+
+
+@action("shares.empty_recycle", mutating=True, params={"name": Param(str, pattern=SHARE_RE)})
+def shares_empty_recycle(ctx: Context, name: str):
+    """Empty the recycle bin of a share now."""
+    if not any(s["name"] == name for s in load_shares(ctx)):
+        raise AgentError(INVALID_PARAMS, f"no share '{name}'")
+    path = recycle_path(ctx, name)
+    if path is None:
+        return {"name": name, "files": 0, "bytes": 0}
+    files, size = clean_tree(path, None)
+    return {"name": name, "files": files, "bytes": size}
+
+
+def recycle_main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(prog="dahlia-recycle",
+                                     description="Clean the SMB recycle bins.")
+    parser.add_argument("command", choices=("clean",))
+    parser.parse_args(argv)
+    for name, r in clean_recycle(Context(clock=time.time)).items():
+        print(f"{name}: {r['files']} files, {r['bytes']} bytes removed", file=sys.stderr)
+    return 0
 
 
 def reload_firewall(ctx: Context) -> None:
