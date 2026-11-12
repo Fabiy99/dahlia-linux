@@ -5,9 +5,9 @@ set -euo pipefail
 case "$1" in
     remove)
         if [ -d /run/systemd/system ]; then
-            systemctl stop dashboard.service terminal.service || true
+            systemctl stop screen.service dashboard.service terminal.service || true
         fi
-        systemctl disable dashboard.service terminal.service >/dev/null 2>&1 || true
+        systemctl disable screen.service dashboard.service terminal.service >/dev/null 2>&1 || true
         rm -f /etc/nginx/sites-enabled/dahlia
         if [ -d /run/systemd/system ]; then
             systemctl reload nginx.service 2>/dev/null || true

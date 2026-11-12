@@ -40,7 +40,8 @@ Updates über das apt-Repo, im Dashboard unter "Updates".
   Gotify), USV über NUT, Terminal im Browser, System-Log, Diagnosepaket.
 - **Startbildschirm:** animierte Dahlie im Hintergrund, Begrüßung und ein Satz zum Zustand,
   Widgets ein- und ausblenden, Wetter für mehrere Orte (Open-Meteo); der Hintergrund folgt dem
-  Wetter.
+  Wetter. Ein Monitor am Server zeigt denselben Startbildschirm mit Uhr, Adresse und QR-Code,
+  vor der Einrichtung auch den Einrichtungscode.
 - **Anmeldung:** eigenes Dashboard-Konto aus dem Einrichtungs-Assistenten, optional mit
   Zwei-Faktor-Login (TOTP).
 
@@ -196,7 +197,8 @@ updates from the apt repository, in the dashboard under "Updates".
   Gotify), UPS via NUT, terminal in the browser, system log, diagnostics bundle.
 - **Start screen:** animated dahlia in the background, greeting and one sentence on the state,
   widgets can be shown or hidden, weather for several places (Open-Meteo); the background follows
-  the weather.
+  the weather. A monitor attached to the server shows the same start screen with clock, address and
+  QR code, before setup also the setup code.
 - **Login:** own dashboard account from the setup wizard, optionally with two-factor login (TOTP).
 
 ### Testing in a VM

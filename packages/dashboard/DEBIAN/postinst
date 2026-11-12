@@ -17,6 +17,15 @@ setup_user() {
         adduser --system --group --home /nonexistent --no-create-home \
             --shell /usr/sbin/nologin term
     fi
+    # Local screen (screen.service): a kiosk browser on tty1, no privileges.
+    if ! getent passwd screen >/dev/null; then
+        adduser --system --group --home /var/lib/dashboard-screen --shell /usr/sbin/nologin screen
+    fi
+    for g in video render input; do
+        if getent group "$g" >/dev/null; then
+            adduser screen "$g" >/dev/null
+        fi
+    done
 }
 
 setup_tls() {
@@ -40,7 +49,7 @@ case "$1" in
         setup_nginx
         setup_tls
         systemd-tmpfiles --create dashboard.conf >/dev/null 2>&1 || true
-        systemctl enable dashboard.service terminal.service >/dev/null 2>&1 || true
+        systemctl enable dashboard.service terminal.service screen.service >/dev/null 2>&1 || true
         if [ -d /run/systemd/system ]; then
             systemctl daemon-reload
             systemctl restart dashboard.service || true
@@ -51,6 +60,8 @@ case "$1" in
             else
                 echo "dashboard: nginx configuration test failed, see nginx -t" >&2
             fi
+            # After nginx: the screen loads its page from 127.0.0.1:8090.
+            systemctl restart screen.service || true
         fi
         ;;
     abort-upgrade|abort-remove|abort-deconfigure)

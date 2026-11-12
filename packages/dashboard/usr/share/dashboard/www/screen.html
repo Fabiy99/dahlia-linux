@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dahlia, I love you ♥</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/style.css">
+<script src="/bloom.js" defer></script>
+<script src="/screen.js" defer></script>
+</head>
+<body class="home screen">
+<div id="backdrop" class="backdrop" aria-hidden="true">
+  <div class="bloom">
+    <svg viewBox="-260 -260 520 520">
+      <defs>
+        <linearGradient id="bg1" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2="-240"><stop offset="0" stop-color="#6e1a54"/><stop offset=".55" stop-color="#bd4597"/><stop offset="1" stop-color="#f29bd4"/></linearGradient>
+        <linearGradient id="bg2" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2="-185"><stop offset="0" stop-color="#93296f"/><stop offset=".6" stop-color="#e07ab9"/><stop offset="1" stop-color="#ffc2e5"/></linearGradient>
+        <linearGradient id="bg3" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2="-130"><stop offset="0" stop-color="#c4579b"/><stop offset=".6" stop-color="#f6aad7"/><stop offset="1" stop-color="#ffe3f2"/></linearGradient>
+        <linearGradient id="bgw" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2="-240"><stop offset="0" stop-color="#6b3f0c"/><stop offset=".6" stop-color="#e3992f"/><stop offset="1" stop-color="#ffd58c"/></linearGradient>
+        <path id="bp1" d="M0 0C65-72 50-204 0-240C-50-204-65-72 0 0Z"/>
+        <path id="bp2" d="M0 0C54-56 42-157 0-185C-42-157-54-56 0 0Z"/>
+        <path id="bp3" d="M0 0C45-39 35-110 0-130C-35-110-45-39 0 0Z"/>
+        <path id="bp4" d="M0 0C31-22 24-61 0-72C-24-61-31-22 0 0Z"/>
+      </defs>
+      <g class="breathe">
+        <g class="ring r1"><use href="#bp1" class="warn-petal"/><use href="#bp1" transform="rotate(22.5)"/><use href="#bp1" transform="rotate(45)"/><use href="#bp1" transform="rotate(67.5)"/><use href="#bp1" transform="rotate(90)"/><use href="#bp1" transform="rotate(112.5)"/><use href="#bp1" transform="rotate(135)"/><use href="#bp1" transform="rotate(157.5)"/><use href="#bp1" transform="rotate(180)"/><use href="#bp1" transform="rotate(202.5)"/><use href="#bp1" transform="rotate(225)"/><use href="#bp1" transform="rotate(247.5)"/><use href="#bp1" transform="rotate(270)"/><use href="#bp1" transform="rotate(292.5)"/><use href="#bp1" transform="rotate(315)"/><use href="#bp1" transform="rotate(337.5)"/></g>
+        <g class="ring r2"><use href="#bp2" transform="rotate(11.25)"/><use href="#bp2" transform="rotate(33.75)"/><use href="#bp2" transform="rotate(56.25)"/><use href="#bp2" transform="rotate(78.75)"/><use href="#bp2" transform="rotate(101.25)"/><use href="#bp2" transform="rotate(123.75)"/><use href="#bp2" transform="rotate(146.25)"/><use href="#bp2" transform="rotate(168.75)"/><use href="#bp2" transform="rotate(191.25)"/><use href="#bp2" transform="rotate(213.75)"/><use href="#bp2" transform="rotate(236.25)"/><use href="#bp2" transform="rotate(258.75)"/><use href="#bp2" transform="rotate(281.25)"/><use href="#bp2" transform="rotate(303.75)"/><use href="#bp2" transform="rotate(326.25)"/><use href="#bp2" transform="rotate(348.75)"/></g>
+        <g class="ring r3"><use href="#bp3" transform="rotate(15)"/><use href="#bp3" transform="rotate(45)"/><use href="#bp3" transform="rotate(75)"/><use href="#bp3" transform="rotate(105)"/><use href="#bp3" transform="rotate(135)"/><use href="#bp3" transform="rotate(165)"/><use href="#bp3" transform="rotate(195)"/><use href="#bp3" transform="rotate(225)"/><use href="#bp3" transform="rotate(255)"/><use href="#bp3" transform="rotate(285)"/><use href="#bp3" transform="rotate(315)"/><use href="#bp3" transform="rotate(345)"/></g>
+        <g class="ring r4"><use href="#bp4" transform="rotate(22.5)"/><use href="#bp4" transform="rotate(67.5)"/><use href="#bp4" transform="rotate(112.5)"/><use href="#bp4" transform="rotate(157.5)"/><use href="#bp4" transform="rotate(202.5)"/><use href="#bp4" transform="rotate(247.5)"/><use href="#bp4" transform="rotate(292.5)"/><use href="#bp4" transform="rotate(337.5)"/></g>
+        <circle class="core" r="24"/><circle class="core-dot" r="11"/>
+      </g>
+    </svg>
+  </div>
+  <div id="weather-fx" class="weather-fx"></div>
+</div>
+
+<main class="screen-main">
+  <div class="screen-clock"><span id="screen-time"></span><span id="screen-date"></span></div>
+  <section class="screen-info">
+    <div class="screen-brand"><span class="brand">Dahlia</span><span id="screen-host"></span></div>
+    <p id="screen-status" class="hero-status"><span class="dot"></span><span></span></p>
+    <div id="screen-setup" class="card screen-setup" hidden>
+      <b data-i18n="screen.setup_title"></b>
+      <span id="screen-code" class="screen-code"></span>
+      <small data-i18n="screen.setup_hint"></small>
+    </div>
+    <div id="screen-tiles" class="screen-tiles"></div>
+    <div class="card screen-open">
+      <div id="screen-qr" class="screen-qr"></div>
+      <div class="screen-open-text"><b data-i18n="screen.open"></b><span id="screen-url"></span><small data-i18n="screen.open_hint"></small></div>
+    </div>
+  </section>
+</main>
+</body>
+</html>

@@ -69,6 +69,11 @@ server {
         add_header X-Content-Type-Options nosniff always;
     }
 
+    # Only for the local screen, see the server on 127.0.0.1:8090 below.
+    location = /api/screen {
+        return 404;
+    }
+
     location /api/ {
         proxy_pass http://127.0.0.1:8080;
         proxy_http_version 1.1;
@@ -119,5 +124,34 @@ server {
         add_header X-Content-Type-Options nosniff always;
         add_header Referrer-Policy no-referrer always;
         add_header Strict-Transport-Security "max-age=31536000" always;
+    }
+}
+
+# Local screen (screen.service): the browser on the attached monitor. Loopback
+# only, plain HTTP, static files plus /api/screen and nothing else.
+server {
+    listen 127.0.0.1:8090;
+    root /usr/share/dashboard/www;
+    server_tokens off;
+
+    add_header Content-Security-Policy "default-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'" always;
+    add_header X-Content-Type-Options nosniff always;
+
+    location = /api/screen {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        add_header Cache-Control no-store always;
+    }
+
+    location /api/ {
+        return 404;
+    }
+
+    location / {
+        try_files $uri =404;
+        add_header Cache-Control no-cache always;
+        add_header Content-Security-Policy "default-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'" always;
+        add_header X-Content-Type-Options nosniff always;
     }
 }

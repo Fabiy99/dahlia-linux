@@ -168,3 +168,80 @@ def test_home_needs_login(tmp_path):
     assert c.get("/api/home").status_code == 401
     assert c.get("/api/weather").status_code == 401
     assert c.get("/api/weather/search", params={"q": "x"}).status_code == 401
+
+
+# --- local screen ---------------------------------------------------------------
+
+ROOT = __import__("pathlib").Path(__file__).resolve().parent.parent
+WWW = ROOT / "packages/dashboard/usr/share/dashboard/www"
+
+
+class ScreenAgent:
+    def __call__(self, action, params):
+        if action == "system.info":
+            return {"hostname": "dahlia", "version": "1.3.0"}
+        if action == "system.stats":
+            return {"network": [{"addresses": ["fe80::1/64", "192.168.1.20/24"]}],
+                    "filesystems": [{"mountpoint": "/", "used": 1, "size": 4},
+                                    {"mountpoint": "/mnt/user", "used": 5, "size": 10}],
+                    "memory": {"total": 16, "available": 12}, "uptime_seconds": 99}
+        if action == "apps.list":
+            return {"apps": [{"status": "running"}, {"status": "exited"}]}
+        if action == "system.health":
+            return {"findings": [], "passed": ["disks"], "skipped": []}
+        return {}
+
+
+def screen_client(tmp_path, monkeypatch, host="127.0.0.1"):
+    from dahlia_dashboard import app as appmod
+
+    monkeypatch.setattr(appmod, "qr_svg", lambda text: f"<svg>{text}</svg>")
+    cfg = Config(state_dir=tmp_path / "state", run_dir=tmp_path / "run", secure_cookie=False,
+                 agent_call=ScreenAgent(), system_account=lambda: None, weather_fetch=FakeFetch())
+    cfg.state_dir.mkdir(parents=True)
+    code = setupcode.prepare(cfg.run_dir)
+    return TestClient(create_app(cfg), client=(host, 50000)), code
+
+
+def test_screen_on_loopback(tmp_path, monkeypatch):
+    c, code = screen_client(tmp_path, monkeypatch)
+    data = c.get("/api/screen").json()
+    assert data["hostname"] == "dahlia" and data["address"] == "192.168.1.20"
+    assert data["url"] == "https://192.168.1.20/"
+    assert data["qr"] == "<svg>https://192.168.1.20/</svg>"
+    assert data["setup_code"] == code
+    assert data["storage"] == {"used": 5, "size": 10}
+    assert data["memory"] == {"used": 4, "size": 16}
+    assert data["apps"] == {"running": 1, "total": 2}
+    assert data["health"]["passed"] == ["disks"]
+    assert data["weather"] == [] and data["widgets"]["weather"] is True
+
+
+def test_screen_hides_code_after_setup(tmp_path, monkeypatch):
+    c, code = screen_client(tmp_path, monkeypatch)
+    c.post("/api/setup", json={"code": code, "username": "fabian",
+                               "password": "correct horse battery"}, headers=CSRF)
+    assert c.get("/api/screen").json()["setup_code"] is None
+
+
+def test_screen_refused_from_network(tmp_path, monkeypatch):
+    c, _ = screen_client(tmp_path, monkeypatch, host="192.168.1.50")
+    assert c.get("/api/screen").status_code == 404
+    c, _ = screen_client(tmp_path / "b", monkeypatch)
+    assert c.get("/api/screen", headers={"X-Forwarded-For": "192.168.1.50"}).status_code == 404
+
+
+def test_nginx_keeps_screen_local():
+    conf = (ROOT / "packages/dashboard/etc/nginx/sites-available/dahlia").read_text()
+    network, _, local = conf.partition("listen 127.0.0.1:8090;")
+    assert "location = /api/screen {\n        return 404;" in network
+    assert "proxy_pass http://127.0.0.1:8080;" in local and "X-Forwarded-For" not in local
+
+
+def test_screen_texts_are_translated():
+    import re
+
+    keys = set(re.findall(r'\bt\("([a-z_.-]+)"', (WWW / "screen.js").read_text()))
+    keys |= set(re.findall(r'data-i18n="([^"]+)"', (WWW / "screen.html").read_text()))
+    for name in ("de", "en"):
+        assert keys <= set(json.loads((WWW / "locales" / f"{name}.json").read_text()))

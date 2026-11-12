@@ -792,6 +792,61 @@ def create_app(cfg: Config | None = None) -> FastAPI:
         except home.WeatherError as e:
             raise ApiError(502, "error.weather", str(e)) from None
 
+    # --- local screen -------------------------------------------------------------
+
+    screen_cache: dict[str, tuple[float, object]] = {}
+
+    def cached(key: str, seconds: float, fn: Callable[[], object]):
+        hit = screen_cache.get(key)
+        now = time.monotonic()
+        if hit and now - hit[0] < seconds:
+            return hit[1]
+        try:
+            value = fn()
+        except (ApiError, home.WeatherError, OSError):
+            value = hit[1] if hit else None
+        screen_cache[key] = (now, value)
+        return value
+
+    @app.get("/api/screen")
+    def screen(request: Request):
+        """Start screen on the monitor attached to the server (screen.service).
+
+        No login: nginx refuses this path on the network site and serves it only
+        on 127.0.0.1:8090 for the local browser; requests through nginx's
+        network site carry X-Forwarded-For.
+        """
+        if "x-forwarded-for" in request.headers or client_ip(request) not in ("127.0.0.1", "::1"):
+            raise ApiError(404, "error.not_found")
+        info = cached("info", 300, lambda: agent("system.info")) or {}
+        stats = cached("stats", 5, lambda: agent("system.stats")) or {}
+        address = next((a.split("/")[0] for n in stats.get("network", [])
+                        for a in n.get("addresses", []) if ":" not in a), None)
+        fs = {f["mountpoint"]: f for f in stats.get("filesystems", [])}
+        storage = fs.get("/mnt/user") or fs.get("/")
+        mem = stats.get("memory") or {}
+        apps = cached("apps", 30, lambda: agent("apps.list")["apps"]) or []
+        cfg_home = home_store.get()
+        setup_code = setupcode.current(cfg.run_dir) if not users.has_users() else None
+        url = f"https://{address}/" if address else None
+        return {
+            "hostname": info.get("hostname"),
+            "version": info.get("version"),
+            "address": address,
+            "url": url,
+            "qr": cached(f"qr:{url}", 3600, lambda: qr_svg(url)) if url else None,
+            "setup_code": setup_code,
+            "health": cached("health", 60, lambda: agent("system.health")),
+            "storage": {"used": storage["used"], "size": storage["size"]} if storage else None,
+            "memory": {"used": mem["total"] - mem["available"], "size": mem["total"]}
+            if mem.get("total") else None,
+            "uptime_seconds": stats.get("uptime_seconds"),
+            "apps": {"running": sum(a.get("status") == "running" for a in apps),
+                     "total": len(apps)},
+            "widgets": cfg_home["widgets"],
+            "weather": weather.all(cfg_home["places"]),
+        }
+
     @app.get("/api/history", dependencies=readable)
     def history(range: str = "day"):
         return agent("history.get", {"range": range})
