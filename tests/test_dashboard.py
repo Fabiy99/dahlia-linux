@@ -172,6 +172,20 @@ def test_login_logout(env):
     assert client.get("/api/system").json()["hostname"] == "dahlia"
 
 
+
+def test_account_name_with_capital_letter(env):
+    client, _, _, code = env
+    r = do_setup(client, code, username="Fabian")
+    assert r.status_code == 200 and r.json()["user"] == "fabian"
+    client.post("/api/logout", headers=CSRF)
+    r = client.post("/api/login", json={"username": " Fabian ", "password": PASSWORD},
+                    headers=CSRF)
+    assert r.status_code == 200 and r.json()["user"] == "fabian"
+    r = client.post("/api/users", json={"name": "Anna", "password": "lesen-only-123"},
+                    headers=CSRF)
+    assert r.status_code == 200
+    assert {u["name"] for u in client.get("/api/users").json()["users"]} == {"fabian", "anna"}
+
 def test_login_rate_limit(env):
     client, _, _ = logged_in(env)
     client.post("/api/logout", headers=CSRF)

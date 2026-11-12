@@ -33,8 +33,10 @@ Zeichen `a-z0-9_-`, Buchstabe vorn) und fragt erneut bei Namen, die das System o
 Pakete selbst nutzen (`root`, `docker`, `dahlia`, `dahlia-*`, `systemd-*` …). Dasselbe Konto
 gilt für Konsole, SSH und das Terminal im Dashboard; der Einrichtungsassistent schlägt den
 Namen für das Dashboard-Konto vor (erstes gültiges Mitglied der Gruppe `sudo`), und das
-Terminal meldet sich voreingestellt mit dem Namen des Dashboard-Kontos an. Angezeigt wird
-nur der Name. Danach fragt `guided.sh`:
+Terminal meldet sich immer als das Linux-Konto mit dem Namen des Dashboard-Kontos an.
+Gespeichert wird der Name klein wie unter Linux üblich; Anmeldung und Kontoverwaltung nehmen
+ihn auch mit Großbuchstaben an (`Fabian` = `fabian`), und das Dashboard zeigt ihn mit großem
+Anfangsbuchstaben. Angezeigt wird nur der Name. Danach fragt `guided.sh`:
 
 1. Systemplatte, mit Gerät, Größe, Modell und Seriennummer. Das Installationsmedium wird
    nie angeboten.
@@ -721,7 +723,8 @@ Die Seite Terminal im Dashboard ist eine Shell im Browser (xterm.js, MIT, unter
 3. `terminal.service` läuft als `term` ohne Rechte und startet je Sitzung
    `su -l <Benutzer>` in einem Pseudo-Terminal. `su` fragt das Linux-Passwort; Root-Rechte
    gibt es danach mit `sudo` wie bei SSH. Erlaubt sind nur Konten ab UID 1000 mit
-   Login-Shell, voreingestellt das Konto mit dem Namen des Dashboard-Kontos.
+   Login-Shell, und zwar immer das Konto mit dem Namen des Dashboard-Kontos. Die Seite
+   verbindet sich beim Öffnen selbst; es bleibt nur die Passwortabfrage von `su`.
 
 Höchstens 4 Sitzungen, Trennung nach 15 Minuten ohne Eingabe. Beginn und Ende jeder
 Sitzung (Linux-Konto, Dashboard-Konto, IP) stehen im Journal von `terminal`.

@@ -335,6 +335,11 @@ function show(view) {
 let userRole = null;
 let userName = null;
 
+// Account names are stored in lower case (Linux user names); shown capitalized.
+function shownName(name) {
+  return name ? name[0].toUpperCase() + name.slice(1) : "";
+}
+
 function applyRole(role, name) {
   userRole = role;
   userName = name;
@@ -355,11 +360,7 @@ function setLoggedIn(on) {
   document.getElementById("logout").hidden = !on;
   document.getElementById("phone").hidden = !on;
   document.getElementById("menu").hidden = !on;
-  if (!on) {
-    stopStats();
-    // The next account fills in its own name.
-    document.querySelector("#terminal-form [name=user]").value = "";
-  }
+  if (!on) stopStats();
 }
 
 function showLogin() {
@@ -668,7 +669,7 @@ function renderGreeting() {
   const now = new Date();
   document.getElementById("hero-date").textContent = now.toLocaleDateString(lang,
     { weekday: "long", day: "numeric", month: "long" });
-  document.getElementById("hero-greeting").textContent = t(greetingKey(now.getHours()), { name: userName || "" });
+  document.getElementById("hero-greeting").textContent = t(greetingKey(now.getHours()), { name: shownName(userName) });
 }
 
 // One sentence about the server; the first finding of the health check, if any.
@@ -3058,11 +3059,17 @@ function loadScript(src) {
   });
 }
 
+// Opening the page connects as the Linux account with the dashboard account's
+// name; su then asks for its password.
 async function loadTerminal() {
-  // Log in as the Linux account with the dashboard's name unless changed.
-  const userField = document.querySelector("#terminal-form [name=user]");
-  if (!userField.value) userField.value = (await api("GET", "state")).user || "";
-  if (term) { termFit.fit(); return; }
+  document.getElementById("terminal-account").textContent =
+    t("terminal.account", { name: shownName(userName) });
+  if (!term) await startTerminal();
+  termFit.fit();
+  if (!termSocket) connectTerminal();
+}
+
+async function startTerminal() {
   const css = document.createElement("link");
   css.rel = "stylesheet";
   css.href = "/vendor/xterm/xterm.css";
@@ -3080,7 +3087,6 @@ async function loadTerminal() {
   term.loadAddon(new window.CanvasAddon.CanvasAddon());
   term.open(document.getElementById("terminal"));
   termFit.fit();
-  term.write(t("terminal.ready") + "\r\n");
   const enc = new TextEncoder();
   term.onData((d) => {
     if (termSocket?.readyState === WebSocket.OPEN) termSocket.send(enc.encode(d));
@@ -3094,13 +3100,13 @@ async function loadTerminal() {
 function terminalConnected(on) {
   document.getElementById("terminal-close").hidden = !on;
   document.querySelector("#terminal-form [type=submit]").hidden = on;
-  document.querySelector("#terminal-form [name=user]").disabled = on;
 }
 
-function connectTerminal(user) {
+function connectTerminal() {
   closeTerminal();
   term.reset();
-  const q = new URLSearchParams({ user, cols: term.cols, rows: term.rows });
+  term.write(t("terminal.ready") + "\r\n");
+  const q = new URLSearchParams({ cols: term.cols, rows: term.rows });
   const ws = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/api/terminal?${q}`);
   ws.binaryType = "arraybuffer";
   ws.onopen = () => { terminalConnected(true); term.focus(); };
@@ -3113,7 +3119,9 @@ function connectTerminal(user) {
     term.write(new Uint8Array(e.data));
   };
   ws.onclose = () => {
-    if (termSocket === ws) termSocket = null;
+    // A socket replaced by a reconnect says nothing.
+    if (termSocket !== ws && termSocket !== null) return;
+    termSocket = null;
     terminalConnected(false);
     term.write(`\r\n\x1b[2m${t("terminal.closed")}\x1b[0m\r\n`);
   };
@@ -4517,14 +4525,14 @@ async function loadUsers() {
   tbody.replaceChildren();
   for (const u of data.users) {
     const tr = el("tr");
-    cell(tr, el("b", "", u.name));
+    cell(tr, el("b", "", shownName(u.name)));
     const role = el("select");
     fillOptions(role, ["admin", "viewer"], (r) => t(`role_name.${r}`));
     role.value = u.role;
     role.addEventListener("change", () => guarded(role, async () => {
       try {
         await api("POST", `users/${encodeURIComponent(u.name)}/role`, { role: role.value });
-        say(t("users.role_saved", { name: u.name }), "ok");
+        say(t("users.role_saved", { name: shownName(u.name) }), "ok");
       } finally {
         await loadUsers();
       }
@@ -4535,15 +4543,15 @@ async function loadUsers() {
     ops.append(button("users.reset", () => {
       const form = document.getElementById("user-reset-form");
       form.elements.name.value = u.name;
-      document.getElementById("user-reset-title").textContent = t("users.reset_prompt", { name: u.name });
+      document.getElementById("user-reset-title").textContent = t("users.reset_prompt", { name: shownName(u.name) });
       form.hidden = false;
       form.elements.password.focus();
     }));
     if (u.name !== userName) {
       ops.append(button("users.remove", async () => {
-        if (!await ask(t("users.confirm_remove", { name: u.name }), "users.remove", true)) return;
+        if (!await ask(t("users.confirm_remove", { name: shownName(u.name) }), "users.remove", true)) return;
         await api("POST", `users/${encodeURIComponent(u.name)}/remove`);
-        say(t("users.removed", { name: u.name }), "ok");
+        say(t("users.removed", { name: shownName(u.name) }), "ok");
         await loadUsers();
       }, "danger"));
     }
@@ -4559,7 +4567,7 @@ function bindUsers() {
     guarded(e.submitter, async () => {
       await api("POST", "users", { name: f.name.trim(), password: f.password, role: f.role });
       e.target.reset();
-      say(t("users.added", { name: f.name.trim() }), "ok");
+      say(t("users.added", { name: shownName(f.name.trim().toLowerCase()) }), "ok");
       await loadUsers();
     });
   });
@@ -4571,7 +4579,7 @@ function bindUsers() {
       await api("POST", `users/${encodeURIComponent(f.name)}/password`, { password: f.password });
       reset.reset();
       reset.hidden = true;
-      say(t("users.reset_done", { name: f.name }), "ok");
+      say(t("users.reset_done", { name: shownName(f.name) }), "ok");
     });
   });
   document.getElementById("user-reset-cancel").addEventListener("click", () => {
@@ -4925,7 +4933,6 @@ function bindButtons() {
     e.preventDefault();
     guarded(e.submitter, async () => {
       await loadTerminal();
-      connectTerminal(e.target.elements.user.value.trim());
     });
   });
   document.getElementById("terminal-close").addEventListener("click", closeTerminal);

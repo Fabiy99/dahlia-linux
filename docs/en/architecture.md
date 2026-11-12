@@ -33,7 +33,10 @@ fixed `dahlia-admin`, no full name). `guided.sh` checks the name as the dashboar
 Dahlia's packages use themselves (`root`, `docker`, `dahlia`, `dahlia-*`, `systemd-*` ...).
 The same account is used for the console, SSH and the dashboard's terminal; the setup wizard
 suggests the name for the dashboard account (first valid member of group `sudo`), and the
-terminal logs in with the dashboard account's name by default. Only the name is shown.
+terminal always logs in as the Linux account named like the dashboard account. The name is
+stored in lower case as usual on Linux; login and account management also accept it with
+capital letters (`Fabian` = `fabian`), and the dashboard shows it with a capital first
+letter. Only the name is shown.
 Then `guided.sh` asks for:
 
 1. System disk, with device, size, model and serial number. The install medium is never
@@ -703,7 +706,8 @@ The dashboard's Terminal page is a shell in the browser (xterm.js, MIT, in
 3. `terminal.service` runs as `term` without privileges and starts
    `su -l <user>` in a pseudo-terminal per session. `su` asks for the Linux password; root
    is then available with `sudo` as over SSH. Only accounts with UID 1000 or higher and a
-   login shell are accepted; by default the account named like the dashboard account.
+   login shell are accepted, and always the account named like the dashboard account. The
+   page connects by itself when opened; only the password prompt of `su` remains.
 
 At most 4 sessions, disconnect after 15 minutes without input. Start and end of each
 session (Linux account, dashboard account, IP) are logged in the journal of

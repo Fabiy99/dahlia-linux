@@ -113,30 +113,19 @@ def fake_terminal(path, seen):
     threading.Thread(target=run, daemon=True).start()
 
 
-def test_websocket_relay(env, tmp_path):  # noqa: F811
+def test_websocket_logs_in_as_the_dashboard_account(env, tmp_path):  # noqa: F811
     client, _, cfg = logged_in(env)
     cfg.terminal_socket = str(tmp_path / "term.sock")
     seen = {}
     fake_terminal(tmp_path / "term.sock", seen)
+    # No other account can be asked for; su still wants that account's password.
     with client.websocket_connect("/api/terminal?user=dahlia-admin&cols=90&rows=20",
                                   headers={"origin": "http://testserver"}) as ws:
         assert ws.receive_bytes() == b"Password: "
         ws.send_bytes(b"secret\r")
-    assert seen["hello"]["user"] == "dahlia-admin" and seen["hello"]["cols"] == 90
+    assert seen["hello"]["user"] == "fabian" and seen["hello"]["cols"] == 90
     assert seen["hello"]["by"] == "fabian"
     assert seen["frames"] == [(b"d", b"secret\r")]
-
-
-def test_websocket_defaults_to_the_dashboard_name(env, tmp_path):  # noqa: F811
-    client, _, cfg = logged_in(env)
-    cfg.terminal_socket = str(tmp_path / "term.sock")
-    seen = {}
-    fake_terminal(tmp_path / "term.sock", seen)
-    with client.websocket_connect("/api/terminal?cols=90&rows=20",
-                                  headers={"origin": "http://testserver"}) as ws:
-        assert ws.receive_bytes() == b"Password: "
-        ws.send_bytes(b"secret\r")
-    assert seen["hello"]["user"] == "fabian"
 
 
 def test_websocket_needs_login_and_origin(env, tmp_path):  # noqa: F811
