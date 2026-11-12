@@ -184,6 +184,18 @@ class DeviceBody(BaseModel):
     device: str
 
 
+class NetLayoutBody(BaseModel):
+    nics: list[str]
+    bond_mode: str = ""
+    bridge: bool = False
+    vlans: list[dict] = []
+
+
+class WolBody(BaseModel):
+    port: str
+    enabled: bool
+
+
 class SyslogBody(BaseModel):
     enabled: bool
     host: str = ""
@@ -885,6 +897,18 @@ def create_app(cfg: Config | None = None) -> FastAPI:
     @app.post("/api/settings/network", dependencies=changing)
     def settings_set_network(body: NetworkBody):
         return agent("settings.set_network", body.model_dump())
+
+    @app.get("/api/settings/network/layout", dependencies=authed)
+    def settings_network_layout():
+        return agent("settings.network_layout")
+
+    @app.post("/api/settings/network/layout", dependencies=changing)
+    def settings_set_network_layout(body: NetLayoutBody):
+        return agent("settings.set_network_layout", body.model_dump())
+
+    @app.post("/api/settings/wol", dependencies=changing)
+    def settings_set_wol(body: WolBody):
+        return agent("settings.set_wol", body.model_dump())
 
     @app.post("/api/settings/network/confirm", dependencies=changing)
     def settings_confirm_network():

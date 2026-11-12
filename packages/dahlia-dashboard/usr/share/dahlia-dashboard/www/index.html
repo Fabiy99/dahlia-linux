@@ -578,6 +578,30 @@
               <button type="submit" data-i18n="common.save"></button>
             </form>
           </article>
+          <article class="card tile wide">
+            <h2 data-i18n="netlayout.title"></h2>
+            <p class="hint" id="netlayout-current"></p>
+            <form id="netlayout-form">
+              <table>
+                <thead><tr>
+                  <th data-i18n="netlayout.use"></th><th data-i18n="netlayout.port"></th>
+                  <th data-i18n="netlayout.mac"></th><th data-i18n="netlayout.link"></th>
+                  <th data-i18n="netlayout.wol"></th>
+                </tr></thead>
+                <tbody id="netlayout-ports"></tbody>
+              </table>
+              <label id="netlayout-bond"><span data-i18n="netlayout.bond_mode"></span><select name="bond_mode"></select></label>
+              <label class="check"><input name="bridge" type="checkbox"><span data-i18n="netlayout.bridge"></span></label>
+              <h3 data-i18n="netlayout.vlans"></h3>
+              <div id="netlayout-vlans" class="field-group"></div>
+              <div class="actions">
+                <button type="button" id="netlayout-vlan-add" data-i18n="netlayout.vlan_add"></button>
+              </div>
+              <p class="hint" data-i18n="netlayout.hint"></p>
+              <p class="hint" data-i18n="netlayout.wol_hint"></p>
+              <button type="submit" data-i18n="netlayout.apply"></button>
+            </form>
+          </article>
           <article class="card">
             <h2 data-i18n="settings.spindown_title"></h2>
             <form id="spindown-form">
