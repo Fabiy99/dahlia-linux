@@ -705,3 +705,35 @@ main > section:not([hidden]) { animation: rise .55s cubic-bezier(.2, .7, .2, 1) 
   .bloom, .bloom *, .weather-fx *, main > section, .tiles > .card { animation: none !important; transition: none !important; }
   .weather-fx { display: none; }
 }
+
+/* --- local screen (screen.html) ------------------------------------------ */
+body.screen { overflow: hidden; cursor: none; }
+.screen-main { position: relative; z-index: 1; height: 100vh; display: flex; justify-content: flex-end;
+               padding: 4vh 4vw; }
+.screen-clock { position: absolute; top: 4vh; right: 4vw; display: grid; justify-items: end; }
+.screen-clock span:first-child { font-size: clamp(3rem, 7vh, 6rem); font-weight: 300; letter-spacing: -.02em; line-height: 1; }
+.screen-clock span:last-child { color: var(--muted); font-size: 1.2rem; }
+.screen-info { align-self: center; width: min(40rem, 46vw); display: grid; gap: 1.4rem; margin-top: 10vh; }
+.screen-brand { display: grid; gap: .3rem; }
+.screen-brand .brand { font-size: clamp(2.5rem, 6vh, 4rem); color: var(--fg); }
+.screen-brand span:last-child { color: var(--muted); font-size: 1.2rem; }
+.screen .hero-status { font-size: 1.4rem; }
+.screen-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr)); gap: .9rem; }
+.screen-tiles .card, .screen-open, .screen-setup { margin: 0; }
+.screen-tile { display: grid; gap: .25rem; }
+.screen-tile small { color: var(--muted); }
+.screen-tile b { font-size: 1.6rem; }
+.screen-setup { display: grid; gap: .4rem; border-color: color-mix(in srgb, var(--accent) 50%, transparent); }
+.screen-code { font-size: 2.4rem; font-weight: 700; letter-spacing: .08em; font-family: ui-monospace, monospace; color: var(--accent); }
+.screen-open { display: flex; align-items: center; gap: 1.2rem; }
+.screen-qr { width: 7rem; height: 7rem; flex: none; padding: .4rem; border-radius: 10px; background: #fff; }
+.screen-qr:empty { display: none; }
+.screen-qr svg { width: 100%; height: 100%; stroke: none; }
+.screen-open-text { display: grid; gap: .2rem; }
+.screen-open-text b { font-size: 1.1rem; }
+.screen-open-text small { color: var(--muted); }
+body.screen .bloom { left: 22%; width: min(60rem, 90vh); }
+@media (max-width: 60rem) {
+  .screen-main { justify-content: center; }
+  .screen-info { width: 100%; }
+}

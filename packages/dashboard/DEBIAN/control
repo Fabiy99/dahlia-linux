@@ -4,7 +4,8 @@ Architecture: all
 Maintainer: Dahlia Linux <https://github.com/Fabiy99/dahlia-linux>
 Section: admin
 Priority: optional
-Depends: python3 (>= 3.11), python3-fastapi, python3-uvicorn, python3-websockets, nginx, qrencode, adduser, systemd, agent (= @VERSION@)
+Depends: python3 (>= 3.11), python3-fastapi, python3-uvicorn, python3-websockets, nginx, qrencode, adduser, systemd, agent (= @VERSION@),
+ cage, cog, libgl1-mesa-dri, fonts-dejavu-core
 Description: Dahlia Linux web dashboard
  Web UI on https://<server>/ for disks, jobs, updates and the system.
  The backend runs as the unprivileged user ui on 127.0.0.1:8080
@@ -12,3 +13,5 @@ Description: Dahlia Linux web dashboard
  first visit opens a setup wizard protected by a one-time code shown on
  the console. terminal provides the terminal page: "su -l <user>"
  in a pseudo-terminal, so the Linux password is asked there.
+ screen shows the start screen on a monitor attached to the server
+ (cage and cog on tty1, loopback only).

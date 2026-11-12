@@ -1271,5 +1271,12 @@
   "weather.kind_rain": "Regen",
   "weather.kind_snow": "Schnee",
   "weather.kind_storm": "Gewitter",
-  "error.weather": "Der Wetterdienst ist nicht erreichbar."
+  "error.weather": "Der Wetterdienst ist nicht erreichbar.",
+  "screen.setup_title": "Einrichtung",
+  "screen.setup_hint": "Im Browser die Adresse unten öffnen und diesen Code eingeben.",
+  "screen.open": "Im Browser öffnen",
+  "screen.open_hint": "QR-Code mit dem Handy scannen oder die Adresse eintippen.",
+  "screen.of": "von {size}",
+  "screen.apps_running": "{running} von {total}",
+  "screen.running": "laufen"
 }

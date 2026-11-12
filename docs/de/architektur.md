@@ -619,6 +619,22 @@ nachts Sterne.
 Endpunkte: `GET /api/home`, `POST /api/home` (`widgets`, `places`, höchstens 6 Orte),
 `GET /api/weather`, `GET /api/weather/search?q=<Name>&lang=de` (nur `admin`).
 
+### Bildschirm am Server (ab Meilenstein 38)
+
+Ist ein Monitor angeschlossen (Grafikgerät unter `/dev/dri`), zeigt `screen.service` auf tty1
+statt der Textkonsole den Startbildschirm: Dahlie, Uhr, Name und Adresse, Zustandssatz, bis zu
+vier Widgets nach der Auswahl in `home.json` und einen QR-Code zur Adresse. Solange kein
+Dashboard-Konto existiert, steht dort auch der Einrichtungscode.
+
+| Teil | Umsetzung |
+| --- | --- |
+| Anzeige | `cage` (Wayland-Kiosk) mit `cog` (WPE WebKit), Software-Rendering, Benutzer `screen` ohne Rechte |
+| Seite | `screen.html`/`screen.js` von nginx auf `127.0.0.1:8090`, nur Loopback, nur HTTP |
+| Daten | `GET /api/screen` ohne Anmeldung; nginx liefert den Pfad nur auf `127.0.0.1:8090` aus, die Netzwerkseite antwortet mit 404, das Backend lehnt Anfragen mit `X-Forwarded-For` oder von anderen Adressen ab |
+| Konsole | tty2 bleibt Textkonsole (Strg+Alt+F2). Startet `screen.service` dreimal in einer Minute nicht, bekommt tty1 wieder seinen Login (`OnFailure=getty@tty1.service`) |
+
+Ohne Grafikgerät startet der Dienst nicht (`ExecCondition`), tty1 bleibt wie bisher.
+
 ### Dateimanager (ab Meilenstein 34)
 
 Seite Dateien im Dashboard, nur für Administratoren (auch lesend, weil sie jede Datei der

@@ -604,6 +604,22 @@ snow, clouds, thunderstorm, sun, stars at night.
 Endpoints: `GET /api/home`, `POST /api/home` (`widgets`, `places`, at most 6 places),
 `GET /api/weather`, `GET /api/weather/search?q=<name>&lang=en` (`admin` only).
 
+### Screen on the server (from milestone 38)
+
+With a monitor attached (graphics device under `/dev/dri`), `screen.service` shows the start
+screen on tty1 instead of the text console: dahlia, clock, name and address, state sentence, up to
+four widgets following the selection in `home.json` and a QR code to the address. As long as no
+dashboard account exists, it also shows the setup code.
+
+| Part | Implementation |
+| --- | --- |
+| Display | `cage` (Wayland kiosk) with `cog` (WPE WebKit), software rendering, user `screen` without privileges |
+| Page | `screen.html`/`screen.js` from nginx on `127.0.0.1:8090`, loopback only, plain HTTP |
+| Data | `GET /api/screen` without login; nginx serves the path only on `127.0.0.1:8090`, the network site answers 404, the backend refuses requests with `X-Forwarded-For` or from other addresses |
+| Console | tty2 stays a text console (Ctrl+Alt+F2). If `screen.service` fails three times within a minute, tty1 gets its login back (`OnFailure=getty@tty1.service`) |
+
+Without a graphics device the service does not start (`ExecCondition`), tty1 stays as before.
+
 ### File manager (from milestone 34)
 
 Files page in the dashboard, administrators only (reading too, since it shows every file of

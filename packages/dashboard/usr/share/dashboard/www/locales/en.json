@@ -1271,5 +1271,12 @@
   "weather.kind_rain": "Rain",
   "weather.kind_snow": "Snow",
   "weather.kind_storm": "Thunderstorm",
-  "error.weather": "The weather service is not reachable."
+  "error.weather": "The weather service is not reachable.",
+  "screen.setup_title": "Setup",
+  "screen.setup_hint": "Open the address below in a browser and enter this code.",
+  "screen.open": "Open in a browser",
+  "screen.open_hint": "Scan the QR code with a phone or type the address.",
+  "screen.of": "of {size}",
+  "screen.apps_running": "{running} of {total}",
+  "screen.running": "running"
 }
