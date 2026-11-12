@@ -38,6 +38,9 @@ Updates über das apt-Repo, im Dashboard unter "Updates".
 - **System:** Btrfs-Root mit snapper, Rollback im Dashboard, automatische Sicherheitsupdates,
   Backup von Appdaten und Konfiguration (lokal oder per SFTP), Benachrichtigungen (E-Mail, ntfy,
   Gotify), USV über NUT, Terminal im Browser, System-Log, Diagnosepaket.
+- **Startbildschirm:** animierte Dahlie im Hintergrund, Begrüßung und ein Satz zum Zustand,
+  Widgets ein- und ausblenden, Wetter für mehrere Orte (Open-Meteo); der Hintergrund folgt dem
+  Wetter.
 - **Anmeldung:** eigenes Dashboard-Konto aus dem Einrichtungs-Assistenten, optional mit
   Zwei-Faktor-Login (TOTP).
 
@@ -140,6 +143,10 @@ Nach 1.0 (1.x):
 35. Verschlüsselung (LUKS)
 36. Eigener Kontoname im Installer statt `dahlia-admin`; Dashboard-Konto und Terminal-Benutzer
     heißen gleich, angezeigt wird nur der Name
+37. Startbildschirm mit animierter Dahlie, anpassbaren Widgets und Wetter
+38. Startbildschirm auf dem Monitor am Server
+39. Desktop-App für Windows, macOS und Linux; Apps öffnen sich in der App
+40. Handy über den Browser per QR-Code, neu koppeln der Desktop-App
 
 Später: USB-Creator für Windows, Installationsanleitung.
 
@@ -187,6 +194,9 @@ updates from the apt repository, in the dashboard under "Updates".
 - **System:** Btrfs root with snapper, rollback in the dashboard, automatic security updates,
   backup of app data and configuration (local or via SFTP), notifications (email, ntfy,
   Gotify), UPS via NUT, terminal in the browser, system log, diagnostics bundle.
+- **Start screen:** animated dahlia in the background, greeting and one sentence on the state,
+  widgets can be shown or hidden, weather for several places (Open-Meteo); the background follows
+  the weather.
 - **Login:** own dashboard account from the setup wizard, optionally with two-factor login (TOTP).
 
 ### Testing in a VM
@@ -287,6 +297,10 @@ After 1.0 (1.x):
 35. Encryption (LUKS)
 36. Own account name in the installer instead of `dahlia-admin`; dashboard account and terminal
     user share the name, only the name is shown
+37. Start screen with animated dahlia, customizable widgets and weather
+38. Start screen on the monitor attached to the server
+39. Desktop app for Windows, macOS and Linux; apps open inside the app
+40. Phone through the browser via QR code, re-pairing of the desktop app
 
 Later: USB creator for Windows, installation guide.
 

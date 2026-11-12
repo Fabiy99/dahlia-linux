@@ -47,8 +47,34 @@
   <symbol id="i-parity" viewBox="0 0 24 24"><path d="M12 3 4.5 6v5.5c0 4.6 3.1 8.2 7.5 9.5 4.4-1.3 7.5-4.9 7.5-9.5V6L12 3Z"/><path d="m8.8 12 2.2 2.2 4.2-4.4"/></symbol>
   <symbol id="i-backup" viewBox="0 0 24 24"><ellipse cx="12" cy="6" rx="7.5" ry="2.8"/><path d="M4.5 6v6c0 1.5 3.4 2.8 7.5 2.8s7.5-1.3 7.5-2.8V6M4.5 12v6c0 1.5 3.4 2.8 7.5 2.8s7.5-1.3 7.5-2.8v-6"/></symbol>
   <symbol id="i-terminal" viewBox="0 0 24 24"><rect x="2.5" y="4" width="19" height="16" rx="2"/><path d="M6.5 9l3 3-3 3M12 15h5"/></symbol>
+  <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4"/></symbol>
   <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></symbol>
 </svg>
+
+<div id="backdrop" class="backdrop" aria-hidden="true">
+  <div class="bloom">
+    <svg viewBox="-260 -260 520 520">
+      <defs>
+        <linearGradient id="bg1" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2="-240"><stop offset="0" stop-color="#6e1a54"/><stop offset=".55" stop-color="#bd4597"/><stop offset="1" stop-color="#f29bd4"/></linearGradient>
+        <linearGradient id="bg2" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2="-185"><stop offset="0" stop-color="#93296f"/><stop offset=".6" stop-color="#e07ab9"/><stop offset="1" stop-color="#ffc2e5"/></linearGradient>
+        <linearGradient id="bg3" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2="-130"><stop offset="0" stop-color="#c4579b"/><stop offset=".6" stop-color="#f6aad7"/><stop offset="1" stop-color="#ffe3f2"/></linearGradient>
+        <linearGradient id="bgw" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2="-240"><stop offset="0" stop-color="#6b3f0c"/><stop offset=".6" stop-color="#e3992f"/><stop offset="1" stop-color="#ffd58c"/></linearGradient>
+        <path id="bp1" d="M0 0C65-72 50-204 0-240C-50-204-65-72 0 0Z"/>
+        <path id="bp2" d="M0 0C54-56 42-157 0-185C-42-157-54-56 0 0Z"/>
+        <path id="bp3" d="M0 0C45-39 35-110 0-130C-35-110-45-39 0 0Z"/>
+        <path id="bp4" d="M0 0C31-22 24-61 0-72C-24-61-31-22 0 0Z"/>
+      </defs>
+      <g class="breathe">
+        <g class="ring r1"><use href="#bp1" class="warn-petal"/><use href="#bp1" transform="rotate(22.5)"/><use href="#bp1" transform="rotate(45)"/><use href="#bp1" transform="rotate(67.5)"/><use href="#bp1" transform="rotate(90)"/><use href="#bp1" transform="rotate(112.5)"/><use href="#bp1" transform="rotate(135)"/><use href="#bp1" transform="rotate(157.5)"/><use href="#bp1" transform="rotate(180)"/><use href="#bp1" transform="rotate(202.5)"/><use href="#bp1" transform="rotate(225)"/><use href="#bp1" transform="rotate(247.5)"/><use href="#bp1" transform="rotate(270)"/><use href="#bp1" transform="rotate(292.5)"/><use href="#bp1" transform="rotate(315)"/><use href="#bp1" transform="rotate(337.5)"/></g>
+        <g class="ring r2"><use href="#bp2" transform="rotate(11.25)"/><use href="#bp2" transform="rotate(33.75)"/><use href="#bp2" transform="rotate(56.25)"/><use href="#bp2" transform="rotate(78.75)"/><use href="#bp2" transform="rotate(101.25)"/><use href="#bp2" transform="rotate(123.75)"/><use href="#bp2" transform="rotate(146.25)"/><use href="#bp2" transform="rotate(168.75)"/><use href="#bp2" transform="rotate(191.25)"/><use href="#bp2" transform="rotate(213.75)"/><use href="#bp2" transform="rotate(236.25)"/><use href="#bp2" transform="rotate(258.75)"/><use href="#bp2" transform="rotate(281.25)"/><use href="#bp2" transform="rotate(303.75)"/><use href="#bp2" transform="rotate(326.25)"/><use href="#bp2" transform="rotate(348.75)"/></g>
+        <g class="ring r3"><use href="#bp3" transform="rotate(15)"/><use href="#bp3" transform="rotate(45)"/><use href="#bp3" transform="rotate(75)"/><use href="#bp3" transform="rotate(105)"/><use href="#bp3" transform="rotate(135)"/><use href="#bp3" transform="rotate(165)"/><use href="#bp3" transform="rotate(195)"/><use href="#bp3" transform="rotate(225)"/><use href="#bp3" transform="rotate(255)"/><use href="#bp3" transform="rotate(285)"/><use href="#bp3" transform="rotate(315)"/><use href="#bp3" transform="rotate(345)"/></g>
+        <g class="ring r4"><use href="#bp4" transform="rotate(22.5)"/><use href="#bp4" transform="rotate(67.5)"/><use href="#bp4" transform="rotate(112.5)"/><use href="#bp4" transform="rotate(157.5)"/><use href="#bp4" transform="rotate(202.5)"/><use href="#bp4" transform="rotate(247.5)"/><use href="#bp4" transform="rotate(292.5)"/><use href="#bp4" transform="rotate(337.5)"/></g>
+        <circle class="core" r="24"/><circle class="core-dot" r="11"/>
+      </g>
+    </svg>
+  </div>
+  <div id="weather-fx" class="weather-fx"></div>
+</div>
 
 <div id="shell" class="shell">
   <aside id="sidebar" class="sidebar" hidden>
@@ -125,14 +151,41 @@
           <span data-i18n="crypt.locked_notice"></span>
           <button type="button" class="link-btn" data-goto="storage" data-i18n="crypt.to_storage"></button>
         </p>
+        <div class="hero">
+          <div class="hero-text">
+            <p id="hero-date" class="hero-date"></p>
+            <h2 id="hero-greeting" class="hero-greeting"></h2>
+            <p id="hero-status" class="hero-status"><span class="dot"></span><span></span></p>
+          </div>
+          <button type="button" id="home-customize" class="hero-btn admin-only" aria-pressed="false"><span data-i18n="home.customize"></span></button>
+        </div>
+        <article id="home-panel" class="card home-panel" hidden>
+          <h2 data-i18n="home.customize_title"></h2>
+          <p class="hint" data-i18n="home.customize_hint"></p>
+          <div id="home-widgets" class="chip-row" role="group"></div>
+          <h2 data-i18n="weather.places"></h2>
+          <div id="home-places" class="chip-row"></div>
+          <form id="place-search" class="place-search">
+            <label><span data-i18n="weather.add_place"></span><input name="q" autocomplete="off" data-i18n-placeholder="weather.search_placeholder"></label>
+            <button type="submit" data-i18n="weather.search"></button>
+          </form>
+          <ul id="place-results" class="place-results"></ul>
+          <div class="actions"><button type="button" id="home-done" class="primary" data-i18n="home.done"></button></div>
+        </article>
         <div class="tiles">
-          <article class="card tile wide" id="health-card">
+          <article class="card tile" data-widget="weather" id="weather-card">
+            <header><svg><use href="#i-sun"/></svg><h2 data-i18n="weather.title"></h2></header>
+            <div id="weather-tabs" class="chip-row small viewer-ok"></div>
+            <div id="weather-now" class="weather-now"></div>
+            <div id="weather-days" class="weather-days"></div>
+          </article>
+          <article class="card tile wide" id="health-card" data-widget="health">
             <header><svg><use href="#i-parity"/></svg><h2 data-i18n="check.title"></h2>
               <button class="link-btn" id="health-refresh" data-i18n="check.again"></button></header>
             <p id="health-summary" class="health-summary" data-i18n="check.running"></p>
             <ul id="health-list" class="health-list"></ul>
           </article>
-          <article class="card tile">
+          <article class="card tile" data-widget="system">
             <header><svg><use href="#i-server"/></svg><h2 data-i18n="overview.system"></h2></header>
             <dl id="system-info" class="facts"></dl>
             <div class="tile-actions">
@@ -141,7 +194,7 @@
             </div>
           </article>
 
-          <article class="card tile">
+          <article class="card tile" data-widget="cpu">
             <header><svg><use href="#i-cpu"/></svg><h2 data-i18n="overview.cpu"></h2></header>
             <div class="gauge-row">
               <div id="cpu-gauge" class="gauge"></div>
@@ -150,7 +203,7 @@
             <div id="cpu-history" class="spark"></div>
           </article>
 
-          <article class="card tile">
+          <article class="card tile" data-widget="memory">
             <header><svg><use href="#i-memory"/></svg><h2 data-i18n="overview.memory"></h2></header>
             <div class="gauge-row">
               <div id="mem-gauge" class="gauge"></div>
@@ -159,37 +212,37 @@
             <div id="mem-history" class="spark"></div>
           </article>
 
-          <article class="card tile">
+          <article class="card tile" data-widget="disks">
             <header><svg><use href="#i-thermo"/></svg><h2 data-i18n="overview.disks"></h2>
               <button class="link-btn" data-goto="storage" data-i18n="overview.manage"></button></header>
             <div id="overview-disks" class="disk-mini-list"><p class="empty" data-i18n="common.loading"></p></div>
           </article>
 
-          <article class="card tile wide">
+          <article class="card tile wide" data-widget="storage">
             <header><svg><use href="#i-storage"/></svg><h2 data-i18n="overview.storage"></h2>
               <button class="link-btn" data-goto="storage" data-i18n="overview.manage"></button></header>
             <div id="fs-list" class="usage-list"></div>
           </article>
 
-          <article class="card tile">
+          <article class="card tile" data-widget="network">
             <header><svg><use href="#i-network"/></svg><h2 data-i18n="overview.network"></h2></header>
             <div id="net-info" class="net-list"></div>
           </article>
 
-          <article class="card tile wide">
+          <article class="card tile wide" data-widget="apps">
             <header><svg><use href="#i-apps"/></svg><h2 data-i18n="overview.apps"></h2>
               <button class="link-btn" data-goto="apps" data-i18n="overview.manage"></button></header>
             <div id="overview-apps" class="app-mini-list"></div>
           </article>
 
-          <article class="card tile">
+          <article class="card tile" data-widget="jobs">
             <header><svg><use href="#i-jobs"/></svg><h2 data-i18n="overview.jobs"></h2>
               <button class="link-btn" data-goto="jobs" data-i18n="overview.manage"></button></header>
             <div id="overview-jobs" class="job-mini-list"></div>
           </article>
         </div>
 
-        <article class="card">
+        <article class="card" data-widget="history">
           <div class="section-head">
             <h2 data-i18n="history.title"></h2>
             <div id="history-range" class="seg" role="group"></div>

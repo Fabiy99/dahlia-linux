@@ -601,6 +601,24 @@ Rollen stehen in `users.json` (`role`); Konten ohne Eintrag (vor M33) sind Admin
 Endpunkte (nur `admin`): `GET/POST /api/users`, `POST /api/users/<name>/role`,
 `POST /api/users/<name>/password`, `POST /api/users/<name>/remove`. `/api/state` liefert `role`.
 
+### Startbildschirm (ab Meilenstein 37)
+
+Die Übersicht beginnt mit Begrüßung, Datum und einem Satz zum Zustand (erster Befund des
+Gesundheitschecks, sonst „Alles in Ordnung“). Dahinter liegt eine animierte Dahlie als SVG
+(`#backdrop` in `index.html`, Animation nur über CSS). Auf den anderen Seiten bleibt sie blass
+und unscharf im Hintergrund. Gibt es eine Warnung, färbt sich ein Blütenblatt bernsteinfarben.
+`prefers-reduced-motion` schaltet alle Bewegungen ab.
+
+Welche Widgets sichtbar sind und welche Orte das Wetter zeigt, steht in
+`/var/lib/dashboard/home.json` (gilt für alle Geräte, ändern nur `admin`). Das Wetter holt das
+Backend bei Open-Meteo (`api.open-meteo.com`, Ortssuche über `geocoding-api.open-meteo.com`,
+ohne API-Schlüssel), 15 Minuten Cache pro Ort. Der Browser spricht nie mit einem fremden Dienst.
+Der Hintergrund folgt dem Wetter des gewählten Orts: Regen, Schnee, Wolken, Gewitter, Sonne,
+nachts Sterne.
+
+Endpunkte: `GET /api/home`, `POST /api/home` (`widgets`, `places`, höchstens 6 Orte),
+`GET /api/weather`, `GET /api/weather/search?q=<Name>&lang=de` (nur `admin`).
+
 ### Dateimanager (ab Meilenstein 34)
 
 Seite Dateien im Dashboard, nur für Administratoren (auch lesend, weil sie jede Datei der
