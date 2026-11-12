@@ -293,7 +293,8 @@ Protocol: one request per connection, one JSON line each way.
 | `settings.set_firewall_rules` | `rules` (list, at most 50) | check own rules, save, reload the ruleset |
 | `settings.schedules` / `settings.set_schedule` | `job`, `frequency`, `time`, `weekday`, `monthday` | drop-in `OnCalendar=` for the timers |
 | `shares.list` | – | shares, SMB users, whether `/mnt/user` is mounted, whether `smbd` and `nfs-server` run |
-| `shares.set` / `shares.remove` | `name`, `comment`, `security` (`public`/`secure`/`private`), `users` (name → `rw`/`ro`), `time_machine`, `time_machine_size` (GB, 0 = no limit), `nfs` | generates `/etc/samba/smb.conf`, checks it with `testparm`, starts `smbd`; with `nfs` `/etc/exports.d/dahlia.exports`, `exportfs -ra`, `nfs-server` |
+| `shares.set` / `shares.remove` | `name`, `comment`, `security` (`public`/`secure`/`private`), `users` (name → `rw`/`ro`), `time_machine`, `time_machine_size` (GB, 0 = no limit), `nfs`, `recycle_days` (0 = no recycle bin, up to 365) | generates `/etc/samba/smb.conf`, checks it with `testparm`, starts `smbd`; with `nfs` `/etc/exports.d/dahlia.exports`, `exportfs -ra`, `nfs-server` |
+| `shares.empty_recycle` | `name` | empties `<share>/.recycle` at once |
 | `shares.user_add` / `shares.user_password` / `shares.user_remove` | `name`, `password` | `useradd`/`userdel` (groups `dahlia`, `dahlia-smb`), `smbpasswd` via stdin |
 | `notify.get` | – | channels without secrets, switches, recent notifications |
 | `notify.set` | `channel` (`email`/`ntfy`/`gotify`), `settings` | `/etc/dahlia/notify.json` (0600); an empty password/token keeps the old one |
@@ -442,6 +443,11 @@ SMB shares (M9c):
   Machine) for macOS. Without a share `smbd` and `wsdd` are off.
 - Time Machine: `fruit:time machine` per share, optionally with a size limit
   (`fruit:time machine max size`). Several Macs on one share share the limit.
+- Recycle bin (M32): with `recycle_days` > 0, `vfs_recycle` moves files deleted over SMB to
+  `<share>/.recycle` (folder tree kept, versions for equal names, access time = deletion
+  time). `dahlia-recycle.timer` deletes what is older than the set days, plus empty folders,
+  once a day; symlinks are not followed. `shares.empty_recycle` empties it at once. To
+  restore, copy a file back out of `.recycle`. Deletes over NFS are final.
 
 NFS shares (M21):
 
