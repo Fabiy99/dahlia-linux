@@ -1,5 +1,6 @@
 """Repository-level checks: license, bilingual docs, required meta files."""
 
+import os
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -35,3 +36,10 @@ def test_architecture_docs_have_same_sections():
 
 def test_pr_template_exists():
     assert (ROOT / ".github" / "pull_request_template.md").is_file()
+
+
+def test_ssh_generator_is_masked():
+    # systemd's SSH-over-AF_VSOCK generator fails on Hyper-V and floods the
+    # console on every daemon-reload; Dahlia uses plain sshd only.
+    link = ROOT / "packages/dahlia-base/etc/systemd/system-generators/systemd-ssh-generator"
+    assert link.is_symlink() and os.readlink(link) == "/dev/null"
