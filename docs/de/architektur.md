@@ -580,6 +580,45 @@ Endpunkte mit Werten: `/api/system`, `/api/stats`, `/api/storage`, `/api/hardwar
 `/api/docker`, `/api/docker/stats`, `/api/history`. Keine Einstellungen, keine Änderungen, kein Terminal.
 Beispiel: `curl -H "Authorization: Bearer dahlia_…" https://dahlia.local/api/stats`.
 
+Mehrere Konten (M33): unter Einstellungen → Dashboard-Konten legt ein Administrator weitere
+Konten an (höchstens 20), setzt Passwörter neu, ändert die Rolle oder entfernt Konten.
+Passwort neu setzen und Entfernen beenden die offenen Sitzungen des Kontos. Das eigene Konto
+lässt sich nicht entfernen, der letzte Administrator weder herabstufen noch entfernen.
+Rollen stehen in `users.json` (`role`); Konten ohne Eintrag (vor M33) sind Administratoren.
+
+| Rolle | Darf |
+| --- | --- |
+| `admin` | alles |
+| `viewer` | alle lesenden Seiten und Protokolle, eigenes Passwort und Zwei-Faktor; keine Änderungen (403 `error.admin_only`), kein Terminal, keine Kontenverwaltung, keine API-Tokens, keine Diagnose; `/api/apps` ohne App-Passwörter und eigene Container-Einstellungen |
+
+Endpunkte (nur `admin`): `GET/POST /api/users`, `POST /api/users/<name>/role`,
+`POST /api/users/<name>/password`, `POST /api/users/<name>/remove`. `/api/state` liefert `role`.
+
+### Dateimanager (ab Meilenstein 34)
+
+Seite Dateien im Dashboard, nur für Administratoren (auch lesend, weil sie jede Datei der
+Freigaben zeigt). Orte wie beim Ordnerwähler: `/mnt/user`, `/srv` und `/mnt/remotes`.
+
+| Aktion | Umsetzung |
+| --- | --- |
+| Liste | `files.list`: Ordner zuerst, Groß-/Kleinschreibung und Akzente egal, höchstens 5000 Einträge; Namen, die kein UTF-8 sind, werden ausgelassen |
+| Herunterladen | `files.open` öffnet die Datei und gibt den Dateideskriptor über den Socket weiter (SCM_RIGHTS); das Backend streamt ihn, nginx puffert nicht |
+| Hochladen | `files.upload` legt `.dahlia-upload-<zufall>` an (Besitzer und Gruppe wie der Ordner, 0664) und gibt den Deskriptor weiter; das Backend schreibt den Request-Body hinein, `files.upload_finish` benennt um, bei Fehlern löscht `files.upload_abort`. Keine Größengrenze (`client_max_body_size 0` nur für diesen Pfad) |
+| Neuer Ordner, Umbenennen | `files.create_dir`, `files.rename`, sofort |
+| Löschen, Kopieren, Verschieben | `files.start` startet `dahlia-files.service` (transient, `/usr/sbin/dahlia-files`); Fortschritt in `/run/dahlia/files-progress.json`, abgefragt über `files.job`, Abbruch mit `files.cancel` |
+
+Regeln: Pfade werden Ordner für Ordner mit `O_NOFOLLOW` geöffnet, Symlinks werden angezeigt,
+aber nicht verfolgt. Direkt in einem Ort (Freigabe-, App- und Remote-Ordner) und unter
+`appdata` ändert der Dateimanager nichts; dort nur ansehen, herunterladen und kopieren.
+Bestehende Namen werden nie still überschrieben (Hochladen fragt nach). Kopieren wie `cp -a`:
+Besitzer, Rechte und Zeiten bleiben, Symlinks werden als Symlinks kopiert. Verschieben auf ein
+anderes Dateisystem kopiert und löscht danach. Löschen ist endgültig, der Papierkorb der
+Freigabe (M32) gilt nur für Samba.
+
+Endpunkte: `GET /api/files/list`, `GET /api/files/download`, `POST /api/files/upload`
+(Body = Dateiinhalt, `root`, `path`, `name`, `overwrite` als Query), `POST /api/files/dir`,
+`POST /api/files/rename`, `POST /api/files/start`, `GET /api/files/job`, `POST /api/files/cancel`.
+
 ### Terminal (ab Meilenstein 12)
 
 Die Seite Terminal im Dashboard ist eine Shell im Browser (xterm.js, MIT, unter

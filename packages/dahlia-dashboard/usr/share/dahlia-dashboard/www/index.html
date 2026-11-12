@@ -62,6 +62,7 @@
       <button data-view="storage"><svg><use href="#i-storage"/></svg><span data-i18n="nav.storage"></span></button>
       <button data-view="parity"><svg><use href="#i-parity"/></svg><span data-i18n="nav.parity"></span></button>
       <button data-view="shares"><svg><use href="#i-share"/></svg><span data-i18n="nav.shares"></span></button>
+      <button data-view="files"><svg><use href="#i-folder"/></svg><span data-i18n="nav.files"></span></button>
       <button data-view="apps"><svg><use href="#i-apps"/></svg><span data-i18n="nav.apps"></span><span id="nav-apps-badge" class="count" hidden></span></button>
       <button data-view="docker"><svg><use href="#i-docker"/></svg><span data-i18n="nav.docker"></span></button>
       <button data-view="domains"><svg><use href="#i-domains"/></svg><span data-i18n="nav.domains"></span></button>
@@ -117,6 +118,7 @@
         </div>
       </section>
 
+      <p id="viewer-banner" class="notice" data-i18n="users.viewer_banner" hidden></p>
       <section id="view-overview" hidden>
         <p id="crypt-locked-notice" class="notice" hidden>
           <span data-i18n="crypt.locked_notice"></span>
@@ -305,7 +307,7 @@
             <div class="actions">
               <button id="parity-sync" class="primary" data-i18n="parity.sync"></button>
               <button id="parity-scrub" data-i18n="parity.scrub"></button>
-              <button id="parity-refresh" data-i18n="common.refresh"></button>
+              <button id="parity-refresh" data-viewer-ok data-i18n="common.refresh"></button>
             </div>
           </article>
           <article class="card">
@@ -374,7 +376,7 @@
         </div>
         <p class="hint" data-i18n="apps.hint"></p>
         <p class="hint" id="apps-refreshed"></p>
-        <div class="filters">
+        <div class="filters viewer-ok">
           <input id="apps-search" type="search" data-i18n-placeholder="apps.search">
           <select id="apps-category"></select>
         </div>
@@ -413,9 +415,51 @@
         </article>
       </section>
 
+      <section id="view-files" hidden>
+        <article class="card">
+          <div id="fm-roots" class="places"></div>
+          <div class="section-head">
+            <nav id="fm-crumbs" class="crumbs"></nav>
+            <div class="row-ops">
+              <button type="button" id="fm-refresh" data-i18n="common.refresh"></button>
+              <button type="button" id="fm-mkdir" data-i18n="fm.new_folder"></button>
+              <button type="button" id="fm-upload" class="primary" data-i18n="fm.upload"></button>
+              <input type="file" id="fm-file" multiple hidden>
+            </div>
+          </div>
+          <form id="fm-name-form" class="inline-form" hidden>
+            <label><span id="fm-name-label"></span><input name="name" autocomplete="off" required maxlength="255"></label>
+            <div class="actions">
+              <button type="submit" class="primary" data-i18n="common.ok"></button>
+              <button type="button" id="fm-name-cancel" data-i18n="common.cancel"></button>
+            </div>
+          </form>
+          <div id="fm-progress" class="notice" hidden>
+            <span id="fm-progress-text"></span>
+            <progress id="fm-progress-bar" max="1" value="0"></progress>
+            <button type="button" id="fm-cancel" data-i18n="common.cancel" hidden></button>
+          </div>
+          <div id="fm-actions" class="row-ops fm-actions" hidden>
+            <span id="fm-selected" class="hint"></span>
+            <button type="button" id="fm-download" data-i18n="fm.download"></button>
+            <button type="button" id="fm-rename" data-i18n="fm.rename"></button>
+            <button type="button" id="fm-copy" data-i18n="fm.copy"></button>
+            <button type="button" id="fm-move" data-i18n="fm.move"></button>
+            <button type="button" id="fm-delete" class="danger" data-i18n="fm.delete"></button>
+          </div>
+          <p id="fm-hint" class="hint"></p>
+          <table class="files">
+            <thead><tr>
+              <th class="pick"><input type="checkbox" id="fm-all" data-i18n-title="fm.select_all"></th>
+              <th data-i18n="fm.name"></th><th class="num" data-i18n="fm.size"></th><th data-i18n="fm.modified"></th>
+            </tr></thead>
+            <tbody id="fm-list"></tbody>
+          </table>
+        </article>
+      </section>
       <section id="view-log" hidden>
         <article class="card">
-          <div class="filters">
+          <div class="filters viewer-ok">
             <label><span data-i18n="log.priority"></span>
               <select id="log-priority">
                 <option value="err" data-i18n="log.p_err"></option>
@@ -426,7 +470,7 @@
             <label><span data-i18n="log.unit"></span><input id="log-unit" data-i18n-placeholder="log.unit_hint"></label>
             <label><span data-i18n="log.lines"></span>
               <select id="log-lines"></select></label>
-            <button id="log-refresh" class="primary" data-i18n="common.refresh"></button>
+            <button id="log-refresh" data-viewer-ok class="primary" data-i18n="common.refresh"></button>
           </div>
           <pre id="log-output" class="logbox"></pre>
         </article>
@@ -781,7 +825,7 @@
               </div>
             </form>
           </article>
-          <article class="card">
+          <article class="card viewer-ok">
             <h2 data-i18n="account.password_title"></h2>
             <form id="password-form">
               <label><span data-i18n="account.old"></span><input name="old" type="password" autocomplete="current-password" required></label>
@@ -790,7 +834,7 @@
               <button type="submit" data-i18n="account.submit"></button>
             </form>
           </article>
-          <article class="card" id="totp-card">
+          <article class="card viewer-ok" id="totp-card">
             <h2 data-i18n="totp.title"></h2>
             <p class="hint" data-i18n="totp.hint"></p>
             <p id="totp-state"></p>
@@ -823,7 +867,36 @@
               <button type="submit" class="danger" data-i18n="totp.disable"></button>
             </form>
           </article>
-          <article class="card" id="tokens-card">
+          <article class="card tile wide admin-only" id="users-card">
+            <h2 data-i18n="users.title"></h2>
+            <p class="hint" data-i18n="users.hint"></p>
+            <table>
+              <thead><tr>
+                <th data-i18n="users.name"></th><th data-i18n="users.role"></th>
+                <th data-i18n="users.totp"></th><th></th>
+              </tr></thead>
+              <tbody id="users-list"></tbody>
+            </table>
+            <form id="user-reset-form" class="inline-form" hidden>
+              <p class="hint" id="user-reset-title"></p>
+              <input type="hidden" name="name">
+              <label><span data-i18n="field.password"></span><input name="password" type="password" autocomplete="new-password" required minlength="10"></label>
+              <div class="actions">
+                <button type="submit" class="primary" data-i18n="users.reset"></button>
+                <button type="button" id="user-reset-cancel" data-i18n="common.cancel"></button>
+              </div>
+            </form>
+            <form id="user-form" class="inline-form">
+              <label><span data-i18n="users.name"></span><input name="name" autocomplete="off" required pattern="[a-z][a-z0-9_\-]{1,31}"></label>
+              <label><span data-i18n="field.password"></span><input name="password" type="password" autocomplete="new-password" required minlength="10"></label>
+              <label><span data-i18n="users.role"></span><select name="role">
+                <option value="viewer" data-i18n="role_name.viewer"></option>
+                <option value="admin" data-i18n="role_name.admin"></option>
+              </select></label>
+              <div class="actions"><button type="submit" class="primary" data-i18n="users.add"></button></div>
+            </form>
+          </article>
+          <article class="card admin-only" id="tokens-card">
             <h2 data-i18n="tokens.title"></h2>
             <p class="hint" data-i18n="tokens.hint"></p>
             <ul id="tokens" class="token-list"></ul>

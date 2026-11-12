@@ -34,6 +34,18 @@ class AgentError(Exception):
         self.message = message
 
 
+class PassFd:
+    """Result of an action that also hands an open file descriptor to the client.
+
+    The server sends the descriptor with the reply (SCM_RIGHTS) and closes its
+    own copy; client.call_fd returns it.
+    """
+
+    def __init__(self, result, fd: int):
+        self.result = result
+        self.fd = fd
+
+
 def encode(obj: dict) -> bytes:
     return json.dumps(obj, separators=(",", ":")).encode() + b"\n"
 

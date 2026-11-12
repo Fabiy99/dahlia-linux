@@ -2,6 +2,7 @@
 
 import argparse
 import json
+import os
 import socket
 import sys
 
@@ -26,9 +27,27 @@ MAX_RESPONSE = 16 * 1024 * 1024
 def call(action: str, params: dict | None = None, *, path: str = DEFAULT_SOCKET,
          timeout: float = DEFAULT_TIMEOUT):
     """Run one action and return its result. Raises AgentError."""
+    result, fd = exchange(action, params, path, timeout)
+    if fd is not None:
+        os.close(fd)
+    return result
+
+
+def call_fd(action: str, params: dict | None = None, *, path: str = DEFAULT_SOCKET,
+            timeout: float = DEFAULT_TIMEOUT) -> tuple[object, int]:
+    """Run an action that hands over a file descriptor; returns (result, fd).
+    The caller closes fd."""
+    result, fd = exchange(action, params, path, timeout)
+    if fd is None:
+        raise AgentError(INTERNAL, f"{action} sent no file descriptor")
+    return result, fd
+
+
+def exchange(action: str, params: dict | None, path: str, timeout: float):
     request = encode({"action": action, "params": params or {}})
     if len(request) > MAX_REQUEST:
         raise AgentError(BAD_REQUEST, "request too large")
+    fds: list[int] = []
     with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
         sock.settimeout(timeout)
         try:
@@ -36,7 +55,8 @@ def call(action: str, params: dict | None = None, *, path: str = DEFAULT_SOCKET,
             sock.sendall(request)
             buf = b""
             while b"\n" not in buf:
-                chunk = sock.recv(65536)
+                chunk, got, _flags, _addr = socket.recv_fds(sock, 65536, 1)
+                fds += got
                 if not chunk:
                     break
                 buf += chunk
@@ -48,9 +68,23 @@ def call(action: str, params: dict | None = None, *, path: str = DEFAULT_SOCKET,
             raise AgentError(UNAVAILABLE, f"agent is not running ({path})") from None
         except TimeoutError:
             raise AgentError(TIMEOUT, f"no answer within {timeout:.0f}s") from None
+        except BaseException:
+            for fd in fds:
+                os.close(fd)
+            raise
+    for extra in fds[1:]:
+        os.close(extra)
+    fd = fds[0] if fds else None
     if not buf:
+        if fd is not None:
+            os.close(fd)
         raise AgentError(INTERNAL, "agent closed the connection without an answer")
-    return parse_response(buf.split(b"\n", 1)[0])
+    try:
+        return parse_response(buf.split(b"\n", 1)[0]), fd
+    except AgentError:
+        if fd is not None:
+            os.close(fd)
+        raise
 
 
 def main(argv: list[str] | None = None) -> int:
