@@ -67,7 +67,7 @@ code printed on tty1 and in `/etc/motd` (from milestone 5).
 
 | Package | Contents |
 | --- | --- |
-| `dahlia-base` | Configuration, group `dahlia` (GID 1000), pulls in all Dahlia packages |
+| `dahlia-base` | Configuration, group `dahlia` (GID 1000), pulls in all Dahlia packages. Masks `systemd-ssh-generator` (SSH over AF_VSOCK), which prints errors to the console on every `daemon-reload` under Hyper-V; SSH runs through plain `sshd` |
 | `dahlia-agent` | Root service on `/run/dahlia/agent.sock`, fixed action list |
 | `dahlia-dashboard` | FastAPI backend as `dahlia-ui` behind nginx, vanilla HTML/CSS/JS frontend |
 | `dahlia-storage` | disk-manager, mover, SnapRAID wrapper, health checks |

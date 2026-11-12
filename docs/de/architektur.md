@@ -67,7 +67,7 @@ Einmal-Code geschützt, der auf tty1 und in `/etc/motd` steht (ab Meilenstein 5)
 
 | Paket | Inhalt |
 | --- | --- |
-| `dahlia-base` | Konfiguration, Gruppe `dahlia` (GID 1000), zieht alle Dahlia-Pakete nach |
+| `dahlia-base` | Konfiguration, Gruppe `dahlia` (GID 1000), zieht alle Dahlia-Pakete nach. Maskiert `systemd-ssh-generator` (SSH über AF_VSOCK), der unter Hyper-V bei jedem `daemon-reload` Fehler auf die Konsole schreibt; SSH läuft normal über `sshd` |
 | `dahlia-agent` | root-Dienst auf `/run/dahlia/agent.sock`, feste Aktionsliste |
 | `dahlia-dashboard` | FastAPI-Backend als `dahlia-ui` hinter nginx, Frontend in Vanilla HTML/CSS/JS |
 | `dahlia-storage` | disk-manager, Mover, SnapRAID-Wrapper, Health-Checks |
