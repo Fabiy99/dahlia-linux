@@ -586,6 +586,24 @@ last administrator can be neither demoted nor removed. Roles are stored in `user
 Endpoints (`admin` only): `GET/POST /api/users`, `POST /api/users/<name>/role`,
 `POST /api/users/<name>/password`, `POST /api/users/<name>/remove`. `/api/state` returns `role`.
 
+### Start screen (from milestone 37)
+
+The overview starts with a greeting, the date and one sentence on the state (first finding of the
+health check, otherwise "Everything is fine"). Behind it is an animated dahlia as SVG
+(`#backdrop` in `index.html`, animation in CSS only). On the other pages it stays faint and
+blurred in the background. With a warning one petal turns amber. `prefers-reduced-motion` turns
+all motion off.
+
+Which widgets are shown and which places the weather shows is stored in
+`/var/lib/dashboard/home.json` (applies to all devices, only `admin` changes it). The backend
+fetches the weather from Open-Meteo (`api.open-meteo.com`, place search via
+`geocoding-api.open-meteo.com`, no API key), cached for 15 minutes per place. The browser never
+talks to a third-party service. The background follows the weather of the selected place: rain,
+snow, clouds, thunderstorm, sun, stars at night.
+
+Endpoints: `GET /api/home`, `POST /api/home` (`widgets`, `places`, at most 6 places),
+`GET /api/weather`, `GET /api/weather/search?q=<name>&lang=en` (`admin` only).
+
 ### File manager (from milestone 34)
 
 Files page in the dashboard, administrators only (reading too, since it shows every file of

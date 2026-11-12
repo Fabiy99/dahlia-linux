@@ -323,6 +323,7 @@ function show(view) {
     else b.removeAttribute("aria-current");
   }
   document.getElementById("page-title").textContent = t(TITLES[view]);
+  document.body.classList.toggle("home", ["overview", "login", "setup"].includes(view));
   document.getElementById("sidebar").classList.remove("open");
   current = view;
   if (view === "overview") startStats();
@@ -614,6 +615,7 @@ function updateAppsBadge(installed) {
 
 async function loadOverview() {
   cryptLockedNotice();
+  loadHome().catch(sayError);
   const [info, stats] = await Promise.all([api("GET", "system"), api("GET", "stats")]);
   setSidebar(info);
   const dl = document.getElementById("system-info");
@@ -645,6 +647,228 @@ async function loadOverview() {
   }).catch(tileError("overview-disks"));
 }
 
+// --- start screen: greeting, widgets, weather -----------------------------------
+
+const WIDGETS = ["health", "weather", "system", "cpu", "memory", "disks", "storage", "network",
+                 "apps", "jobs", "history"];
+const WX_KINDS = ["clear", "partly", "cloudy", "fog", "rain", "snow", "storm"];
+let homeCfg = { widgets: {}, places: [] };
+let weatherData = [];
+let activePlace = 0;
+try { activePlace = Number(localStorage.getItem("dahlia-place")) || 0; } catch (_) { /* storage blocked */ }
+
+function greetingKey(hour) {
+  if (hour >= 5 && hour < 11) return "home.greeting_morning";
+  if (hour >= 11 && hour < 18) return "home.greeting_day";
+  if (hour >= 18 && hour < 23) return "home.greeting_evening";
+  return "home.greeting_night";
+}
+
+function renderGreeting() {
+  const now = new Date();
+  document.getElementById("hero-date").textContent = now.toLocaleDateString(lang,
+    { weekday: "long", day: "numeric", month: "long" });
+  document.getElementById("hero-greeting").textContent = t(greetingKey(now.getHours()), { name: userName || "" });
+}
+
+// One sentence about the server; the first finding of the health check, if any.
+function renderHeroStatus(data) {
+  const status = document.getElementById("hero-status");
+  const dot = status.querySelector(".dot");
+  const text = status.lastElementChild;
+  const top = data.findings.find((f) => f.level === "critical")
+    || data.findings.find((f) => f.level === "warning");
+  dot.className = `dot ${top ? CHECK_LEVEL[top.level] : "ok"}`;
+  text.textContent = top ? t(`check.${top.id}`, top.params) : t("home.all_ok");
+  document.body.classList.toggle("attention", Boolean(top));
+}
+
+function applyWidgets() {
+  for (const card of document.querySelectorAll("#view-overview [data-widget]")) {
+    card.hidden = homeCfg.widgets[card.dataset.widget] === false;
+  }
+}
+
+async function saveHome() {
+  homeCfg = await api("POST", "home", homeCfg);
+  applyWidgets();
+  renderHomePanel();
+}
+
+function chip(text, pressed, onClick) {
+  const b = el("button", "chip", text);
+  b.type = "button";
+  b.setAttribute("aria-pressed", String(pressed));
+  b.addEventListener("click", () => guarded(b, onClick));
+  return b;
+}
+
+function renderHomePanel() {
+  document.getElementById("home-widgets").replaceChildren(...WIDGETS.map((w) => {
+    const on = homeCfg.widgets[w] !== false;
+    return chip(t(`home.widget_${w}`), on, async () => {
+      homeCfg.widgets[w] = !on;
+      await saveHome();
+    });
+  }));
+  const places = document.getElementById("home-places");
+  places.replaceChildren(...homeCfg.places.map((p, i) => {
+    const c = chip(p.name, true, async () => {
+      homeCfg.places.splice(i, 1);
+      await saveHome();
+      await loadWeather();
+    });
+    c.title = t("weather.remove_place");
+    c.append(el("span", "x", "×"));
+    return c;
+  }));
+  if (!homeCfg.places.length) places.append(el("p", "hint", t("weather.no_places")));
+}
+
+function placeLabel(p) {
+  return p.country ? `${p.name} · ${p.country}` : p.name;
+}
+
+async function searchPlaces(q) {
+  const list = document.getElementById("place-results");
+  const res = await api("GET", `weather/search?q=${encodeURIComponent(q)}&lang=${lang}`);
+  list.replaceChildren(...res.results.map((p) => {
+    const li = el("li");
+    const b = el("button", "", p.name);
+    b.type = "button";
+    if (p.country) b.append(el("small", "", p.country));
+    b.addEventListener("click", () => guarded(b, async () => {
+      homeCfg.places.push(p);
+      activePlace = homeCfg.places.length - 1;
+      list.replaceChildren();
+      document.querySelector("#place-search [name=q]").value = "";
+      await saveHome();
+      await loadWeather();
+    }));
+    li.append(b);
+    return li;
+  }));
+  if (!res.results.length) list.append(el("li", "hint", t("weather.no_results")));
+}
+
+function formatDeg(v) {
+  return v == null ? "–" : `${Math.round(v)}°`;
+}
+
+function renderWeather() {
+  const card = document.getElementById("weather-card");
+  const tabs = document.getElementById("weather-tabs");
+  const now = document.getElementById("weather-now");
+  const days = document.getElementById("weather-days");
+  if (!weatherData.length) {
+    tabs.replaceChildren();
+    days.replaceChildren();
+    now.replaceChildren(el("p", "empty", t("weather.no_places")));
+    setMood(null);
+    return;
+  }
+  if (activePlace >= weatherData.length) activePlace = 0;
+  tabs.replaceChildren(...weatherData.map((p, i) => chip(p.name, i === activePlace, async () => {
+    activePlace = i;
+    try { localStorage.setItem("dahlia-place", String(i)); } catch (_) { /* storage blocked */ }
+    renderWeather();
+  })));
+  const p = weatherData[activePlace];
+  card.title = placeLabel(p);
+  if (p.error) {
+    now.replaceChildren(el("p", "empty", t("weather.unavailable")));
+    days.replaceChildren();
+    setMood(null);
+    return;
+  }
+  const meta = el("div", "meta");
+  meta.append(el("b", "", t(`weather.kind_${p.kind}`)),
+              el("small", "", t("weather.details", { wind: Math.round(p.wind ?? 0), humidity: Math.round(p.humidity ?? 0) })));
+  now.replaceChildren(el("span", "temp", formatDeg(p.temperature)), meta);
+  days.replaceChildren(...p.days.slice(1, 4).map((d) => {
+    const box = el("div");
+    const day = new Date(`${d.date}T12:00:00`).toLocaleDateString(lang, { weekday: "short" });
+    box.append(el("small", "", day), el("b", "", `${formatDeg(d.max)} / ${formatDeg(d.min)}`),
+               el("small", "", t(`weather.kind_${d.kind}`)));
+    return box;
+  }));
+  setMood(p);
+}
+
+// The backdrop follows the weather of the selected place.
+function setMood(p) {
+  const body = document.body;
+  for (const k of [...WX_KINDS, "night"]) body.classList.remove(`wx-${k}`);
+  const fx = document.getElementById("weather-fx");
+  fx.replaceChildren();
+  if (!p || p.error) return;
+  body.classList.add(`wx-${p.kind}`);
+  if (!p.is_day) body.classList.add("wx-night");
+  const spans = (n, cls, styleOf) => {
+    for (let i = 0; i < n; i++) {
+      const s = el("span", cls);
+      s.style.cssText = styleOf(i);
+      fx.append(s);
+    }
+  };
+  if (p.kind === "clear" && p.is_day) fx.append(el("span", "sun"));
+  if (["partly", "cloudy", "fog", "rain", "storm"].includes(p.kind)) {
+    spans(p.kind === "partly" ? 2 : 4, "cloud", (i) =>
+      `top:${6 + i * 18}%;animation-duration:${70 + i * 22}s;animation-delay:-${i * 25}s`);
+  }
+  if (p.kind === "rain" || p.kind === "storm") {
+    spans(70, "drop", (i) => `left:${(i * 37) % 100}%;height:${3 + (i % 4)}rem;`
+      + `animation-duration:${(0.7 + (i % 5) * 0.13).toFixed(2)}s;animation-delay:-${((i * 0.29) % 1.4).toFixed(2)}s`);
+  }
+  if (p.kind === "storm") fx.append(el("span", "flash"));
+  if (p.kind === "snow") {
+    spans(55, "flake", (i) => `left:${(i * 41) % 100}%;width:${0.2 + (i % 4) * 0.1}rem;height:${0.2 + (i % 4) * 0.1}rem;`
+      + `animation-duration:${(9 + (i % 6) * 1.7).toFixed(1)}s;animation-delay:-${((i * 1.3) % 14).toFixed(1)}s`);
+  }
+  if (!p.is_day && ["clear", "partly"].includes(p.kind)) {
+    spans(45, "star", (i) => `top:${(i * 53) % 60}%;left:${(i * 29) % 100}%;animation-delay:-${i % 3}s`);
+  }
+}
+
+async function loadWeather() {
+  const card = document.getElementById("weather-card");
+  if (card.hidden) { setMood(null); return; }
+  try {
+    weatherData = (await api("GET", "weather")).places;
+  } catch (err) {
+    weatherData = [];
+    document.getElementById("weather-now").replaceChildren(el("p", "empty", errorText(err)));
+    return;
+  }
+  renderWeather();
+}
+
+async function loadHome() {
+  renderGreeting();
+  const status = document.getElementById("hero-status");
+  if (!status.lastElementChild.textContent) status.lastElementChild.textContent = t("check.running");
+  homeCfg = await api("GET", "home");
+  applyWidgets();
+  renderHomePanel();
+  await loadWeather();
+}
+
+function bindHome() {
+  const btn = document.getElementById("home-customize");
+  const panel = document.getElementById("home-panel");
+  const toggle = () => {
+    panel.hidden = !panel.hidden;
+    btn.setAttribute("aria-pressed", String(!panel.hidden));
+  };
+  btn.addEventListener("click", toggle);
+  document.getElementById("home-done").addEventListener("click", toggle);
+  document.getElementById("place-search").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const q = e.target.elements.q.value.trim();
+    if (q.length >= 2) guarded(e.submitter, () => searchPlaces(q));
+  });
+}
+
 // --- health check ---------------------------------------------------------------
 
 const CHECK_LEVEL = { critical: "crit", warning: "warn", info: "info" };
@@ -664,6 +888,7 @@ function loadHealth() {
 }
 
 function renderHealth(data) {
+  renderHeroStatus(data);
   const summary = document.getElementById("health-summary");
   const count = (lvl) => data.findings.filter((f) => f.level === lvl).length;
   const parts = [["critical", "check.n_critical"], ["warning", "check.n_warning"], ["info", "check.n_info"]]
@@ -4692,6 +4917,7 @@ async function start() {
   bindParity();
   bindBackup();
   bindVpn();
+  bindHome();
   try {
     const state = await api("GET", "state");
     if (state.setup_required) {

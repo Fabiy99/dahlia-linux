@@ -32,7 +32,7 @@ from starlette.background import BackgroundTask
 from starlette.concurrency import run_in_threadpool
 from starlette.exceptions import HTTPException
 
-from . import setupcode
+from . import home, setupcode
 from .auth import (
     USERNAME_RE,
     AuthError,
@@ -100,6 +100,8 @@ class Config:
     clock: Callable[[], float] = time.time
     # Name of the account the installer created; tests set it.
     system_account: Callable[[], str | None] = field(default=lambda: installer_account())
+    # url -> JSON for the weather service; tests set it.
+    weather_fetch: home.Fetch = home.http_fetch
 
 
 def installer_account(group: str = "sudo") -> str | None:
@@ -466,6 +468,18 @@ class ScheduleBody(BaseModel):
     monthday: int = 1
 
 
+class PlaceBody(BaseModel):
+    name: str
+    latitude: float
+    longitude: float
+    country: str = ""
+
+
+class HomeBody(BaseModel):
+    widgets: dict[str, bool]
+    places: list[PlaceBody]
+
+
 def create_app(cfg: Config | None = None) -> FastAPI:
     cfg = cfg or Config()
     users = UserStore(cfg.state_dir / "users.json", clock=cfg.clock)
@@ -475,6 +489,8 @@ def create_app(cfg: Config | None = None) -> FastAPI:
     agent_call = cfg.agent_call or default_agent_call(cfg.agent_socket)
     agent_open_call = cfg.agent_open or default_agent_open(cfg.agent_socket)
     setup_lock = threading.Lock()
+    home_store = home.HomeStore(cfg.state_dir / "home.json")
+    weather = home.Weather(fetch=cfg.weather_fetch, clock=cfg.clock)
 
     app = FastAPI(title="Dahlia Dashboard", docs_url=None, redoc_url=None, openapi_url=None)
 
@@ -751,6 +767,30 @@ def create_app(cfg: Config | None = None) -> FastAPI:
     @app.get("/api/stats", dependencies=readable)
     def stats():
         return agent("system.stats")
+
+    # --- start screen -----------------------------------------------------------
+
+    @app.get("/api/home", dependencies=readable)
+    def home_get():
+        return home_store.get()
+
+    @app.post("/api/home", dependencies=changing)
+    def home_set(body: HomeBody):
+        try:
+            return home_store.set(body.widgets, [p.model_dump() for p in body.places])
+        except ValueError as e:
+            raise ApiError(400, "error.request", str(e)) from None
+
+    @app.get("/api/weather", dependencies=readable)
+    def weather_get():
+        return {"places": weather.all(home_store.get()["places"])}
+
+    @app.get("/api/weather/search", dependencies=changing[1:])
+    def weather_search(q: str, lang: str = "en"):
+        try:
+            return {"results": home.search(q, lang, cfg.weather_fetch)}
+        except home.WeatherError as e:
+            raise ApiError(502, "error.weather", str(e)) from None
 
     @app.get("/api/history", dependencies=readable)
     def history(range: str = "day"):
