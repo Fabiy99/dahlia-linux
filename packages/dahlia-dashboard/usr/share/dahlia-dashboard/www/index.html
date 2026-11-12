@@ -568,6 +568,38 @@
               <button type="submit" data-i18n="common.save"></button>
             </form>
           </article>
+          <article class="card">
+            <h2 data-i18n="power.title"></h2>
+            <form id="power-form">
+              <label><span data-i18n="power.governor"></span><select name="governor"></select></label>
+              <p class="hint" id="power-state"></p>
+              <p class="hint" data-i18n="power.hint"></p>
+              <button type="submit" data-i18n="common.save"></button>
+            </form>
+            <p class="hint" id="power-none" data-i18n="power.none" hidden></p>
+          </article>
+          <article class="card tile wide">
+            <h2 data-i18n="devices.title"></h2>
+            <h3 data-i18n="devices.pci"></h3>
+            <table>
+              <thead><tr>
+                <th data-i18n="devices.slot"></th><th data-i18n="devices.class"></th>
+                <th data-i18n="devices.device"></th><th data-i18n="devices.id"></th>
+                <th data-i18n="devices.driver"></th><th data-i18n="devices.iommu"></th>
+              </tr></thead>
+              <tbody id="devices-pci"></tbody>
+            </table>
+            <h3 data-i18n="devices.usb"></h3>
+            <table>
+              <thead><tr>
+                <th data-i18n="devices.bus"></th><th data-i18n="devices.device"></th>
+                <th data-i18n="devices.id"></th>
+              </tr></thead>
+              <tbody id="devices-usb"></tbody>
+            </table>
+            <p class="hint" id="devices-iommu"></p>
+            <button id="devices-refresh" data-i18n="common.refresh"></button>
+          </article>
           <article class="card tile wide">
             <h2 data-i18n="settings.firewall_title"></h2>
             <form id="firewall-form">
