@@ -8,7 +8,7 @@ itself never runs a command as root. Only accounts with UID 1000 or higher
 and a real login shell are accepted.
 
 Protocol on the socket: one JSON line from the dashboard
-    {"user": "dahlia-admin", "cols": 120, "rows": 32, "by": "<dashboard user>", "ip": "..."}
+    {"user": "fabian", "cols": 120, "rows": 32, "by": "<dashboard user>", "ip": "..."}
 then frames from the dashboard, each a type byte, a 4-byte big-endian
 length and the payload: b"d" input bytes, b"r" {"cols", "rows"} as JSON.
 The service sends the raw terminal output back. A session ends when the

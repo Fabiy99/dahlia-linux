@@ -6,6 +6,7 @@
 # Usage: apply-answers.sh <target-root> <answers-file> [ssh-key-file]
 #
 # Answers file (written by guided.sh), one KEY=value per line:
+#   ACCOUNT=fabian
 #   HOSTNAME=nas
 #   TIMEZONE=Europe/Berlin
 #   NETWORK=dhcp | static
@@ -15,13 +16,14 @@ set -e
 TARGET="${1:?target root}"
 ANSWERS="${2:?answers file}"
 KEYFILE="${3:-}"
-ADMIN=dahlia-admin
 
 # shellcheck source=/dev/null # iso/installer/lib.sh
 . "$(dirname "$0")/lib.sh"
 
 fail() { echo "apply-answers: $*" >&2; exit 1; }
 
+account="$(answer ACCOUNT "$ANSWERS")"
+valid_account "$account" || fail "invalid account name '$account'"
 host="$(answer HOSTNAME "$ANSWERS")"
 tz="$(answer TIMEZONE "$ANSWERS")"
 net="$(answer NETWORK "$ANSWERS")"
@@ -80,7 +82,7 @@ esac
 if [ -n "$KEYFILE" ] && [ -s "$KEYFILE" ]; then
     key="$(head -n1 "$KEYFILE")"
     valid_ssh_key "$key" || fail "invalid SSH key"
-    ssh_dir="$TARGET/home/$ADMIN/.ssh"
+    ssh_dir="$TARGET/home/$account/.ssh"
     mkdir -p "$ssh_dir"
     printf '%s\n' "$key" > "$ssh_dir/authorized_keys"
     chmod 0700 "$ssh_dir"

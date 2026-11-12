@@ -10,6 +10,7 @@ from the agent or the system, shown as additional information.
 
 import asyncio
 import contextlib
+import grp
 import json
 import os
 import re
@@ -33,6 +34,7 @@ from starlette.exceptions import HTTPException
 
 from . import setupcode
 from .auth import (
+    USERNAME_RE,
     AuthError,
     RateLimiter,
     Session,
@@ -96,6 +98,18 @@ class Config:
     login_limiter: RateLimiter = field(default_factory=RateLimiter)
     # Clock for TOTP codes; tests set it.
     clock: Callable[[], float] = time.time
+    # Name of the account the installer created; tests set it.
+    system_account: Callable[[], str | None] = field(default=lambda: installer_account())
+
+
+def installer_account(group: str = "sudo") -> str | None:
+    """The installer's account: the first member of group sudo that is also
+    a valid dashboard name (d-i puts it there when root has no password)."""
+    try:
+        members = grp.getgrnam(group).gr_mem
+    except KeyError:
+        return None
+    return next((m for m in members if USERNAME_RE.match(m)), None)
 
 
 def qr_svg(text: str) -> str | None:
@@ -533,11 +547,16 @@ def create_app(cfg: Config | None = None) -> FastAPI:
     @app.get("/api/state")
     def state(request: Request):
         session = sessions.get(request.cookies.get(COOKIE))
-        return {
-            "setup_required": not users.has_users(),
+        setup_required = not users.has_users()
+        out = {
+            "setup_required": setup_required,
             "user": session.username if session else None,
             "role": users.role(session.username) if session else None,
         }
+        if setup_required:
+            # The wizard suggests the name of the account from the installer.
+            out["account"] = cfg.system_account()
+        return out
 
     @app.post("/api/setup", dependencies=[Depends(require_csrf)])
     def setup(body: SetupBody, request: Request, response: Response):
@@ -1317,7 +1336,8 @@ def create_app(cfg: Config | None = None) -> FastAPI:
         await ws.accept()
         q = ws.query_params
         hello = {
-            "user": q.get("user", "dahlia-admin"),
+            # Same name as the dashboard account unless another one is asked for.
+            "user": q.get("user") or session.username,
             "cols": int(q["cols"]) if q.get("cols", "").isdigit() else 80,
             "rows": int(q["rows"]) if q.get("rows", "").isdigit() else 24,
             "by": session.username,

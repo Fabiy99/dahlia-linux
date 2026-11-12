@@ -51,12 +51,12 @@ Updates über das apt-Repo, im Dashboard unter "Updates".
    Secure Boot mit der Vorlage "Microsoft UEFI Certificate Authority", fester Arbeitsspeicher
    (kein dynamischer).
 3. Von der ISO booten und "Install Dahlia Linux" wählen. Der Installer (englisch) fragt
-   nach Tastatur, Passwort, Systemplatte, Servername, Zeitzone, Netzwerk und optional einem
-   SSH-Schlüssel und zeigt vor dem Löschen eine Zusammenfassung. Für Rechner ohne
-   Bildschirm gibt es die Einträge "serial console" (ttyS0, 115200 Baud), für Tests
-   "Automatic install" ohne Fragen (Startpasswort `dahlia`, muss beim ersten Login
-   geändert werden).
-4. Anmelden als `dahlia-admin`, per SSH: `ssh dahlia-admin@<servername>.local`.
+   nach Tastatur, Kontoname, Passwort, Systemplatte, Servername, Zeitzone, Netzwerk und
+   optional einem SSH-Schlüssel und zeigt vor dem Löschen eine Zusammenfassung. Für Rechner
+   ohne Bildschirm gibt es die Einträge "serial console" (ttyS0, 115200 Baud), für Tests
+   "Automatic install" ohne Fragen (Konto `dahlia-admin`, Startpasswort `dahlia`, muss beim
+   ersten Login geändert werden).
+4. Mit dem gewählten Konto anmelden, per SSH: `ssh <konto>@<servername>.local`.
 5. Dashboard: `https://dahlia.local/` im Browser öffnen, die Zertifikatswarnung bestätigen
    und den Einrichtungscode eingeben, der auf dem Bildschirm des Servers und beim SSH-Login steht.
    Damit die Warnung verschwindet: unter "Adressen" die lokale CA herunterladen und importieren
@@ -199,11 +199,12 @@ updates from the apt repository, in the dashboard under "Updates".
    Secure Boot with the "Microsoft UEFI Certificate Authority" template, static memory
    (not dynamic).
 3. Boot from the ISO and pick "Install Dahlia Linux". The installer asks for the
-   keyboard, password, system disk, server name, time zone, network and optionally an SSH
-   key, and shows a summary before wiping the disk. Headless machines use the "serial
-   console" entries (ttyS0, 115200 baud); for tests there is "Automatic install" without
-   questions (initial password `dahlia`, must be changed on first login).
-4. Log in as `dahlia-admin`, via SSH: `ssh dahlia-admin@<server name>.local`.
+   keyboard, account name, password, system disk, server name, time zone, network and
+   optionally an SSH key, and shows a summary before wiping the disk. Headless machines use
+   the "serial console" entries (ttyS0, 115200 baud); for tests there is "Automatic install"
+   without questions (account `dahlia-admin`, initial password `dahlia`, must be changed on
+   first login).
+4. Log in with the chosen account, via SSH: `ssh <account>@<server name>.local`.
 5. Dashboard: open `https://dahlia.local/` in a browser, accept the certificate warning and
    enter the setup code shown on the server's screen and on SSH login.
    To get rid of the warning: download and import the local CA under "Addresses"

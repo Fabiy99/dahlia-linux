@@ -19,7 +19,14 @@ haben. Der Installer ist englisch. Boot-Menü (BIOS und UEFI):
 | Automatic install (serial console) | unbeaufsichtigt auf ttyS0 (CI-Test) |
 
 Geführt (`iso/installer/dahlia-guided.cfg`, `guided.sh`): Der Debian-Installer fragt nach
-dem Tastaturlayout und dem Passwort für `dahlia-admin`. Danach fragt `guided.sh`:
+dem Tastaturlayout, dem Kontonamen und dessen Passwort (ab Meilenstein 36; vorher fest
+`dahlia-admin`, kein voller Name). `guided.sh` prüft den Namen wie das Dashboard (2 bis 32
+Zeichen `a-z0-9_-`, Buchstabe vorn) und fragt erneut bei Namen, die das System oder Dahlias
+Pakete selbst nutzen (`root`, `docker`, `dahlia`, `dahlia-*`, `systemd-*` …). Dasselbe Konto
+gilt für Konsole, SSH und das Terminal im Dashboard; der Einrichtungsassistent schlägt den
+Namen für das Dashboard-Konto vor (erstes gültiges Mitglied der Gruppe `sudo`), und das
+Terminal meldet sich voreingestellt mit dem Namen des Dashboard-Kontos an. Angezeigt wird
+nur der Name. Danach fragt `guided.sh`:
 
 1. Systemplatte, mit Gerät, Größe, Modell und Seriennummer. Das Installationsmedium wird
    nie angeboten.
@@ -27,13 +34,13 @@ dem Tastaturlayout und dem Passwort für `dahlia-admin`. Danach fragt `guided.sh
 3. Zeitzone
 4. Netzwerk des installierten Systems: DHCP oder statisch (Adresse mit Präfix, Gateway,
    DNS). Der Installer selbst braucht DHCP und Internet.
-5. SSH-Schlüssel für `dahlia-admin` (optional)
+5. SSH-Schlüssel für das Konto (optional)
 6. Zusammenfassung mit Warnung, dass alle Daten auf der gewählten Platte gelöscht werden.
    "No" führt zurück zur Plattenauswahl, die Antworten bleiben vorbelegt.
 
 Jede Frage hat "Go Back". `late-command.sh` schreibt die Antworten mit `apply-answers.sh`
 ins Zielsystem (`/etc/hostname`, `/etc/hosts`, `/etc/timezone`,
-`/etc/network/interfaces`, `/etc/resolv.conf`, `~dahlia-admin/.ssh/authorized_keys`),
+`/etc/network/interfaces`, `/etc/resolv.conf`, `~<konto>/.ssh/authorized_keys`),
 bevor die Dahlia-Pakete installiert werden. Das Passwort ist nicht abgelaufen.
 
 Unbeaufsichtigt (`dahlia-auto.cfg`, Kernel-Parameter `dahlia.mode=auto`): keine Fragen.
@@ -41,7 +48,7 @@ Gibt es genau eine Kandidatin, nimmt `pick-disk.sh` sie ohne Rückfrage; bei meh
 der Installer. Servername `dahlia`, Tastatur Deutsch, Zeitzone Europe/Berlin, Benutzer
 `dahlia-admin` mit dem Startpasswort `dahlia`, das beim ersten Login geändert werden muss.
 
-In beiden Modi: Benutzer `dahlia-admin` (UID 1001, sudo), root ohne Passwort. Am Ende
+In beiden Modi: das Konto hat UID 1001 und sudo, root kein Passwort. Am Ende
 installiert `late-command.sh` die Dahlia-Pakete, die auf der ISO unter `/dahlia/pool`
 liegen.
 
@@ -630,7 +637,7 @@ Die Seite Terminal im Dashboard ist eine Shell im Browser (xterm.js, MIT, unter
 3. `dahlia-terminal.service` läuft als `dahlia-term` ohne Rechte und startet je Sitzung
    `su -l <Benutzer>` in einem Pseudo-Terminal. `su` fragt das Linux-Passwort; Root-Rechte
    gibt es danach mit `sudo` wie bei SSH. Erlaubt sind nur Konten ab UID 1000 mit
-   Login-Shell, voreingestellt `dahlia-admin`.
+   Login-Shell, voreingestellt das Konto mit dem Namen des Dashboard-Kontos.
 
 Höchstens 4 Sitzungen, Trennung nach 15 Minuten ohne Eingabe. Beginn und Ende jeder
 Sitzung (Linux-Konto, Dashboard-Konto, IP) stehen im Journal von `dahlia-terminal`.

@@ -13,7 +13,7 @@
   "setup.title": "Einrichtung",
   "setup.intro": "Lege das Konto für das Dashboard an. Den Einrichtungscode zeigt der Server auf dem Bildschirm und beim SSH-Login an.",
   "setup.code": "Einrichtungscode",
-  "setup.hint": "Das Konto gilt nur für das Dashboard, nicht für SSH. Der Servername ist optional, der Server ist danach unter <name>.local erreichbar.",
+  "setup.hint": "Vorgeschlagen ist der Name aus der Installation: Dashboard, Konsole, SSH und Terminal nutzen dann denselben Namen. Das Passwort hier gilt nur für das Dashboard. Der Servername ist optional, der Server ist danach unter <name>.local erreichbar.",
   "setup.submit": "Einrichten",
   "setup.done": "Einrichtung abgeschlossen.",
   "login.title": "Anmelden",

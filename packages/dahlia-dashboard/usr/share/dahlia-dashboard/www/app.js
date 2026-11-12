@@ -351,7 +351,11 @@ function setLoggedIn(on) {
   document.getElementById("sidebar").hidden = !on;
   document.getElementById("logout").hidden = !on;
   document.getElementById("menu").hidden = !on;
-  if (!on) stopStats();
+  if (!on) {
+    stopStats();
+    // The next account fills in its own name.
+    document.querySelector("#terminal-form [name=user]").value = "";
+  }
 }
 
 function showLogin() {
@@ -2793,6 +2797,9 @@ function loadScript(src) {
 }
 
 async function loadTerminal() {
+  // Log in as the Linux account with the dashboard's name unless changed.
+  const userField = document.querySelector("#terminal-form [name=user]");
+  if (!userField.value) userField.value = (await api("GET", "state")).user || "";
   if (term) { termFit.fit(); return; }
   const css = document.createElement("link");
   css.rel = "stylesheet";
@@ -4673,7 +4680,11 @@ async function start() {
   bindVpn();
   try {
     const state = await api("GET", "state");
-    if (state.setup_required) show("setup");
+    if (state.setup_required) {
+      // The account from the installer: same name for dashboard and terminal.
+      if (state.account) document.querySelector("#setup-form [name=username]").value = state.account;
+      show("setup");
+    }
     else if (state.user) { applyRole(state.role, state.user); setLoggedIn(true); await open("overview"); }
     else showLogin();
   } catch (err) {

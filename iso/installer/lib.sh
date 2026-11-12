@@ -42,6 +42,18 @@ valid_cidr() {
     [ "$prefix" -ge 8 ] && [ "$prefix" -le 30 ] && valid_ipv4 "${1%/*}"
 }
 
+# Linux account name, also used for the dashboard and the terminal: 2 to 32
+# characters as the dashboard accepts them, and not a name the system or
+# Dahlia's packages use themselves.
+valid_account() {
+    case "$1" in
+        ''|[!a-z]*|*[!a-z0-9_-]*) return 1 ;;
+        root|nobody|daemon|bin|sys|adm|sudo|users|staff|docker|sshd|messagebus) return 1 ;;
+        dahlia|dahlia-*|systemd-*) return 1 ;;
+    esac
+    [ "${#1}" -ge 2 ] && [ "${#1}" -le 32 ]
+}
+
 # One OpenSSH public key line: type, base64 blob, optional comment.
 valid_ssh_key() {
     case "$1" in

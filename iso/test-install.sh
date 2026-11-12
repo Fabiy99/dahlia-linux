@@ -24,6 +24,7 @@ OUTDIR="$ROOT/build/test-$MODE-$INSTALL"
 # Answers of the guided test. QEMU user networking: guest 10.0.2.15,
 # gateway 10.0.2.2, DNS 10.0.2.3.
 GUIDED_HOST=nas-test
+GUIDED_USER=fabi
 GUIDED_PASS='Dahlia-Test-Pass-9'
 GUIDED_TZ=Europe/Vienna
 
@@ -80,6 +81,7 @@ case "$INSTALL" in
         extra="$extra keymap=us preseed/file=/cdrom/dahlia/test-answers.cfg"
         ssh-keygen -q -t ed25519 -N '' -C dahlia-test -f "$OUTDIR/id_test"
         {
+            echo "d-i passwd/username string $GUIDED_USER"
             echo "d-i passwd/user-password password $GUIDED_PASS"
             echo "d-i passwd/user-password-again password $GUIDED_PASS"
             echo "d-i dahlia/disk select /dev/vda"
@@ -217,7 +219,7 @@ else
     ssh_ok=0
     for _ in $(seq 1 24); do
         if out="$(timeout 30 sshpass -p "$GUIDED_PASS" ssh "${ssh_opts[@]}" \
-                -o PubkeyAuthentication=no dahlia-admin@127.0.0.1 hostname 2>&1)"; then
+                -o PubkeyAuthentication=no "$GUIDED_USER@127.0.0.1" hostname 2>&1)"; then
             ssh_ok=1
             break
         fi
@@ -231,7 +233,7 @@ else
     [ "$(tail -n1 <<<"$out")" = "$GUIDED_HOST" ] || ssh_fail "host name is '$out'"
     echo "OK: password login, host name $GUIDED_HOST"
     facts="$(timeout 30 ssh "${ssh_opts[@]}" -i "$OUTDIR/id_test" -o BatchMode=yes \
-        -o PasswordAuthentication=no dahlia-admin@127.0.0.1 \
+        -o PasswordAuthentication=no "$GUIDED_USER@127.0.0.1" \
         'cat /etc/timezone; grep -c "inet static" /etc/network/interfaces; cat /etc/resolv.conf' \
         2>>"$OUTDIR/ssh.log")" || ssh_fail "ssh key login failed"
     echo "$facts"
