@@ -552,6 +552,17 @@ def test_settings_endpoints(env):
     assert client.post("/api/settings/network", json={"mode": "dhcp"}).status_code == 403
 
 
+def test_recycle_endpoint(env):
+    client, agent, _ = logged_in(env)
+    agent.calls.clear()
+    client.post("/api/shares/media", json={"security": "public", "recycle_days": 14},
+                headers=CSRF)
+    client.post("/api/shares/media/empty-recycle", headers=CSRF)
+    assert agent.calls[0][1]["recycle_days"] == 14
+    assert agent.calls[1] == ("shares.empty_recycle", {"name": "media"})
+    assert client.post("/api/shares/media/empty-recycle").status_code == 403
+
+
 def test_shares_endpoints(env):
     client, agent, _ = logged_in(env)
     agent.calls.clear()
@@ -567,7 +578,7 @@ def test_shares_endpoints(env):
         ("shares.list", {}),
         ("shares.set", {"name": "media", "comment": "", "security": "private",
                         "users": {"anna": "rw"}, "time_machine": False,
-                        "time_machine_size": 0, "nfs": False}),
+                        "time_machine_size": 0, "nfs": False, "recycle_days": 0}),
         ("shares.remove", {"name": "media"}),
         ("shares.user_add", {"name": "anna", "password": "geheim123"}),
         ("shares.user_password", {"name": "anna", "password": "neu12345"}),

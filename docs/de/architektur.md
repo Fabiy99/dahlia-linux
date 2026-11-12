@@ -278,7 +278,8 @@ Protokoll: eine Anfrage pro Verbindung, je eine JSON-Zeile hin und zurück.
 | `settings.firewall` / `settings.set_firewall` | `enabled`, `networks` (CIDR-Liste, höchstens 20) | `/etc/dahlia/firewall.json`, `nft -c -f` und `nft -f` mit `/run/dahlia/firewall.nft` |
 | `settings.schedules` / `settings.set_schedule` | `job`, `frequency`, `time`, `weekday`, `monthday` | Drop-in `OnCalendar=` für die Timer |
 | `shares.list` | – | Freigaben, SMB-Benutzer, ob `/mnt/user` eingehängt ist, ob `smbd` und `nfs-server` laufen |
-| `shares.set` / `shares.remove` | `name`, `comment`, `security` (`public`/`secure`/`private`), `users` (Name → `rw`/`ro`), `time_machine`, `time_machine_size` (GB, 0 = ohne Grenze), `nfs` | erzeugt `/etc/samba/smb.conf`, prüft mit `testparm`, startet `smbd`; bei `nfs` `/etc/exports.d/dahlia.exports`, `exportfs -ra`, `nfs-server` |
+| `shares.set` / `shares.remove` | `name`, `comment`, `security` (`public`/`secure`/`private`), `users` (Name → `rw`/`ro`), `time_machine`, `time_machine_size` (GB, 0 = ohne Grenze), `nfs`, `recycle_days` (0 = kein Papierkorb, bis 365) | erzeugt `/etc/samba/smb.conf`, prüft mit `testparm`, startet `smbd`; bei `nfs` `/etc/exports.d/dahlia.exports`, `exportfs -ra`, `nfs-server` |
+| `shares.empty_recycle` | `name` | leert `<Freigabe>/.recycle` sofort |
 | `shares.user_add` / `shares.user_password` / `shares.user_remove` | `name`, `password` | `useradd`/`userdel` (Gruppen `dahlia`, `dahlia-smb`), `smbpasswd` über stdin |
 | `notify.get` | – | Kanäle ohne Geheimnisse, Schalter, letzte Meldungen |
 | `notify.set` | `channel` (`email`/`ntfy`/`gotify`), `settings` | `/etc/dahlia/notify.json` (0600); leeres Passwort/Token behält das alte |
@@ -430,6 +431,11 @@ SMB-Freigaben (M9c):
   `_adisk._tcp`) für macOS. Ohne Freigabe sind `smbd` und `wsdd` aus.
 - Time Machine: `fruit:time machine` pro Freigabe, optional mit Größengrenze
   (`fruit:time machine max size`). Mehrere Macs auf einer Freigabe teilen sich die Grenze.
+- Papierkorb (M32): mit `recycle_days` > 0 verschiebt `vfs_recycle` über SMB gelöschte Dateien
+  nach `<Freigabe>/.recycle` (Ordnerbaum bleibt, Versionen bei gleichem Namen, Zugriffszeit =
+  Löschzeit). `dahlia-recycle.timer` löscht täglich, was älter als die eingestellten Tage ist,
+  und leere Ordner; Symlinks werden nicht verfolgt. `shares.empty_recycle` leert sofort.
+  Zurückholen: Datei aus `.recycle` zurückkopieren. Über NFS Gelöschtes ist sofort weg.
 
 NFS-Freigaben (M21):
 

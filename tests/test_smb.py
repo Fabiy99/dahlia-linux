@@ -1,6 +1,7 @@
 """shares.* actions of dahlia-agent: SMB shares and users."""
 
 import json
+import os
 
 import pytest
 from dahlia_agent import actions, protocol, smb
@@ -39,7 +40,8 @@ def test_create_public_share(ctx):
     assert "_smb._tcp" in (ctx.etc / "avahi/services/dahlia-smb.service").read_text()
     saved = json.loads((ctx.etc / "dahlia/shares.json").read_text())["shares"]
     assert saved == [{"name": "media", "comment": "Filme", "security": "public", "users": {},
-                      "time_machine": False, "time_machine_size": 0, "nfs": False}]
+                      "time_machine": False, "time_machine_size": 0, "nfs": False,
+                      "recycle_days": 0}]
 
 
 def test_private_share_with_users_and_time_machine(ctx):
@@ -259,3 +261,76 @@ def test_time_machine_size(ctx):
     assert smb.load_shares(ctx)[0]["time_machine_size"] == 0
     assert err_code(run(ctx, "shares.set", {"name": "media", "security": "public",
                                             "time_machine_size": -1})) == protocol.INVALID_PARAMS
+
+
+# --- recycle bin ------------------------------------------------------------------
+
+
+def test_recycle_bin_config(ctx):
+    res = run(ctx, "shares.set", {"name": "media", "security": "public", "recycle_days": 30})
+    assert res["result"]["recycle_days"] == 30
+    text = conf(ctx)
+    assert "   vfs objects = catia fruit streams_xattr recycle\n" in text
+    assert "   recycle:repository = .recycle\n" in text
+    assert "   recycle:keeptree = yes\n" in text and "   recycle:touch = yes\n" in text
+    assert smb.load_shares(ctx)[0]["recycle_days"] == 30
+    run(ctx, "shares.set", {"name": "media", "security": "public"})
+    assert "recycle:" not in conf(ctx).split("[media]")[1]
+
+
+def test_recycle_days_rejects(ctx):
+    for days in (-1, 366):
+        assert err_code(run(ctx, "shares.set", {"name": "media", "security": "public",
+                                                "recycle_days": days})) == protocol.INVALID_PARAMS
+
+
+def touch(path, age_days, now):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("x" * 10)
+    t = now - age_days * 86400
+    os.utime(path, (t, t))
+
+
+def test_clean_recycle_by_age(ctx):
+    now = 2_000_000_000
+    ctx.clock = lambda: now
+    run(ctx, "shares.set", {"name": "media", "security": "public", "recycle_days": 7})
+    bin_ = ctx.pool / "media/.recycle"
+    touch(bin_ / "Filme/alt.mkv", 10, now)
+    touch(bin_ / "Filme/neu.mkv", 2, now)
+    touch(bin_ / "weg/ganz/alt.txt", 30, now)
+    outside = ctx.pool / "media/Filme/alt.mkv"
+    touch(outside, 400, now)
+    out = smb.clean_recycle(ctx)
+    assert out == {"media": {"files": 2, "bytes": 20}}
+    assert (bin_ / "Filme/neu.mkv").exists() and not (bin_ / "Filme/alt.mkv").exists()
+    assert not (bin_ / "weg").exists()  # empty folders go too
+    assert outside.exists()  # never outside the bin
+
+
+def test_clean_recycle_skips_symlinked_bin(ctx, tmp_path):
+    now = 2_000_000_000
+    ctx.clock = lambda: now
+    run(ctx, "shares.set", {"name": "media", "security": "public", "recycle_days": 1})
+    target = tmp_path / "elsewhere"
+    touch(target / "important.txt", 100, now)
+    (ctx.pool / "media/.recycle").symlink_to(target)
+    assert smb.clean_recycle(ctx) == {}
+    assert run(ctx, "shares.empty_recycle", {"name": "media"})["result"]["files"] == 0
+    assert (target / "important.txt").exists()
+
+
+def test_empty_recycle(ctx, tmp_path):
+    run(ctx, "shares.set", {"name": "media", "security": "public", "recycle_days": 30})
+    bin_ = ctx.pool / "media/.recycle"
+    touch(bin_ / "a/b.txt", 0, 2_000_000_000)
+    target = tmp_path / "elsewhere"
+    touch(target / "keep.txt", 0, 2_000_000_000)
+    (bin_ / "link").symlink_to(target)
+    res = run(ctx, "shares.empty_recycle", {"name": "media"})["result"]
+    assert res["files"] == 1
+    assert bin_.is_dir() and list(bin_.iterdir()) == []
+    assert (target / "keep.txt").exists()
+    assert err_code(run(ctx, "shares.empty_recycle", {"name": "other"})) == protocol.INVALID_PARAMS
+    assert err_code(run(ctx, "shares.empty_recycle", {"name": "../etc"})) \
+        == protocol.INVALID_PARAMS
