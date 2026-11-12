@@ -52,6 +52,7 @@ CONFIG_FILE = Path("/etc/dahlia/domains.json")
 TLS_DIR = Path("/etc/dahlia/tls")
 NGINX_DIR = Path("/etc/nginx/conf.d")
 ALIAS_FILE = Path("/var/lib/dahlia/mdns-aliases.json")
+AVAHI_CONF = Path("/etc/avahi/avahi-daemon.conf")
 
 # What {DOMAIN} in app templates stands for: <app>.local is the mDNS alias.
 APP_DOMAIN = "local"
@@ -146,6 +147,35 @@ def is_private(addr: str) -> bool:
     return any(ip in net for net in PRIVATE_NETS)
 
 
+def lan_interfaces() -> list[str]:
+    """Interfaces with a private IPv4 address, without Docker and VM bridges."""
+    data = run_json(["ip", "-4", "-j", "addr", "show", "scope", "global"]) or []
+    names = []
+    for iface in data:
+        name = str(iface.get("ifname", ""))
+        if not name or name.startswith(SKIP_IFACES) or name in names:
+            continue
+        if any(is_private(a.get("local")) for a in iface.get("addr_info", [])):
+            names.append(name)
+    return names
+
+
+def avahi_hostname() -> str | None:
+    """The name avahi announces; "<host>-2" after it saw a conflict."""
+    try:
+        proc = subprocess.run(
+            ["busctl", "call", "--system", "org.freedesktop.Avahi", "/",
+             "org.freedesktop.Avahi.Server", "GetHostNameFqdn"],
+            capture_output=True, text=True, timeout=5, stdin=subprocess.DEVNULL)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    m = re.fullmatch(r's "(.+)\.local"\s*', proc.stdout)
+    if proc.returncode != 0 or not m:
+        return None
+    name = m.group(1).lower()
+    return name if HOST_RE.fullmatch(name) else None
+
+
 def lan_addresses() -> list[str]:
     """Private IPv4 addresses of LAN interfaces, primary address first."""
     data = run_json(["ip", "-4", "-j", "addr", "show", "scope", "global"]) or []
@@ -171,13 +201,18 @@ class Host:
 
     name: str
     addresses: list[str]
+    interfaces: list[str] = field(default_factory=list)
+    # Name avahi announces when it differs from name (conflict rename).
+    mdns_name: str | None = None
 
     @classmethod
     def detect(cls) -> "Host":
         name = socket.gethostname().split(".")[0].lower()
         if not HOST_RE.fullmatch(name):
             name = "dahlia"
-        return cls(name=name, addresses=lan_addresses())
+        announced = avahi_hostname()
+        return cls(name=name, addresses=lan_addresses(), interfaces=lan_interfaces(),
+                   mdns_name=announced if announced != name else None)
 
     @property
     def primary(self) -> str | None:
@@ -356,7 +391,34 @@ nameConstraints = critical,{",".join(constraints)}
 
 
 def server_names(host: Host) -> list[str]:
-    return [f"{host.name}.local"]
+    names = [f"{host.name}.local"]
+    if host.mdns_name and host.mdns_name != host.name:
+        names.append(f"{host.mdns_name}.local")
+    return names
+
+
+def avahi_conf(text: str, interfaces: list[str]) -> str:
+    """avahi-daemon.conf with allow-interfaces limited to the LAN interfaces.
+
+    On Docker bridges avahi sees its own announcements and renames the host
+    to <name>-2.local, which the server certificate does not cover.
+    """
+    lines = [ln for ln in text.splitlines() if not ln.strip().startswith("allow-interfaces=")]
+    if not interfaces:
+        return "\n".join(lines) + "\n"
+    entry = "allow-interfaces=" + ",".join(interfaces)
+    for i, ln in enumerate(lines):
+        if ln.strip() == "[server]":
+            lines.insert(i + 1, entry)
+            break
+    else:
+        lines += ["[server]", entry]
+    return "\n".join(lines) + "\n"
+
+
+def restart_avahi() -> None:
+    subprocess.run(["systemctl", "try-restart", "avahi-daemon.service"], check=False,
+                   capture_output=True, stdin=subprocess.DEVNULL)
 
 
 def app_names(settings: Settings, host: Host, apps: list[AppProxy]) -> list[str]:
@@ -509,6 +571,7 @@ class Paths:
     tls: TlsPaths = field(default_factory=TlsPaths)
     nginx: Path = NGINX_DIR
     aliases: Path = ALIAS_FILE
+    avahi: Path = AVAHI_CONF
 
 
 @dataclass
@@ -517,11 +580,20 @@ class Domains:
     host: Host | None = None
     nginx_reload: Callable = reload_nginx
     mdns_reload: Callable = reload_mdns
+    avahi_restart: Callable = restart_avahi
 
     def _host(self) -> Host:
         if self.host is None:
             self.host = Host.detect()
         return self.host
+
+    def limit_avahi(self, host: Host) -> None:
+        try:
+            text = self.paths.avahi.read_text()
+        except FileNotFoundError:
+            return
+        if host.interfaces and write_file(self.paths.avahi, avahi_conf(text, host.interfaces)):
+            self.avahi_restart()
 
     def settings(self) -> Settings:
         return Settings.load(self.paths.config)
@@ -531,6 +603,7 @@ class Domains:
         s = self.settings()
         host = self._host()
         tls = self.paths.tls
+        self.limit_avahi(host)
         ca_new = ensure_ca(tls, host)
         cert_new = ensure_server_cert(tls, server_names(host), host.addresses)
         names = app_names(s, host, apps)

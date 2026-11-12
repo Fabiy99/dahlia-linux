@@ -844,6 +844,12 @@ for every app with a web UI via `avahi-publish` on the primary IPv4 address. Whe
 address changes, the aliases follow within 10 seconds. An app named like the server gets no
 alias.
 
+`domains apply` limits avahi to the LAN interfaces (without Docker and VM bridges) through
+`allow-interfaces` in `/etc/avahi/avahi-daemon.conf`. On the Docker bridges avahi otherwise
+saw its own answers and renamed the server to `<server>-2.local`; the desktop app then found
+it under a name the certificate did not hold. If avahi still announces another name, it is
+added to the server certificate as well.
+
 Certificates (`domains`, part of `agent`):
 
 | File | Content |

@@ -866,6 +866,12 @@ mit Web-Oberfläche `<app>.local` per `avahi-publish` auf der primären IPv4-Adr
 sich die Adresse, folgen die Aliase nach höchstens 10 Sekunden. Eine App, die so heißt wie
 der Server, bekommt keinen Alias.
 
+`domains apply` beschränkt avahi über `allow-interfaces` in `/etc/avahi/avahi-daemon.conf`
+auf die LAN-Schnittstellen (ohne Docker- und VM-Brücken). Auf den Docker-Brücken sah avahi
+sonst die eigenen Antworten und benannte den Server in `<server>-2.local` um; die Desktop-App
+fand ihn dann unter einem Namen, den das Zertifikat nicht enthielt. Meldet avahi trotzdem
+einen anderen Namen, kommt er zusätzlich ins Server-Zertifikat.
+
 Zertifikate (`domains`, Teil von `agent`):
 
 | Datei | Inhalt |
