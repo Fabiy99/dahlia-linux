@@ -72,7 +72,8 @@ def logged_in(env):
 
 def test_state_before_setup(env):
     client, *_ = env
-    assert client.get("/api/state").json() == {"setup_required": True, "user": None}
+    assert client.get("/api/state").json() == {"setup_required": True, "user": None,
+                                                 "role": None}
 
 
 def test_setup_needs_code(env):
@@ -88,7 +89,8 @@ def test_setup_creates_account_once(env):
     r = do_setup(client, code.lower().replace("-", " "), hostname="nas")
     assert r.status_code == 200
     assert ("system.set_hostname", {"hostname": "nas"}) in agent.calls
-    assert client.get("/api/state").json() == {"setup_required": False, "user": "fabian"}
+    assert client.get("/api/state").json() == {"setup_required": False, "user": "fabian",
+                                                 "role": "admin"}
     assert setupcode.current(cfg.run_dir) is None
     assert not (cfg.run_dir / setupcode.ISSUE_FILE).exists()
     assert (cfg.state_dir / "users.json").stat().st_mode & 0o777 == 0o600
@@ -885,3 +887,95 @@ def test_token_store_limit(tmp_path):
     with pytest.raises(auth.AuthError, match="token_limit"):
         store.create("one more")
     assert store.verify(None) is None and store.verify("dahlia_" + "x" * 200) is None
+
+
+# --- accounts and roles -----------------------------------------------------------
+
+
+def login_as(client, name, password):
+    client.cookies.clear()
+    r = client.post("/api/login", json={"username": name, "password": password}, headers=CSRF)
+    assert r.status_code == 200, r.text
+    return r
+
+
+def test_viewer_account_reads_but_cannot_change(env):
+    client, agent, _ = logged_in(env)
+    r = client.post("/api/users", json={"name": "anna", "password": "lesen-only-123",
+                                        "role": "viewer"}, headers=CSRF)
+    assert r.status_code == 200
+    users = client.get("/api/users").json()["users"]
+    assert users == [{"name": "anna", "role": "viewer", "totp": False},
+                     {"name": "fabian", "role": "admin", "totp": False}]
+    login_as(client, "anna", "lesen-only-123")
+    assert client.get("/api/state").json()["role"] == "viewer"
+    assert client.get("/api/system").status_code == 200
+    agent.calls.clear()
+    assert client.post("/api/system/reboot", headers=CSRF).status_code == 403
+    assert client.post("/api/apps/kuma/stop", headers=CSRF).status_code == 403
+    assert client.post("/api/settings/firewall", json={"enabled": False},
+                       headers=CSRF).json()["error"] == "error.admin_only"
+    assert agent.calls == []
+    for path in ("/api/users", "/api/tokens", "/api/diagnostics"):
+        assert client.get(path).status_code == 403, path
+    agent.replies["apps.list"] = {"apps": [{"id": "db", "login": {"password": "s3cret"},
+                                            "custom": {"env": {"A": "b"}}}]}
+    app = client.get("/api/apps").json()["installed"][0]
+    assert app["login"] is None and app["custom"] is None
+    # Own password stays possible.
+    assert client.post("/api/account/password", json={"old": "lesen-only-123",
+                                                      "new": "neues-passwort-1"},
+                       headers=CSRF).status_code == 200
+
+
+def test_user_management_guards(env):
+    client, _, _ = logged_in(env)
+    assert client.post("/api/users", json={"name": "fabian", "password": "x" * 12},
+                       headers=CSRF).status_code == 409
+    assert client.post("/api/users", json={"name": "Bad Name", "password": "x" * 12},
+                       headers=CSRF).status_code == 400
+    assert client.post("/api/users", json={"name": "ben", "password": "x" * 12,
+                                           "role": "root"}, headers=CSRF).status_code == 400
+    # the only admin can neither be demoted nor removed
+    assert client.post("/api/users/fabian/role", json={"role": "viewer"},
+                       headers=CSRF).json()["error"] == "error.last_admin"
+    assert client.post("/api/users/fabian/remove", headers=CSRF).json()["error"] \
+        == "error.remove_self"
+    client.post("/api/users", json={"name": "ben", "password": "x" * 12, "role": "admin"},
+                headers=CSRF)
+    assert client.post("/api/users/fabian/role", json={"role": "viewer"},
+                       headers=CSRF).status_code == 200
+    # fabian is a viewer now and cannot undo that himself
+    assert client.post("/api/users/fabian/role", json={"role": "admin"},
+                       headers=CSRF).status_code == 403
+    login_as(client, "ben", "x" * 12)
+    assert client.post("/api/users/ben/role", json={"role": "viewer"},
+                       headers=CSRF).json()["error"] == "error.last_admin"
+    assert client.post("/api/users/nobody/remove", headers=CSRF).status_code == 400
+
+
+def test_admin_resets_password_and_removes_user(env):
+    client, _, cfg = logged_in(env)
+    client.post("/api/users", json={"name": "anna", "password": "lesen-only-123"}, headers=CSRF)
+    other = TestClient(client.app)
+    login_as(other, "anna", "lesen-only-123")
+    assert other.get("/api/system").status_code == 200
+    assert client.post("/api/users/anna/password", json={"password": "kurz"},
+                       headers=CSRF).status_code == 400
+    assert client.post("/api/users/anna/password", json={"password": "neu-gesetzt-123"},
+                       headers=CSRF).status_code == 200
+    assert other.get("/api/system").status_code == 401  # logged out
+    login_as(other, "anna", "neu-gesetzt-123")
+    assert client.post("/api/users/anna/remove", headers=CSRF).status_code == 200
+    assert other.get("/api/system").status_code == 401
+    assert [u["name"] for u in client.get("/api/users").json()["users"]] == ["fabian"]
+
+
+def test_old_accounts_are_admins(env):
+    client, _, cfg = logged_in(env)
+    path = cfg.state_dir / "users.json"
+    data = json.loads(path.read_text())
+    data["users"]["fabian"].pop("role")
+    path.write_text(json.dumps(data))
+    assert client.get("/api/state").json()["role"] == "admin"
+    assert client.get("/api/users").status_code == 200
