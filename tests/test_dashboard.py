@@ -23,11 +23,14 @@ class FakeAgent:
     def __init__(self):
         self.calls = []
         self.errors = {}
+        self.replies = {}
 
     def __call__(self, action, params):
         self.calls.append((action, params))
         if action in self.errors:
             raise self.errors[action]
+        if action in self.replies:
+            return self.replies[action]
         if action == "system.info":
             return {"hostname": "dahlia", "version": "0.2.0"}
         if action in ("apps.list", "apps.catalog"):
@@ -829,3 +832,68 @@ def test_disk_tests_routes(env):
         ("disks.burnin_clear", {"device": "/dev/sdb"}),
     ]
     assert client.post("/api/jobs/smart-short/start", headers=CSRF).status_code == 200
+
+
+# --- API tokens -----------------------------------------------------------------
+
+
+def test_api_token_reads_values_only(env):
+    client, agent, cfg = logged_in(env)
+    res = client.post("/api/tokens", json={"name": "Home Assistant"}, headers=CSRF)
+    assert res.status_code == 200
+    token = res.json()["token"]
+    assert token.startswith("dahlia_") and len(token) > 40
+    # Only the hash is stored.
+    stored = (cfg.state_dir / "tokens.json").read_text()
+    assert token not in stored and json.loads(stored)["tokens"][0]["name"] == "Home Assistant"
+    assert (cfg.state_dir / "tokens.json").stat().st_mode & 0o777 == 0o600
+    listed = client.get("/api/tokens").json()["tokens"]
+    assert [t["name"] for t in listed] == ["Home Assistant"] and "hash" not in listed[0]
+
+    api = TestClient(client.app)  # no cookie
+    bearer = {"Authorization": f"Bearer {token}"}
+    for path in ("/api/system", "/api/stats", "/api/storage", "/api/hardware", "/api/jobs",
+                 "/api/docker", "/api/parity", "/api/history"):
+        assert api.get(path, headers=bearer).status_code == 200, path
+    assert api.get("/api/system").status_code == 401
+    wrong = {"Authorization": "Bearer dahlia_wrong"}
+    assert api.get("/api/system", headers=wrong).status_code == 401
+    # Not for settings, secrets or changes.
+    assert api.get("/api/notify", headers=bearer).status_code == 401
+    assert api.get("/api/tokens", headers=bearer).status_code == 401
+    assert api.get("/api/history/influx", headers=bearer).status_code == 401
+    assert api.post("/api/system/reboot", headers={**bearer, **CSRF}).status_code == 401
+    assert json.loads((cfg.state_dir / "tokens.json").read_text())["tokens"][0]["last_used"]
+
+
+def test_api_token_hides_app_passwords(env):
+    client, agent, _ = logged_in(env)
+    token = client.post("/api/tokens", json={"name": "x"}, headers=CSRF).json()["token"]
+    agent.replies["apps.list"] = {"apps": [{"id": "db", "login": {"password": "s3cret"},
+                                            "custom": {"environment": {"KEY": "v"}}}]}
+    api = TestClient(client.app)
+    got = api.get("/api/apps", headers={"Authorization": f"Bearer {token}"}).json()
+    assert got["installed"][0]["login"] is None and got["installed"][0]["custom"] is None
+    assert client.get("/api/apps").json()["installed"][0]["login"] == {"password": "s3cret"}
+
+
+def test_api_token_remove_and_limits(env):
+    client, _, _ = logged_in(env)
+    created = client.post("/api/tokens", json={"name": "Homepage"}, headers=CSRF).json()
+    assert client.post("/api/tokens", json={"name": " "}, headers=CSRF).json()["error"] == \
+        "error.token_name"
+    assert client.post("/api/tokens", json={"name": "x"}).status_code == 403
+    assert client.post(f"/api/tokens/{created['id']}/remove", headers=CSRF).status_code == 200
+    api = TestClient(client.app)
+    assert api.get("/api/system", headers={"Authorization": f"Bearer {created['token']}"}
+                   ).status_code == 401
+    assert client.post(f"/api/tokens/{created['id']}/remove", headers=CSRF).status_code == 404
+
+
+def test_token_store_limit(tmp_path):
+    store = auth.TokenStore(tmp_path / "t.json")
+    for i in range(auth.MAX_TOKENS):
+        store.create(f"t{i}")
+    with pytest.raises(auth.AuthError, match="token_limit"):
+        store.create("one more")
+    assert store.verify(None) is None and store.verify("dahlia_" + "x" * 200) is None

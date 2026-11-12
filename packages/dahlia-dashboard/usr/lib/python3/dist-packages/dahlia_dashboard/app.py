@@ -30,7 +30,15 @@ from starlette.background import BackgroundTask
 from starlette.exceptions import HTTPException
 
 from . import setupcode
-from .auth import AuthError, RateLimiter, Session, SessionStore, UserStore, totp_uri
+from .auth import (
+    AuthError,
+    RateLimiter,
+    Session,
+    SessionStore,
+    TokenStore,
+    UserStore,
+    totp_uri,
+)
 
 COOKIE = "dahlia_session"
 CSRF_HEADER = "x-dahlia-request"
@@ -267,6 +275,10 @@ class NotifyEventsBody(BaseModel):
     events: dict[str, bool]
 
 
+class TokenBody(BaseModel):
+    name: str
+
+
 class InfluxBody(BaseModel):
     enabled: bool
     url: str = ""
@@ -353,6 +365,7 @@ def create_app(cfg: Config | None = None) -> FastAPI:
     cfg = cfg or Config()
     users = UserStore(cfg.state_dir / "users.json", clock=cfg.clock)
     sessions = cfg.sessions or SessionStore(path=cfg.state_dir / "sessions.json")
+    tokens = TokenStore(cfg.state_dir / "tokens.json", clock=cfg.clock)
     limiter = cfg.login_limiter
     agent_call = cfg.agent_call or default_agent_call(cfg.agent_socket)
     setup_lock = threading.Lock()
@@ -387,6 +400,16 @@ def create_app(cfg: Config | None = None) -> FastAPI:
         if session is None:
             raise ApiError(401, "error.login_required")
         return session
+
+    def require_reader(request: Request):
+        """Session cookie, or an API token for the read-only endpoints."""
+        session = sessions.get(request.cookies.get(COOKIE))
+        if session is not None:
+            return session
+        scheme, _, value = request.headers.get("authorization", "").partition(" ")
+        if scheme.lower() == "bearer" and tokens.verify(value.strip()) is not None:
+            return None
+        raise ApiError(401, "error.login_required")
 
     def set_session(response: Response, username: str) -> None:
         token = sessions.create(username)
@@ -526,16 +549,36 @@ def create_app(cfg: Config | None = None) -> FastAPI:
 
     authed = [Depends(require_user)]
     changing = [Depends(require_csrf), Depends(require_user)]
+    # Values only, nothing secret: these also accept API tokens.
+    readable = [Depends(require_reader)]
 
-    @app.get("/api/system", dependencies=authed)
+    @app.get("/api/tokens", dependencies=authed)
+    def tokens_list():
+        return {"tokens": tokens.list()}
+
+    @app.post("/api/tokens", dependencies=changing)
+    def tokens_create(body: TokenBody):
+        try:
+            entry, token = tokens.create(body.name)
+        except AuthError as e:
+            raise ApiError(400, f"error.{e}") from None
+        return {**entry, "token": token}
+
+    @app.post("/api/tokens/{token_id}/remove", dependencies=changing)
+    def tokens_remove(token_id: str):
+        if not tokens.delete(token_id):
+            raise ApiError(404, "error.not_found")
+        return {}
+
+    @app.get("/api/system", dependencies=readable)
     def system():
         return agent("system.info")
 
-    @app.get("/api/stats", dependencies=authed)
+    @app.get("/api/stats", dependencies=readable)
     def stats():
         return agent("system.stats")
 
-    @app.get("/api/history", dependencies=authed)
+    @app.get("/api/history", dependencies=readable)
     def history(range: str = "day"):
         return agent("history.get", {"range": range})
 
@@ -561,7 +604,7 @@ def create_app(cfg: Config | None = None) -> FastAPI:
 
     # --- storage --------------------------------------------------------------
 
-    @app.get("/api/storage", dependencies=authed)
+    @app.get("/api/storage", dependencies=readable)
     def storage():
         return agent("storage.list")
 
@@ -613,7 +656,7 @@ def create_app(cfg: Config | None = None) -> FastAPI:
 
     # --- parity ---------------------------------------------------------------
 
-    @app.get("/api/parity", dependencies=authed)
+    @app.get("/api/parity", dependencies=readable)
     def parity():
         return agent("parity.get")
 
@@ -644,7 +687,7 @@ def create_app(cfg: Config | None = None) -> FastAPI:
 
     # --- jobs and updates -----------------------------------------------------
 
-    @app.get("/api/jobs", dependencies=authed)
+    @app.get("/api/jobs", dependencies=readable)
     def jobs():
         return {job: agent("job.status", {"job": job}) for job in JOBS}
 
@@ -699,9 +742,12 @@ def create_app(cfg: Config | None = None) -> FastAPI:
 
     # --- apps -----------------------------------------------------------------
 
-    @app.get("/api/apps", dependencies=authed)
-    def apps():
+    @app.get("/api/apps", dependencies=readable)
+    def apps(request: Request):
         installed = agent("apps.list")["apps"]
+        if sessions.get(request.cookies.get(COOKIE)) is None:
+            # API token: no generated app passwords, no custom container settings.
+            installed = [{**a, "login": None, "custom": None} for a in installed]
         catalog = agent("apps.catalog", {"refresh": False})
         return {
             "installed": installed,
@@ -757,11 +803,11 @@ def create_app(cfg: Config | None = None) -> FastAPI:
 
     # --- docker and hardware -------------------------------------------------
 
-    @app.get("/api/docker", dependencies=authed)
+    @app.get("/api/docker", dependencies=readable)
     def docker_list():
         return agent("docker.list")
 
-    @app.get("/api/docker/stats", dependencies=authed)
+    @app.get("/api/docker/stats", dependencies=readable)
     def docker_stats():
         return agent("docker.stats")
 
@@ -783,7 +829,7 @@ def create_app(cfg: Config | None = None) -> FastAPI:
             raise ApiError(404, "error.not_found")
         return agent("docker.container", {"name": name, "op": op})
 
-    @app.get("/api/hardware", dependencies=authed)
+    @app.get("/api/hardware", dependencies=readable)
     def hardware():
         return agent("system.hardware")
 
