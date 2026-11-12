@@ -2889,8 +2889,9 @@ async function loadAccount() {
   setSidebar(info);
   document.querySelector("#hostname-form [name=hostname]").value = info.hostname;
   // Each card loads on its own; one failing part does not hide the others.
-  await Promise.all([loadTime(), loadNetwork(), loadSpindown(), loadFirewall(), loadSchedules(),
-               loadNotify(), loadUps(), loadInflux(), loadVpn(), loadTotp(), loadTokens()]
+  await Promise.all([loadTime(), loadNetwork(), loadSpindown(), loadPower(), loadDevices(),
+               loadFirewall(), loadSchedules(), loadNotify(), loadUps(), loadInflux(), loadVpn(),
+               loadTotp(), loadTokens()]
     .map((p) => p.catch(sayError)));
 }
 
@@ -2983,6 +2984,49 @@ async function loadSpindown() {
     label.append(sel);
     box.append(label);
   }
+}
+
+// --- settings: power saving and devices -------------------------------------------
+
+function governorLabel(g) {
+  const key = `power.gov_${g}`;
+  const text = t(key);
+  return text === key ? g : `${text} (${g})`;
+}
+
+async function loadPower() {
+  const data = await api("GET", "settings/power");
+  const f = document.getElementById("power-form");
+  const none = !data.available.length;
+  f.hidden = none;
+  document.getElementById("power-none").hidden = !none;
+  if (none) return;
+  fillOptions(f.elements.governor, data.available, governorLabel);
+  f.elements.governor.value = data.saved || (data.available.includes(data.current) ? data.current : data.available[0]);
+  const parts = [t("power.current", { governor: data.current || "–" })];
+  if (data.driver) parts.push(t("power.driver", { driver: data.driver }));
+  if (data.frequencies.length) {
+    parts.push(t("power.mhz", { min: Math.min(...data.frequencies), max: Math.max(...data.frequencies) }));
+  }
+  document.getElementById("power-state").textContent = parts.join(" · ");
+}
+
+function cells(row, values) {
+  for (const v of values) row.append(el("td", "", v === null || v === undefined || v === "" ? "–" : String(v)));
+  return row;
+}
+
+async function loadDevices() {
+  const data = await api("GET", "devices");
+  const pci = document.getElementById("devices-pci");
+  pci.replaceChildren(...data.pci.map((d) => cells(el("tr"),
+    [d.slot, d.class, [d.vendor, d.device].filter(Boolean).join(" "), d.id, d.driver, d.iommu_group])));
+  if (!data.pci.length) pci.append(cells(el("tr"), [t("devices.none")]));
+  const usb = document.getElementById("devices-usb");
+  usb.replaceChildren(...data.usb.filter((d) => !d.hub).map((d) => cells(el("tr"),
+    [`${String(d.bus).padStart(3, "0")}:${String(d.device).padStart(3, "0")}`, d.name, d.id])));
+  if (!usb.children.length) usb.append(cells(el("tr"), [t("devices.none")]));
+  document.getElementById("devices-iommu").textContent = t(data.iommu ? "devices.iommu_on" : "devices.iommu_off");
 }
 
 async function loadFirewall() {
@@ -3694,6 +3738,17 @@ function bindForms() {
     say(t("settings.net_kept"), "ok");
     setTimeout(() => loadNetwork().catch(sayError), 1500);
   }));
+
+  document.getElementById("power-form").addEventListener("submit", (e) => {
+    e.preventDefault();
+    guarded(e.submitter, async () => {
+      await api("POST", "settings/power", { governor: e.target.elements.governor.value });
+      say(t("power.saved"), "ok");
+      await loadPower();
+    });
+  });
+  const devRefresh = document.getElementById("devices-refresh");
+  devRefresh.addEventListener("click", () => guarded(devRefresh, loadDevices));
 
   document.getElementById("spindown-form").addEventListener("submit", (e) => {
     e.preventDefault();
