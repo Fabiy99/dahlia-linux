@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Pairing page (bundled ui/ only; the server's dashboard gets no access).",
+  "windows": ["main"],
+  "permissions": ["core:default"]
+}

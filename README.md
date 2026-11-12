@@ -42,6 +42,9 @@ Updates über das apt-Repo, im Dashboard unter "Updates".
   Widgets ein- und ausblenden, Wetter für mehrere Orte (Open-Meteo); der Hintergrund folgt dem
   Wetter. Ein Monitor am Server zeigt denselben Startbildschirm mit Uhr, Adresse und QR-Code,
   vor der Einrichtung auch den Einrichtungscode.
+- **Desktop-App:** für Windows, macOS und Linux (`desktop/`). Findet den Server im Netz, koppelt
+  sich über den Fingerabdruck der lokalen CA und zeigt das Dashboard im eigenen Fenster; Apps wie
+  Jellyfin öffnen sich per Klick in einem App-Fenster, ohne IP-Adressen.
 - **Anmeldung:** eigenes Dashboard-Konto aus dem Einrichtungs-Assistenten, optional mit
   Zwei-Faktor-Login (TOTP).
 
@@ -199,6 +202,9 @@ updates from the apt repository, in the dashboard under "Updates".
   widgets can be shown or hidden, weather for several places (Open-Meteo); the background follows
   the weather. A monitor attached to the server shows the same start screen with clock, address and
   QR code, before setup also the setup code.
+- **Desktop app:** for Windows, macOS and Linux (`desktop/`). Finds the server in the network,
+  pairs via the fingerprint of the local CA and shows the dashboard in its own window; apps such as
+  Jellyfin open in an app window with one click, no IP addresses.
 - **Login:** own dashboard account from the setup wizard, optionally with two-factor login (TOTP).
 
 ### Testing in a VM

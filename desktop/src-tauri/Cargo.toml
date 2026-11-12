@@ -1,0 +1,26 @@
+[package]
+name = "dahlia-desktop"
+version = "0.1.0"
+description = "Desktop app for Dahlia Linux servers"
+license = "GPL-3.0-or-later"
+repository = "https://github.com/Fabiy99/dahlia-linux"
+edition = "2021"
+rust-version = "1.77"
+
+[lib]
+name = "dahlia_desktop_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+mdns-sd = "0.13"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "blocking"] }
+sha2 = "0.10"
+base64 = "0.22"
+url = "2"
+sys-locale = "0.3"

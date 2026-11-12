@@ -109,6 +109,8 @@ function render() {
   document.getElementById("screen-host").textContent =
     [data.hostname && `${data.hostname}.local`, data.address].filter(Boolean).join(" · ");
   document.getElementById("screen-url").textContent = data.url || "";
+  document.getElementById("screen-fp").textContent = data.ca_fingerprint
+    ? t("screen.fingerprint", { fp: data.ca_fingerprint }) : "";
   const setup = document.getElementById("screen-setup");
   setup.hidden = !data.setup_code;
   document.getElementById("screen-code").textContent = data.setup_code || "";

@@ -620,6 +620,23 @@ dashboard account exists, it also shows the setup code.
 
 Without a graphics device the service does not start (`ExecCondition`), tty1 stays as before.
 
+### Desktop app (from milestone 39)
+
+`desktop/` holds a Tauri 2 app (Rust, system webview) for Windows, macOS and Linux. It shows the
+same dashboard as the browser, in its own window.
+
+| Step | Implementation |
+| --- | --- |
+| Find | mDNS service `_dahlia._tcp` (port 443), published by avahi from `/etc/avahi/services/dahlia.service`; otherwise type the address |
+| Pair | The app downloads `/dahlia-ca.crt` once without verification and shows the SHA-256 fingerprint. The same one is on the server's monitor and in the dashboard under Addresses (`GET /api/pairing`). Only after confirmation the app adds the CA: Windows `certutil -user -addstore Root`, macOS keychain (`security add-trusted-cert`), Linux via `pkexec` (`update-ca-certificates` or `trust anchor`) |
+| Show | The main window loads `https://<server>/`; links with `target=_blank` (app UIs) open a window of their own instead of the browser |
+| Switch | Menu "Dahlia → Other server …" goes back to the pairing page |
+
+Only the bundled pairing page may call Tauri commands; the dashboard in the window has no access
+to them. Only the server address is stored (`server.json` in the app's config directory). CI
+(`.github/workflows/desktop.yml`) builds `.deb`/AppImage, `.exe`/`.msi` and `.dmg` and attaches
+them to the release on a tag. The builds are not signed; Windows and macOS warn on first start.
+
 ### File manager (from milestone 34)
 
 Files page in the dashboard, administrators only (reading too, since it shows every file of

@@ -245,3 +245,27 @@ def test_screen_texts_are_translated():
     keys |= set(re.findall(r'data-i18n="([^"]+)"', (WWW / "screen.html").read_text()))
     for name in ("de", "en"):
         assert keys <= set(json.loads((WWW / "locales" / f"{name}.json").read_text()))
+
+
+def test_ca_fingerprint(tmp_path):
+    import base64
+    import hashlib
+
+    from dahlia_dashboard.app import ca_fingerprint
+
+    der = bytes(range(40))
+    pem = tmp_path / "ca.crt"
+    body = base64.b64encode(der).decode()
+    pem.write_text("-----BEGIN CERTIFICATE-----\n" + body[:32] + "\n" + body[32:]
+                   + "\n-----END CERTIFICATE-----\n")
+    expected = ":".join(f"{b:02X}" for b in hashlib.sha256(der).digest())
+    assert ca_fingerprint(pem) == expected
+    assert ca_fingerprint(tmp_path / "missing.crt") is None
+    pem.write_text("garbage")
+    assert ca_fingerprint(pem) is None
+
+
+def test_pairing_endpoint(client, tmp_path):
+    c, _ = client
+    data = c.get("/api/pairing").json()
+    assert "ca_fingerprint" in data

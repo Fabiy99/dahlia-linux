@@ -737,3 +737,8 @@ body.screen .bloom { left: 22%; width: min(60rem, 90vh); }
   .screen-main { justify-content: center; }
   .screen-info { width: 100%; }
 }
+
+/* CA fingerprint for pairing the desktop app */
+.fingerprint { display: block; padding: .6rem .8rem; border-radius: 8px; background: var(--card-2);
+               font-size: .85rem; letter-spacing: .03em; line-height: 1.6; overflow-wrap: anywhere; }
+.screen-fp { font-family: ui-monospace, monospace; font-size: .72rem; overflow-wrap: anywhere; }
