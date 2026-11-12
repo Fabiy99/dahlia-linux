@@ -138,6 +138,20 @@ class PasswordBody(BaseModel):
     new: str
 
 
+class UserBody(BaseModel):
+    name: str
+    password: str
+    role: str = "viewer"
+
+
+class RoleBody(BaseModel):
+    role: str
+
+
+class ResetPasswordBody(BaseModel):
+    password: str
+
+
 class HostnameBody(BaseModel):
     hostname: str
 
@@ -422,6 +436,12 @@ def create_app(cfg: Config | None = None) -> FastAPI:
             raise ApiError(401, "error.login_required")
         return session
 
+    def require_admin(request: Request):
+        session = require_user(request)
+        if users.role(session.username) != "admin":
+            raise ApiError(403, "error.admin_only")
+        return session
+
     def require_reader(request: Request):
         """Session cookie, or an API token for the read-only endpoints."""
         session = sessions.get(request.cookies.get(COOKIE))
@@ -451,6 +471,7 @@ def create_app(cfg: Config | None = None) -> FastAPI:
         return {
             "setup_required": not users.has_users(),
             "user": session.username if session else None,
+            "role": users.role(session.username) if session else None,
         }
 
     @app.post("/api/setup", dependencies=[Depends(require_csrf)])
@@ -569,11 +590,59 @@ def create_app(cfg: Config | None = None) -> FastAPI:
     # --- system ---------------------------------------------------------------
 
     authed = [Depends(require_user)]
-    changing = [Depends(require_csrf), Depends(require_user)]
+    # Changes, and what only an admin may see (tokens, diagnostics, accounts).
+    changing = [Depends(require_csrf), Depends(require_admin)]
+    admin = [Depends(require_admin)]
     # Values only, nothing secret: these also accept API tokens.
     readable = [Depends(require_reader)]
 
-    @app.get("/api/tokens", dependencies=authed)
+    # --- accounts ---------------------------------------------------------------
+
+    @app.get("/api/users", dependencies=admin)
+    def users_list():
+        return {"users": users.list_users()}
+
+    def user_error(e: AuthError):
+        return ApiError(409 if str(e) in ("exists", "last_admin", "user_limit") else 400,
+                        f"error.{e}")
+
+    @app.post("/api/users", dependencies=changing)
+    def users_create(body: UserBody):
+        try:
+            users.create(body.name, body.password, body.role)
+        except AuthError as e:
+            raise user_error(e) from None
+        return {"name": body.name, "role": body.role}
+
+    @app.post("/api/users/{name}/role", dependencies=changing)
+    def users_role(name: str, body: RoleBody):
+        try:
+            users.set_role(name, body.role)
+        except AuthError as e:
+            raise user_error(e) from None
+        return {"name": name, "role": body.role}
+
+    @app.post("/api/users/{name}/password", dependencies=changing)
+    def users_password(name: str, body: ResetPasswordBody):
+        try:
+            users.reset_password(name, body.password)
+        except AuthError as e:
+            raise user_error(e) from None
+        sessions.drop_user(name)
+        return {}
+
+    @app.post("/api/users/{name}/remove", dependencies=changing)
+    def users_remove(name: str, session: Annotated[Session, Depends(require_user)]):
+        if name == session.username:
+            raise ApiError(409, "error.remove_self")
+        try:
+            users.delete(name)
+        except AuthError as e:
+            raise user_error(e) from None
+        sessions.drop_user(name)
+        return {}
+
+    @app.get("/api/tokens", dependencies=admin)
     def tokens_list():
         return {"tokens": tokens.list()}
 
@@ -766,8 +835,10 @@ def create_app(cfg: Config | None = None) -> FastAPI:
     @app.get("/api/apps", dependencies=readable)
     def apps(request: Request):
         installed = agent("apps.list")["apps"]
-        if sessions.get(request.cookies.get(COOKIE)) is None:
-            # API token: no generated app passwords, no custom container settings.
+        session = sessions.get(request.cookies.get(COOKIE))
+        if session is None or users.role(session.username) != "admin":
+            # API token or read-only account: no generated app passwords,
+            # no custom container settings.
             installed = [{**a, "login": None, "custom": None} for a in installed]
         catalog = agent("apps.catalog", {"refresh": False})
         return {
@@ -866,7 +937,7 @@ def create_app(cfg: Config | None = None) -> FastAPI:
     def diagnostics_create():
         return agent("system.diagnostics")
 
-    @app.get("/api/diagnostics", dependencies=authed)
+    @app.get("/api/diagnostics", dependencies=admin)
     def diagnostics_download():
         # The agent puts the bundle into our runtime directory; it is handed out once.
         path = cfg.run_dir / "diagnostics.tar.gz"
@@ -1100,7 +1171,8 @@ def create_app(cfg: Config | None = None) -> FastAPI:
         # nginx passes $host, which has no port; compare host names only.
         origin = urllib.parse.urlsplit(ws.headers.get("origin", "")).hostname
         host = urllib.parse.urlsplit("//" + ws.headers.get("host", "")).hostname
-        if session is None or not origin or origin != host:
+        if session is None or not origin or origin != host \
+                or users.role(session.username) != "admin":
             await ws.close(code=4401)
             return
         await ws.accept()

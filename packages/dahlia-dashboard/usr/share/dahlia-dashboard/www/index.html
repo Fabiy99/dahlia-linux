@@ -117,6 +117,7 @@
         </div>
       </section>
 
+      <p id="viewer-banner" class="notice" data-i18n="users.viewer_banner" hidden></p>
       <section id="view-overview" hidden>
         <div class="tiles">
           <article class="card tile wide" id="health-card">
@@ -275,7 +276,7 @@
             <div class="actions">
               <button id="parity-sync" class="primary" data-i18n="parity.sync"></button>
               <button id="parity-scrub" data-i18n="parity.scrub"></button>
-              <button id="parity-refresh" data-i18n="common.refresh"></button>
+              <button id="parity-refresh" data-viewer-ok data-i18n="common.refresh"></button>
             </div>
           </article>
           <article class="card">
@@ -344,7 +345,7 @@
         </div>
         <p class="hint" data-i18n="apps.hint"></p>
         <p class="hint" id="apps-refreshed"></p>
-        <div class="filters">
+        <div class="filters viewer-ok">
           <input id="apps-search" type="search" data-i18n-placeholder="apps.search">
           <select id="apps-category"></select>
         </div>
@@ -385,7 +386,7 @@
 
       <section id="view-log" hidden>
         <article class="card">
-          <div class="filters">
+          <div class="filters viewer-ok">
             <label><span data-i18n="log.priority"></span>
               <select id="log-priority">
                 <option value="err" data-i18n="log.p_err"></option>
@@ -396,7 +397,7 @@
             <label><span data-i18n="log.unit"></span><input id="log-unit" data-i18n-placeholder="log.unit_hint"></label>
             <label><span data-i18n="log.lines"></span>
               <select id="log-lines"></select></label>
-            <button id="log-refresh" class="primary" data-i18n="common.refresh"></button>
+            <button id="log-refresh" data-viewer-ok class="primary" data-i18n="common.refresh"></button>
           </div>
           <pre id="log-output" class="logbox"></pre>
         </article>
@@ -751,7 +752,7 @@
               </div>
             </form>
           </article>
-          <article class="card">
+          <article class="card viewer-ok">
             <h2 data-i18n="account.password_title"></h2>
             <form id="password-form">
               <label><span data-i18n="account.old"></span><input name="old" type="password" autocomplete="current-password" required></label>
@@ -760,7 +761,7 @@
               <button type="submit" data-i18n="account.submit"></button>
             </form>
           </article>
-          <article class="card" id="totp-card">
+          <article class="card viewer-ok" id="totp-card">
             <h2 data-i18n="totp.title"></h2>
             <p class="hint" data-i18n="totp.hint"></p>
             <p id="totp-state"></p>
@@ -793,7 +794,36 @@
               <button type="submit" class="danger" data-i18n="totp.disable"></button>
             </form>
           </article>
-          <article class="card" id="tokens-card">
+          <article class="card tile wide admin-only" id="users-card">
+            <h2 data-i18n="users.title"></h2>
+            <p class="hint" data-i18n="users.hint"></p>
+            <table>
+              <thead><tr>
+                <th data-i18n="users.name"></th><th data-i18n="users.role"></th>
+                <th data-i18n="users.totp"></th><th></th>
+              </tr></thead>
+              <tbody id="users-list"></tbody>
+            </table>
+            <form id="user-reset-form" class="inline-form" hidden>
+              <p class="hint" id="user-reset-title"></p>
+              <input type="hidden" name="name">
+              <label><span data-i18n="field.password"></span><input name="password" type="password" autocomplete="new-password" required minlength="10"></label>
+              <div class="actions">
+                <button type="submit" class="primary" data-i18n="users.reset"></button>
+                <button type="button" id="user-reset-cancel" data-i18n="common.cancel"></button>
+              </div>
+            </form>
+            <form id="user-form" class="inline-form">
+              <label><span data-i18n="users.name"></span><input name="name" autocomplete="off" required pattern="[a-z][a-z0-9_\-]{1,31}"></label>
+              <label><span data-i18n="field.password"></span><input name="password" type="password" autocomplete="new-password" required minlength="10"></label>
+              <label><span data-i18n="users.role"></span><select name="role">
+                <option value="viewer" data-i18n="role_name.viewer"></option>
+                <option value="admin" data-i18n="role_name.admin"></option>
+              </select></label>
+              <div class="actions"><button type="submit" class="primary" data-i18n="users.add"></button></div>
+            </form>
+          </article>
+          <article class="card admin-only" id="tokens-card">
             <h2 data-i18n="tokens.title"></h2>
             <p class="hint" data-i18n="tokens.hint"></p>
             <ul id="tokens" class="token-list"></ul>

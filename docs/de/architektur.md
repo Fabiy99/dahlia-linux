@@ -555,6 +555,20 @@ Endpunkte mit Werten: `/api/system`, `/api/stats`, `/api/storage`, `/api/hardwar
 `/api/docker`, `/api/docker/stats`, `/api/history`. Keine Einstellungen, keine Änderungen, kein Terminal.
 Beispiel: `curl -H "Authorization: Bearer dahlia_…" https://dahlia.local/api/stats`.
 
+Mehrere Konten (M33): unter Einstellungen → Dashboard-Konten legt ein Administrator weitere
+Konten an (höchstens 20), setzt Passwörter neu, ändert die Rolle oder entfernt Konten.
+Passwort neu setzen und Entfernen beenden die offenen Sitzungen des Kontos. Das eigene Konto
+lässt sich nicht entfernen, der letzte Administrator weder herabstufen noch entfernen.
+Rollen stehen in `users.json` (`role`); Konten ohne Eintrag (vor M33) sind Administratoren.
+
+| Rolle | Darf |
+| --- | --- |
+| `admin` | alles |
+| `viewer` | alle lesenden Seiten und Protokolle, eigenes Passwort und Zwei-Faktor; keine Änderungen (403 `error.admin_only`), kein Terminal, keine Kontenverwaltung, keine API-Tokens, keine Diagnose; `/api/apps` ohne App-Passwörter und eigene Container-Einstellungen |
+
+Endpunkte (nur `admin`): `GET/POST /api/users`, `POST /api/users/<name>/role`,
+`POST /api/users/<name>/password`, `POST /api/users/<name>/remove`. `/api/state` liefert `role`.
+
 ### Terminal (ab Meilenstein 12)
 
 Die Seite Terminal im Dashboard ist eine Shell im Browser (xterm.js, MIT, unter

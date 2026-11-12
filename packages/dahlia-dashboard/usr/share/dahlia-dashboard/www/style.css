@@ -531,3 +531,10 @@ code.pubkey { display: block; font-size: .78rem; overflow-wrap: anywhere; backgr
 .chart .legend { display: inline-flex; gap: .6rem; margin-left: .4rem; }
 .chart .legend i { display: inline-block; width: .7rem; height: .2rem; vertical-align: middle; margin-right: .25rem; background: var(--accent); }
 .chart .legend i.second { background: var(--ok); }
+
+/* read-only accounts: the server refuses changes; the page greys out the controls */
+body.viewer main :is(button, input, select, textarea) { pointer-events: none; opacity: .45; }
+body.viewer main :is(.viewer-ok, .viewer-ok *, [data-viewer-ok], [data-goto], .link-btn, .seg button) {
+  pointer-events: auto; opacity: 1;
+}
+body.viewer .admin-only, body.viewer #nav [data-view="terminal"] { display: none; }

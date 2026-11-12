@@ -329,6 +329,24 @@ function show(view) {
   if (view !== "account") clearTimeout(netTimer);
 }
 
+let userRole = null;
+let userName = null;
+
+function applyRole(role, name) {
+  userRole = role;
+  userName = name;
+  document.body.classList.toggle("viewer", role === "viewer");
+  document.getElementById("viewer-banner").hidden = role !== "viewer";
+}
+
+// After setup or login: role from the server, then the overview.
+async function enterApp() {
+  const state = await api("GET", "state");
+  applyRole(state.role, state.user);
+  setLoggedIn(true);
+  await open("overview");
+}
+
 function setLoggedIn(on) {
   document.getElementById("sidebar").hidden = !on;
   document.getElementById("logout").hidden = !on;
@@ -3033,8 +3051,8 @@ async function loadAccount() {
   // Each card loads on its own; one failing part does not hide the others.
   await Promise.all([loadTime(), loadNetwork(), loadNetLayout(), loadSpindown(), loadPower(),
                loadDevices(), loadSyslog(), loadFirewall(), loadSchedules(), loadNotify(), loadUps(),
-               loadInflux(),
-               loadVpn(), loadTotp(), loadTokens()]
+               loadInflux(), loadVpn(), loadTotp(),
+               ...(userRole === "admin" ? [loadTokens(), loadUsers()] : [])]
     .map((p) => p.catch(sayError)));
 }
 
@@ -3743,6 +3761,77 @@ async function loadUps() {
   if (s.load !== null) fact(dl, "ups.load", `${s.load} %`);
 }
 
+// --- dashboard accounts -----------------------------------------------------------
+
+async function loadUsers() {
+  const data = await api("GET", "users");
+  const tbody = document.getElementById("users-list");
+  tbody.replaceChildren();
+  for (const u of data.users) {
+    const tr = el("tr");
+    cell(tr, el("b", "", u.name));
+    const role = el("select");
+    fillOptions(role, ["admin", "viewer"], (r) => t(`role_name.${r}`));
+    role.value = u.role;
+    role.addEventListener("change", () => guarded(role, async () => {
+      try {
+        await api("POST", `users/${encodeURIComponent(u.name)}/role`, { role: role.value });
+        say(t("users.role_saved", { name: u.name }), "ok");
+      } finally {
+        await loadUsers();
+      }
+    }));
+    cell(tr, role);
+    cell(tr, u.totp ? badge(t("users.totp_on"), "ok") : "–");
+    const ops = el("div", "row-ops");
+    ops.append(button("users.reset", () => {
+      const form = document.getElementById("user-reset-form");
+      form.elements.name.value = u.name;
+      document.getElementById("user-reset-title").textContent = t("users.reset_prompt", { name: u.name });
+      form.hidden = false;
+      form.elements.password.focus();
+    }));
+    if (u.name !== userName) {
+      ops.append(button("users.remove", async () => {
+        if (!await ask(t("users.confirm_remove", { name: u.name }), "users.remove", true)) return;
+        await api("POST", `users/${encodeURIComponent(u.name)}/remove`);
+        say(t("users.removed", { name: u.name }), "ok");
+        await loadUsers();
+      }, "danger"));
+    }
+    cell(tr, ops);
+    tbody.append(tr);
+  }
+}
+
+function bindUsers() {
+  document.getElementById("user-form").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const f = formData(e.target);
+    guarded(e.submitter, async () => {
+      await api("POST", "users", { name: f.name.trim(), password: f.password, role: f.role });
+      e.target.reset();
+      say(t("users.added", { name: f.name.trim() }), "ok");
+      await loadUsers();
+    });
+  });
+  const reset = document.getElementById("user-reset-form");
+  reset.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const f = formData(reset);
+    guarded(e.submitter, async () => {
+      await api("POST", `users/${encodeURIComponent(f.name)}/password`, { password: f.password });
+      reset.reset();
+      reset.hidden = true;
+      say(t("users.reset_done", { name: f.name }), "ok");
+    });
+  });
+  document.getElementById("user-reset-cancel").addEventListener("click", () => {
+    reset.reset();
+    reset.hidden = true;
+  });
+}
+
 // --- API tokens -------------------------------------------------------------------
 
 async function loadTokens() {
@@ -3893,8 +3982,7 @@ function bindForms() {
       const body = { code: f.code, username: f.username, password: f.password };
       if (f.hostname) body.hostname = f.hostname;
       const res = await api("POST", "setup", body);
-      setLoggedIn(true);
-      await open("overview");
+      await enterApp();
       if (res.hostname_error) say(`${t(res.hostname_error)} (${res.detail})`, "error");
       else say(t("setup.done"), "ok");
     });
@@ -3918,8 +4006,7 @@ function bindForms() {
       e.target.reset();
       codeBox.hidden = true;
       say("");
-      setLoggedIn(true);
-      await open("overview");
+      await enterApp();
     });
   });
 
@@ -4190,6 +4277,7 @@ async function start() {
   bindFolderPicker();
   bindNotifyUps();
   bindTokens();
+  bindUsers();
   bindInflux();
   bindAutoUpdates();
   bindRootSnapshots();
@@ -4199,7 +4287,7 @@ async function start() {
   try {
     const state = await api("GET", "state");
     if (state.setup_required) show("setup");
-    else if (state.user) { setLoggedIn(true); await open("overview"); }
+    else if (state.user) { applyRole(state.role, state.user); setLoggedIn(true); await open("overview"); }
     else showLogin();
   } catch (err) {
     sayError(err);

@@ -540,6 +540,20 @@ values: `/api/system`, `/api/stats`, `/api/storage`, `/api/hardware`, `/api/pari
 `/api/docker/stats`, `/api/history`. No settings, no changes, no terminal.
 Example: `curl -H "Authorization: Bearer dahlia_…" https://dahlia.local/api/stats`.
 
+Multiple accounts (M33): under Settings → Dashboard accounts an administrator creates more
+accounts (at most 20), resets passwords, changes the role or removes accounts. Resetting the
+password and removing end the account's open sessions. The own account cannot be removed, the
+last administrator can be neither demoted nor removed. Roles are stored in `users.json`
+(`role`); accounts without an entry (before M33) are administrators.
+
+| Role | May |
+| --- | --- |
+| `admin` | everything |
+| `viewer` | all reading pages and logs, own password and two-factor; no changes (403 `error.admin_only`), no terminal, no account management, no API tokens, no diagnostics; `/api/apps` without app passwords and custom container settings |
+
+Endpoints (`admin` only): `GET/POST /api/users`, `POST /api/users/<name>/role`,
+`POST /api/users/<name>/password`, `POST /api/users/<name>/remove`. `/api/state` returns `role`.
+
 ### Terminal (from milestone 12)
 
 The dashboard's Terminal page is a shell in the browser (xterm.js, MIT, in
