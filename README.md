@@ -169,6 +169,18 @@ ruff check .
 pytest
 ```
 
+### Code-Signierung
+
+Die Windows-Pakete der Desktop-App (`.exe`, `.msi`) werden ab dem nächsten Release signiert:
+kostenlose Code-Signierung über [SignPath.io](https://about.signpath.io/), Zertifikat der
+[SignPath Foundation](https://signpath.org/). Signiert werden nur Dateien, die GitHub Actions aus
+diesem Repo baut; jede Signierung gibt der Maintainer einzeln frei.
+
+- Autoren und Freigabe: [Fabiy99](https://github.com/Fabiy99)
+- Datenschutz: Die Desktop-App überträgt keine Daten an andere Systeme als den Dahlia-Server, mit
+  dem sie gekoppelt ist. Der Server selbst holt Updates aus dem apt-Repo, den App-Katalog von
+  GitHub und, falls Orte eingetragen sind, das Wetter von Open-Meteo.
+
 ---
 
 ## English
@@ -329,6 +341,18 @@ shellcheck $(git ls-files '*.sh')
 ruff check .
 pytest
 ```
+
+### Code signing
+
+The Windows packages of the desktop app (`.exe`, `.msi`) are signed from the next release on:
+free code signing provided by [SignPath.io](https://about.signpath.io/), certificate by
+[SignPath Foundation](https://signpath.org/). Only files built by GitHub Actions from this
+repository are signed; the maintainer approves every signing request.
+
+- Committers and approvers: [Fabiy99](https://github.com/Fabiy99)
+- Privacy: the desktop app does not transfer any information to systems other than the Dahlia
+  server it is paired with. The server itself fetches updates from the apt repository, the app
+  catalog from GitHub and, if places are set, the weather from Open-Meteo.
 
 ## License
 
