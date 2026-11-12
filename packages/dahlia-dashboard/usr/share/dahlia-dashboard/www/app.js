@@ -606,6 +606,7 @@ async function loadOverview() {
     updateAppsBadge(data.installed);
   }).catch(tileError("overview-apps"));
   api("GET", "jobs").then(renderOverviewJobs).catch(tileError("overview-jobs"));
+  loadHealth();
   loadHistory().catch(sayError);
   api("GET", "hardware").then((hw) => {
     renderOverviewDisks(hw);
@@ -616,6 +617,50 @@ async function loadOverview() {
       .map((g) => [g.vendor, g.driver && `(${g.driver})`].filter(Boolean).join(" ")).join(", ");
     if (gpu) fact(dl, "overview.gpu", gpu);
   }).catch(tileError("overview-disks"));
+}
+
+// --- health check ---------------------------------------------------------------
+
+const CHECK_LEVEL = { critical: "crit", warning: "warn", info: "info" };
+// Where the problem is fixed.
+const CHECK_VIEW = { disks: "storage", usage: "storage", array: "storage", parity: "parity",
+                     services: "log", time: "account", updates: "updates", backup: "backup",
+                     notify: "account", firewall: "account" };
+
+function loadHealth() {
+  const summary = document.getElementById("health-summary");
+  summary.className = "health-summary";
+  summary.textContent = t("check.running");
+  return api("GET", "health").then(renderHealth).catch((err) => {
+    document.getElementById("health-list").replaceChildren();
+    summary.textContent = errorText(err);
+  });
+}
+
+function renderHealth(data) {
+  const summary = document.getElementById("health-summary");
+  const count = (lvl) => data.findings.filter((f) => f.level === lvl).length;
+  const parts = [["critical", "check.n_critical"], ["warning", "check.n_warning"], ["info", "check.n_info"]]
+    .filter(([lvl]) => count(lvl)).map(([lvl, key]) => t(key, { n: count(lvl) }));
+  summary.className = `health-summary ${parts.length ? "" : "ok"}`;
+  summary.textContent = parts.length ? parts.join(" · ") : t("check.all_ok", { n: data.passed.length });
+  if (data.skipped.length) {
+    summary.textContent += ` · ${t("check.skipped", { checks: data.skipped.map((c) => t(`check.area_${c}`)).join(", ") })}`;
+  }
+  const list = document.getElementById("health-list");
+  list.replaceChildren(...data.findings.map((f) => {
+    const li = el("li");
+    const meta = el("div", "meta");
+    meta.append(el("b", "", t(`check.${f.id}`, f.params)), el("small", "", t(`check.${f.id}_hint`, f.params)));
+    li.append(badge(t(`check.level_${f.level}`), CHECK_LEVEL[f.level]), meta);
+    const view = CHECK_VIEW[f.check];
+    if (view) {
+      const go = el("button", "", t("check.open"));
+      go.addEventListener("click", () => open(view));
+      li.append(go);
+    }
+    return li;
+  }));
 }
 
 function renderOverviewDisks(hw) {
@@ -3791,6 +3836,8 @@ function bindButtons() {
   for (const b of document.querySelectorAll("#nav button")) {
     b.addEventListener("click", () => open(b.dataset.view));
   }
+  const healthRefresh = document.getElementById("health-refresh");
+  healthRefresh.addEventListener("click", () => guarded(healthRefresh, loadHealth));
   for (const b of document.querySelectorAll("[data-goto]")) {
     b.addEventListener("click", () => open(b.dataset.goto));
   }

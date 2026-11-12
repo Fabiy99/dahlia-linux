@@ -819,6 +819,10 @@ def create_app(cfg: Config | None = None) -> FastAPI:
     def devices():
         return agent("system.devices")
 
+    @app.get("/api/health", dependencies=authed)
+    def health():
+        return agent("system.health")
+
     @app.post("/api/diagnostics", dependencies=changing)
     def diagnostics_create():
         return agent("system.diagnostics")
