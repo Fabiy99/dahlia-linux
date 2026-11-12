@@ -9,7 +9,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 VERSION="$(tr -d '[:space:]' < "$ROOT/VERSION")"
 REPO="$ROOT/build/repo"
-SOURCES="$ROOT/packages/dahlia-archive-keyring/etc/apt/sources.list.d/dahlia.sources"
+SOURCES="$ROOT/packages/archive-keyring/etc/apt/sources.list.d/dahlia.sources"
 
 T="$(mktemp -d)"
 trap 'GNUPGHOME="$T/gpg" gpgconf --kill gpg-agent >/dev/null 2>&1 || true; rm -rf "$T"' EXIT
@@ -60,9 +60,9 @@ apt_dir() { # <dir> <trusted key>: apt tree using the shipped source file
 echo "== apt accepts the repository"
 apt_dir "$T/ok" "$T/test.asc"
 apt_in "$T/ok" apt-get update
-candidate="$(apt_in "$T/ok" apt-cache policy dahlia-base | awk '/Candidate:/ { print $2 }')"
+candidate="$(apt_in "$T/ok" apt-cache policy base | awk '/Candidate:/ { print $2 }')"
 if [ "$candidate" != "$VERSION" ]; then
-    echo "FAIL: candidate for dahlia-base is '$candidate', expected $VERSION" >&2
+    echo "FAIL: candidate for base is '$candidate', expected $VERSION" >&2
     exit 1
 fi
 
@@ -76,4 +76,4 @@ if ! grep -q "NO_PUBKEY\|not signed\|signatures couldn't be verified\|is not sig
     exit 1
 fi
 
-echo "OK: signed repository accepted, foreign signature rejected (dahlia-base $VERSION)"
+echo "OK: signed repository accepted, foreign signature rejected (base $VERSION)"
