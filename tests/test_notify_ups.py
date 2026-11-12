@@ -1,4 +1,4 @@
-"""notify.* and ups.* actions of dahlia-agent and the dahlia-notify checks."""
+"""notify.* and ups.* actions of agent and the notify checks."""
 
 import json
 
@@ -155,7 +155,7 @@ def test_no_restart_notice_with_automatic_reboot(ctx, sent):
 def test_job_failed(ctx, sent):
     run(ctx, "notify.set", {"channel": "ntfy", "settings": NTFY})
     ctx.runner.answers[("journalctl",)] = (0, "snapraid: disk1 missing\n", "")
-    notify.job_failed(ctx, "dahlia-snapraid-sync.service")
+    notify.job_failed(ctx, "snapraid-sync.service")
     assert sent.items[0][2] == "SnapRAID sync failed"
     assert "disk1 missing" in sent.items[0][3]
 
@@ -180,7 +180,7 @@ def test_ups_usb(ctx):
     users = (nut / "upsd.users").read_text()
     mon = (nut / "upsmon.conf").read_text()
     pw = users.split("password = ")[1].split()[0]
-    assert f"MONITOR ups@localhost 1 dahlia-mon {pw} primary" in mon
+    assert f"MONITOR ups@localhost 1 mon {pw} primary" in mon
     assert "NOTIFYCMD /usr/lib/dahlia/ups-notify.sh" in mon and "NOTIFYFLAG ONBATT" in mon
     # The monitor password stays the same on the next save.
     run(ctx, "ups.set", {"mode": "usb", "shutdown_minutes": 10})
@@ -232,5 +232,5 @@ def test_ups_events(ctx, sent):
     assert "--on-active=5min" in timer and timer[-2:] == ["systemctl", "poweroff"]
     assert sent.items[-1][1] == "warning" and "5 minutes" in sent.items[-1][3]
     ups.handle_event(ctx, "ONLINE", "")
-    assert ["systemctl", "stop", "dahlia-ups-shutdown.timer"] in ctx.runner.calls
+    assert ["systemctl", "stop", "ups-shutdown.timer"] in ctx.runner.calls
     assert sent.items[-1][2] == "UPS back on mains power"

@@ -8,7 +8,7 @@
 set -euo pipefail
 
 SCRIPT="${SCRIPT:-/usr/lib/dahlia/rollback.sh}"
-WORK="$(mktemp -d /var/tmp/dahlia-rollback-test.XXXXXX)"
+WORK="$(mktemp -d /var/tmp/rollback-test.XXXXXX)"
 LOOP=""
 
 fail() { echo "FAIL: $*" >&2; exit 1; }

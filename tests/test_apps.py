@@ -204,7 +204,7 @@ def test_install(env):
     conf = (env.naming.paths.nginx / "dahlia-app-whoami.conf").read_text()
     assert "listen 8099;" in conf
     assert "proxy_pass http://127.0.0.1:41000;" in conf
-    assert (env.naming.paths.nginx / "dahlia-apps-map.conf").exists()
+    assert (env.naming.paths.nginx / "apps-map.conf").exists()
     assert env.reloads and env.firewall_calls
     with pytest.raises(AppError, match="already installed"):
         env.install("whoami")
@@ -792,7 +792,7 @@ def test_cli_quiet_refresh(env, tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(apps, "Apps", lambda: env)
     assert apps.main(["catalog", "--refresh", "--quiet"]) == 0
     out = capsys.readouterr().out
-    assert out.strip() == ("dahlia-apps: catalog has 1 apps, 1 updates available: "
+    assert out.strip() == ("apps: catalog has 1 apps, 1 updates available: "
                            "whoami v1.11.0 -> v1.12.0")
 
 

@@ -1,4 +1,4 @@
-"""Milestone 30 in dahlia-agent: remote syslog, find a disk by its LED, start/stop all apps."""
+"""Milestone 30 in agent: remote syslog, find a disk by its LED, start/stop all apps."""
 
 import json
 
@@ -83,11 +83,11 @@ def test_locate(ctx):
     out = run(ctx, "disks.locate", {"device": "/dev/sda"})["result"]
     assert out == {"device": "/dev/sda", "seconds": 120}
     cmd = next(c for c in ctx.runner.calls if c[0] == "systemd-run")
-    assert "--unit=dahlia-locate.service" in cmd
-    assert cmd[-3:] == ["/usr/sbin/dahlia-locate", "/dev/sda", "120"]
-    assert ["systemctl", "stop", "dahlia-locate.service"] in ctx.runner.calls
+    assert "--unit=disk-blink.service" in cmd
+    assert cmd[-3:] == ["/usr/sbin/disk-blink", "/dev/sda", "120"]
+    assert ["systemctl", "stop", "disk-blink.service"] in ctx.runner.calls
     run(ctx, "disks.locate_stop")
-    assert ctx.runner.calls[-1] == ["systemctl", "stop", "dahlia-locate.service"]
+    assert ctx.runner.calls[-1] == ["systemctl", "stop", "disk-blink.service"]
 
 
 def test_locate_rejects(ctx):
@@ -106,22 +106,22 @@ def test_apps_all(ctx, op, command):
     out = run(ctx, "apps.all", {"op": op})["result"]
     assert out == {"op": op, "started": True}
     cmd = next(c for c in ctx.runner.calls if c[0] == "systemd-run")
-    assert "--unit=dahlia-apps-all.service" in cmd
-    assert cmd[-2:] == ["/usr/sbin/dahlia-apps", command]
+    assert "--unit=apps-all.service" in cmd
+    assert cmd[-2:] == ["/usr/sbin/apps", command]
 
 
 def test_apps_all_busy(ctx):
-    ctx.runner.answers[("systemctl", "show", "dahlia-apps-all.service")] = (0, RUNNING, "")
+    ctx.runner.answers[("systemctl", "show", "apps-all.service")] = (0, RUNNING, "")
     assert err_code(run(ctx, "apps.all", {"op": "stop"})) == protocol.BUSY
     assert err_code(run(ctx, "apps.all", {"op": "restart"})) == protocol.INVALID_PARAMS
 
 
 def test_apps_all_job_error(ctx):
-    ctx.runner.answers[("systemctl", "show", "dahlia-apps-all.service")] = (
+    ctx.runner.answers[("systemctl", "show", "apps-all.service")] = (
         0, "ActiveState=failed\nSubState=failed\nResult=exit-code\nExecMainStatus=1\n"
            "ExecMainStartTimestamp=Thu 2026-11-12 10:00:00 CET\n", "")
     ctx.runner.answers[("journalctl",)] = (
-        0, "dahlia-apps: started kuma\ndahlia-apps: immich: /mnt/user not mounted, stays stopped\n",
+        0, "apps: started kuma\napps: immich: /mnt/user not mounted, stays stopped\n",
         "")
     out = run(ctx, "apps.all_job")["result"]
     assert out["result"] == "exit-code"

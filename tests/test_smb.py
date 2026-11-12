@@ -1,4 +1,4 @@
-"""shares.* actions of dahlia-agent: SMB shares and users."""
+"""shares.* actions of agent: SMB shares and users."""
 
 import json
 import os
@@ -7,7 +7,7 @@ import pytest
 from dahlia_agent import actions, protocol, smb
 from test_agent import FakeRunner, err_code, run
 
-GROUP = (0, "dahlia-smb:x:998:anna,ben\n", "")
+GROUP = (0, "smb:x:998:anna,ben\n", "")
 
 
 @pytest.fixture
@@ -18,7 +18,7 @@ def ctx(tmp_path):
     (c.pool / "media").mkdir()
     (c.etc / "samba").mkdir(parents=True)
     (c.etc / "samba/smb.conf").write_text("[global]\n   workgroup = DEBIAN\n[homes]\n")
-    c.runner.answers[("getent", "group", "dahlia-smb")] = GROUP
+    c.runner.answers[("getent", "group", "smb")] = GROUP
     return c
 
 
@@ -37,7 +37,7 @@ def test_create_public_share(ctx):
     assert "workgroup = DEBIAN" in (ctx.etc / "samba/smb.conf.dahlia-orig").read_text()
     assert ["testparm", "-s", str(ctx.etc / "samba/smb.conf.dahlia-new")] in ctx.runner.calls
     assert ["systemctl", "enable", "--now", "smbd.service"] in ctx.runner.calls
-    assert "_smb._tcp" in (ctx.etc / "avahi/services/dahlia-smb.service").read_text()
+    assert "_smb._tcp" in (ctx.etc / "avahi/services/smb.service").read_text()
     saved = json.loads((ctx.etc / "dahlia/shares.json").read_text())["shares"]
     assert saved == [{"name": "media", "comment": "Filme", "security": "public", "users": {},
                       "time_machine": False, "time_machine_size": 0, "nfs": False,
@@ -53,7 +53,7 @@ def test_private_share_with_users_and_time_machine(ctx):
     assert "valid users = anna ben\n" in text and "write list = anna\n" in text
     assert "guest ok = no\n   read only = yes\n" in text
     assert "fruit:time machine = yes" in text
-    assert "adVN=backup" in (ctx.etc / "avahi/services/dahlia-smb.service").read_text()
+    assert "adVN=backup" in (ctx.etc / "avahi/services/smb.service").read_text()
 
 
 def test_secure_share(ctx):
@@ -111,7 +111,7 @@ def test_remove_last_share_stops_samba(ctx):
     assert run(ctx, "shares.remove", {"name": "media"})["ok"]
     assert "[media]" not in conf(ctx)
     assert ["systemctl", "disable", "--now", "smbd.service", "nmbd.service"] in ctx.runner.calls
-    assert not (ctx.etc / "avahi/services/dahlia-smb.service").exists()
+    assert not (ctx.etc / "avahi/services/smb.service").exists()
     assert (ctx.pool / "media").is_dir()
     assert err_code(run(ctx, "shares.remove", {"name": "media"})) == protocol.FAILED
 
@@ -120,7 +120,7 @@ def test_user_add(ctx):
     ctx.runner.answers[("getent", "passwd")] = (2, "", "")
     assert run(ctx, "shares.user_add", {"name": "carla", "password": "correct horse"})["ok"]
     useradd = next(c for c in ctx.runner.calls if c[0] == "useradd")
-    assert useradd[-1] == "carla" and "dahlia,dahlia-smb" in useradd
+    assert useradd[-1] == "carla" and "dahlia,smb" in useradd
     i = ctx.runner.calls.index(["smbpasswd", "-s", "-a", "carla"])
     assert ctx.runner.inputs[i] == "correct horse\ncorrect horse\n"
     # The password never appears on a command line.

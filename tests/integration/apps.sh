@@ -1,5 +1,5 @@
 #!/bin/bash
-# Integration test for Dahlia apps with real Docker, nginx and dahlia-agent.
+# Integration test for Dahlia apps with real Docker, nginx and agent.
 #
 # A loop disk becomes the array, a local catalog (file://) holds a small
 # test app. Through the agent: refresh the catalog, install, check the
@@ -10,18 +10,18 @@
 # array): generated secrets, name resolution between services, an update
 # found through the catalog, data and secrets kept across it.
 #
-# Must run as root on a disposable machine with dahlia-storage, dahlia-agent,
+# Must run as root on a disposable machine with storage, agent,
 # docker, nginx, avahi-daemon and avahi-utils installed.
 set -euo pipefail
 
-WORK="$(mktemp -d /var/tmp/dahlia-apps-test.XXXXXX)"
+WORK="$(mktemp -d /var/tmp/apps-test.XXXXXX)"
 LOOP=""
 UUID=""
 export DAHLIA_ALLOW_LOOP=1
 
 fail() { echo "FAIL: $*" >&2; diag >&2; exit 1; }
 step() { echo; echo "== $*"; }
-call() { dahlia-agent-call --timeout 120 "$@"; }
+call() { agent-call --timeout 120 "$@"; }
 
 diag() {
     echo "--- dahlia-app-whoami / dahlia-app-stacktest journal"
@@ -31,12 +31,12 @@ diag() {
         echo "--- $c log"
         docker logs --tail 30 "$c" 2>&1 || true
     done
-    echo "--- dahlia-mdns journal"
-    journalctl -u dahlia-mdns.service --no-pager | tail -20 || true
-    echo "--- avahi: daemon, publish as root and as dahlia-mdns"
+    echo "--- mdns journal"
+    journalctl -u mdns.service --no-pager | tail -20 || true
+    echo "--- avahi: daemon, publish as root and as mdns"
     systemctl is-active avahi-daemon.service || true
     timeout 3 avahi-publish -a -R diag-root.local 10.9.9.9 || true
-    timeout 3 setpriv --reuid=dahlia-mdns --regid=dahlia-mdns --clear-groups \
+    timeout 3 setpriv --reuid=mdns --regid=mdns --clear-groups \
         avahi-publish -a -R diag-user.local 10.9.9.8 || true
     journalctl -u dbus.service -u avahi-daemon.service --no-pager | tail -20 || true
     docker ps -a || true
@@ -44,10 +44,10 @@ diag() {
 
 cleanup() {
     set +e
-    dahlia-apps remove whoami --delete-data >/dev/null 2>&1
-    dahlia-apps remove stacktest --delete-data >/dev/null 2>&1
+    apps remove whoami --delete-data >/dev/null 2>&1
+    apps remove stacktest --delete-data >/dev/null 2>&1
     [ -f "$WORK/apps.json.orig" ] && cp "$WORK/apps.json.orig" /etc/dahlia/apps.json
-    [ -n "$UUID" ] && dahlia-disk remove "$UUID" >/dev/null 2>&1
+    [ -n "$UUID" ] && disk remove "$UUID" >/dev/null 2>&1
     [ -n "$LOOP" ] && losetup -d "$LOOP"
     rm -rf "$WORK"
 }
@@ -73,9 +73,9 @@ mkfs.ext4 -q -L appsdisk "$LOOP"
 udevadm trigger --action=change "$LOOP"
 udevadm settle
 UUID="$(blkid -s UUID -o value "$LOOP")"
-dahlia-disk add "$UUID" --role data
+disk add "$UUID" --role data
 # The default keeps 50G free per disk; the test disk is far smaller.
-dahlia-disk set-minfreespace 10M
+disk set-minfreespace 10M
 findmnt -n /mnt/user >/dev/null || fail "/mnt/user not mounted"
 
 step "local catalog"
@@ -131,7 +131,7 @@ echo "$ports"
 grep -q '^80/tcp -> 127.0.0.1:41000$' <<<"$ports" || fail "web port not on 127.0.0.1:41000"
 if grep -q '0.0.0.0' <<<"$ports"; then fail "port published on all interfaces"; fi
 [ -d /mnt/user/appdata/whoami/config ] || fail "appdata missing"
-[ "$(stat -c %U /mnt/user/appdata/whoami/config)" = dahlia-apps ] || fail "appdata owner wrong"
+[ "$(stat -c %U /mnt/user/appdata/whoami/config)" = apps ] || fail "appdata owner wrong"
 docker inspect -f '{{.HostConfig.SecurityOpt}}' dahlia-whoami | grep -q no-new-privileges \
     || fail "no-new-privileges missing"
 docker inspect -f '{{.HostConfig.RestartPolicy.Name}}' dahlia-whoami | grep -qx no \
@@ -187,7 +187,7 @@ step "list, stop, start, update"
 call apps.list | jq -e '.apps[0].status == "running"' >/dev/null || fail "apps.list wrong"
 call apps.stop '{"id": "whoami"}' >/dev/null
 [ "$(docker inspect -f '{{.State.Status}}' dahlia-whoami)" = exited ] || fail "stop failed"
-dahlia-apps start-enabled
+apps start-enabled
 [ "$(docker inspect -f '{{.State.Status}}' dahlia-whoami)" = exited ] \
     || fail "stopped app was started at boot"
 call apps.start '{"id": "whoami"}' >/dev/null
@@ -255,7 +255,7 @@ publish_catalog() {
     jq -n --rawfile w "$WORK/catalog/apps/whoami.yaml" --rawfile s "$WORK/stack.yaml" \
         '{format: 1, apps: {whoami: $w, stacktest: $s}}' > "$WORK/catalog/catalog.json"
     printf '{"catalog": "file://%s/catalog/"}\n' "$WORK" > /etc/dahlia/apps.json
-    dahlia-apps catalog --refresh --quiet
+    apps catalog --refresh --quiet
     cp "$WORK/apps.json.orig" /etc/dahlia/apps.json
 }
 stack_template v1.10.3 > "$WORK/stack.yaml"
@@ -322,8 +322,8 @@ done
 [ "$ready" = 1 ] || fail "database content lost on update"
 
 step "stack: catalog timer"
-systemctl is-enabled dahlia-apps-catalog.timer | grep -qx enabled || fail "timer not enabled"
-systemctl cat dahlia-apps-catalog.service | grep -q 'catalog --refresh --quiet' \
+systemctl is-enabled apps-catalog.timer | grep -qx enabled || fail "timer not enabled"
+systemctl cat apps-catalog.service | grep -q 'catalog --refresh --quiet' \
     || fail "timer service wrong"
 
 step "stack: remove with data"

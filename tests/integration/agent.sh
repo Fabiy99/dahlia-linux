@@ -1,17 +1,17 @@
 #!/bin/bash
-# Integration test for dahlia-agent on a real systemd host.
+# Integration test for agent on a real systemd host.
 #
 # Checks socket activation, socket permissions, peer checks (root, group
 # member, other user), parameter rejection, jobs and one real storage
 # change (loop disk added and removed through the agent).
 #
 # Must run as root on a disposable machine (CI runner or test VM) with the
-# dahlia-storage and dahlia-agent packages installed.
+# storage and agent packages installed.
 set -euo pipefail
 
 SOCK=/run/dahlia/agent.sock
-DROPIN=/run/systemd/system/dahlia-agent.service.d
-WORK="$(mktemp -d /var/tmp/dahlia-agent-test.XXXXXX)"
+DROPIN=/run/systemd/system/agent.service.d
+WORK="$(mktemp -d /var/tmp/agent-test.XXXXXX)"
 LOOP=""
 
 diag() {
@@ -34,7 +34,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-call() { dahlia-agent-call --timeout 60 "$@"; }
+call() { agent-call --timeout 60 "$@"; }
 
 # expect_error CODE ACTION [PARAMS]: the call must fail with this error code.
 expect_error() {
@@ -47,29 +47,29 @@ expect_error() {
 }
 
 step "socket unit and permissions"
-systemctl is-active --quiet dahlia-agent.socket || fail "dahlia-agent.socket not active"
-[ "$(stat -c '%U:%G %a' "$SOCK")" = "root:dahlia-agent 660" ] \
+systemctl is-active --quiet agent.socket || fail "agent.socket not active"
+[ "$(stat -c '%U:%G %a' "$SOCK")" = "root:agent 660" ] \
     || fail "socket has $(stat -c '%U:%G %a' "$SOCK")"
 
-# Loop devices are hidden from dahlia-disk unless allowed.
+# Loop devices are hidden from disk unless allowed.
 mkdir -p "$DROPIN"
 printf '[Service]\nEnvironment=DAHLIA_ALLOW_LOOP=1\n' > "$DROPIN/test.conf"
 systemctl daemon-reload
-systemctl stop dahlia-agent.service
+systemctl stop agent.service
 
 step "socket activation and system.info as root"
 info="$(call system.info)"
 echo "$info"
-systemctl is-active --quiet dahlia-agent.service || fail "service not started by the socket"
+systemctl is-active --quiet agent.service || fail "service not started by the socket"
 [ "$(jq -r .hostname <<<"$info")" = "$(hostname)" ] || fail "wrong hostname"
 jq -e '.uptime_seconds > 0 and .memory.total > 0' <<<"$info" >/dev/null || fail "bad system.info"
 
 step "other users are refused, group members are allowed"
-if out="$(sudo -u nobody dahlia-agent-call system.info 2>&1)"; then
+if out="$(sudo -u nobody agent-call system.info 2>&1)"; then
     fail "nobody could use the agent"
 fi
 grep -q forbidden <<<"$out" || fail "unexpected error for nobody: $out"
-sudo -u nobody -g dahlia-agent dahlia-agent-call job.status '{"job": "mover"}' >/dev/null \
+sudo -u nobody -g agent agent-call job.status '{"job": "mover"}' >/dev/null \
     || fail "group member was refused"
 
 step "fixed action list and parameter checks"
@@ -79,7 +79,7 @@ expect_error invalid_params storage.add '{"uuid": "x; reboot", "role": "data"}'
 expect_error invalid_params storage.add '{"uuid": "1234-ABCD", "role": "data", "format": true}'
 expect_error invalid_params job.start '{"job": "update"}'
 expect_error invalid_params system.set_hostname '{"hostname": "bad.name"}'
-journalctl -u dahlia-agent.service --no-pager | grep -q "action=system.shell unknown_action" \
+journalctl -u agent.service --no-pager | grep -q "action=system.shell unknown_action" \
     || fail "refused action not logged"
 
 step "job.start and job.status"
@@ -116,12 +116,12 @@ if findmnt -n /mnt/disk1 >/dev/null; then fail "/mnt/disk1 still mounted"; fi
 step "settings.set_schedule moves the mover timer"
 call settings.set_schedule '{"job": "mover", "frequency": "weekly", "time": "02:15", "weekday": "sat"}' \
     >/dev/null || fail "settings.set_schedule failed"
-systemctl show dahlia-mover.timer -p TimersCalendar | grep -q 'Sat \*-\*-\* 02:15:00' \
+systemctl show mover.timer -p TimersCalendar | grep -q 'Sat \*-\*-\* 02:15:00' \
     || fail "mover timer did not get the new schedule"
 call settings.schedules | jq -e '.schedules.mover.frequency == "weekly" and .schedules.mover.enabled' \
     >/dev/null || fail "settings.schedules does not show the new schedule"
 call settings.set_schedule '{"job": "mover", "frequency": "off"}' >/dev/null
-[ "$(systemctl is-enabled dahlia-mover.timer || true)" = disabled ] || fail "mover timer still enabled"
+[ "$(systemctl is-enabled mover.timer || true)" = disabled ] || fail "mover timer still enabled"
 call settings.set_schedule '{"job": "mover", "frequency": "daily", "time": "03:00"}' >/dev/null
 expect_error invalid_params settings.set_schedule '{"job": "mover", "frequency": "daily", "time": "25:00"}'
 

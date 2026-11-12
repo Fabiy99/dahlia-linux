@@ -136,8 +136,8 @@ def test_scripts_are_executable():
         *sorted((ROOT / "iso" / "installer").glob("*.sh")),
         ROOT / "tools" / "sign-repo.sh",
         ROOT / "tests" / "integration" / "apt-repo.sh",
-        ROOT / "packages" / "dahlia-base" / "DEBIAN" / "postinst",
-        ROOT / "packages" / "dahlia-base" / "etc" / "update-motd.d" / "10-dahlia",
+        ROOT / "packages" / "base" / "DEBIAN" / "postinst",
+        ROOT / "packages" / "base" / "etc" / "update-motd.d" / "10-dahlia",
     ]
     for script in scripts:
         assert os.access(script, os.X_OK), script
@@ -151,7 +151,7 @@ def test_package_control_files_use_version_marker():
 
 
 def test_apt_source_uses_shipped_keyring():
-    pkg = ROOT / "packages" / "dahlia-archive-keyring"
+    pkg = ROOT / "packages" / "archive-keyring"
     sources = (pkg / "etc" / "apt" / "sources.list.d" / "dahlia.sources").read_text(
         encoding="utf-8"
     )
@@ -166,7 +166,7 @@ def test_apt_source_uses_shipped_keyring():
 
 
 def test_base_pulls_in_keyring_of_same_version():
-    control = (ROOT / "packages" / "dahlia-base" / "DEBIAN" / "control").read_text(
+    control = (ROOT / "packages" / "base" / "DEBIAN" / "control").read_text(
         encoding="utf-8"
     )
-    assert "dahlia-archive-keyring (= @VERSION@)" in control
+    assert "archive-keyring (= @VERSION@)" in control

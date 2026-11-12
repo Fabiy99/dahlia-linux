@@ -1,9 +1,0 @@
-[Unit]
-Description=Dahlia SnapRAID scrub
-After=dahlia-storage.target dahlia-snapraid-sync.service
-
-[Service]
-Type=oneshot
-ExecStart=/usr/sbin/dahlia-snapraid scrub
-Nice=19
-IOSchedulingClass=idle

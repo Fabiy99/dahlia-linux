@@ -2,7 +2,7 @@
 # Helpers shared by the installer scripts. POSIX sh: runs in the busybox ash
 # of debian-installer and is tested with dash.
 
-# One DNS label, lower case, as dahlia-agent's system.set_hostname accepts.
+# One DNS label, lower case, as agent's system.set_hostname accepts.
 valid_hostname() {
     case "$1" in
         ''|-*|*-|*[!a-z0-9-]*) return 1 ;;

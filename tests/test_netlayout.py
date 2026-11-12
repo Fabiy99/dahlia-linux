@@ -1,4 +1,4 @@
-"""Network layout (bond, bridge, VLAN) and Wake-on-LAN in dahlia-agent."""
+"""Network layout (bond, bridge, VLAN) and Wake-on-LAN in agent."""
 
 import pytest
 from dahlia_agent import actions, netlayout, network, protocol
@@ -81,7 +81,7 @@ def test_bridge_with_vlan(ctx):
     assert "auto br0.20\niface br0.20 inet static\n    address 10.0.20.5/24\n" in text
     assert "auto br0.30\niface br0.30 inet manual\n" in text
     assert "\n\n\n" not in text
-    # The live file is only replaced by dahlia-network apply.
+    # The live file is only replaced by network apply.
     assert (ctx.etc / "network/interfaces").read_text() == INSTALLED
     assert ctx.runner.calls[-1][-3:] == ["apply", "--iface", "eno1"]
     layout = netlayout.parse_layout(text)
@@ -173,9 +173,9 @@ def test_wol(ctx):
     out = run(ctx, "settings.set_wol", {"port": "eno1", "enabled": True})["result"]
     assert out["name"] == "eno1"
     assert ["ethtool", "-s", "eno1", "wol", "g"] in ctx.runner.calls
-    assert ["systemctl", "enable", "dahlia-wol@eno1.service"] in ctx.runner.calls
+    assert ["systemctl", "enable", "wol@eno1.service"] in ctx.runner.calls
     run(ctx, "settings.set_wol", {"port": "eno1", "enabled": False})
-    assert ["systemctl", "disable", "dahlia-wol@eno1.service"] in ctx.runner.calls
+    assert ["systemctl", "disable", "wol@eno1.service"] in ctx.runner.calls
 
 
 def test_wol_rejects(ctx):

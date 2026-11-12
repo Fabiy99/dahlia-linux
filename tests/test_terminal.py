@@ -1,4 +1,4 @@
-"""dahlia-terminal and the dashboard's /api/terminal WebSocket.
+"""terminal and the dashboard's /api/terminal WebSocket.
 
 The server runs with `cat` instead of `su`; nothing logs in anywhere.
 """

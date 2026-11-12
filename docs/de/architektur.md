@@ -59,11 +59,11 @@ startbar.
 Rollback (ab Meilenstein 18): Das Dashboard listet die Snapshots unter Updates, legt neue an,
 löscht sie und setzt das System auf einen zurück. `snapper rollback` wirkt bei Debians
 Layout nicht, weil fstab und GRUB `@rootfs` beim Namen einhängen. Deshalb macht
-`/usr/lib/dahlia/rollback.sh N` (als `dahlia-rollback.service`) es wie `snapper-rollback`:
+`/usr/lib/dahlia/rollback.sh N` (als `rollback.service`) es wie `snapper-rollback`:
 beschreibbarer Snapshot von `.snapshots/N/snapshot` neben der Wurzel, die laufende Wurzel
 wird zu `@rootfs.pre-rollback-<Zeit>`, der neue Snapshot heißt `@rootfs`, `.snapshots` zieht
 mit um, dann Neustart. Aus dem laufenden System übernommen (Reflink-Kopie) werden `/home`,
-`/root`, `/var/log`, `/etc/dahlia`, `/var/lib/dahlia`, `/var/lib/dahlia-dashboard` und
+`/root`, `/var/log`, `/etc/dahlia`, `/var/lib/dahlia`, `/var/lib/dashboard` und
 `/var/lib/docker`; `/srv` (`@srv`) und das Array gehören ohnehin nicht dazu. Der alte Stand
 bleibt, bis man ihn im Dashboard löscht (`rollback.sh --delete-old NAME`).
 
@@ -74,11 +74,11 @@ Einmal-Code geschützt, der auf tty1 und in `/etc/motd` steht (ab Meilenstein 5)
 
 | Paket | Inhalt |
 | --- | --- |
-| `dahlia-base` | Konfiguration, Gruppe `dahlia` (GID 1000), zieht alle Dahlia-Pakete nach. Maskiert `systemd-ssh-generator` (SSH über AF_VSOCK), der unter Hyper-V bei jedem `daemon-reload` Fehler auf die Konsole schreibt; SSH läuft normal über `sshd` |
-| `dahlia-agent` | root-Dienst auf `/run/dahlia/agent.sock`, feste Aktionsliste |
-| `dahlia-dashboard` | FastAPI-Backend als `dahlia-ui` hinter nginx, Frontend in Vanilla HTML/CSS/JS |
-| `dahlia-storage` | disk-manager, Mover, SnapRAID-Wrapper, Health-Checks |
-| `dahlia-archive-keyring` | öffentlicher Schlüssel des apt-Repos |
+| `base` | Konfiguration, Gruppe `dahlia` (GID 1000), zieht alle Dahlia-Pakete nach. Maskiert `systemd-ssh-generator` (SSH über AF_VSOCK), der unter Hyper-V bei jedem `daemon-reload` Fehler auf die Konsole schreibt; SSH läuft normal über `sshd` |
+| `agent` | root-Dienst auf `/run/dahlia/agent.sock`, feste Aktionsliste |
+| `dashboard` | FastAPI-Backend als `ui` hinter nginx, Frontend in Vanilla HTML/CSS/JS |
+| `storage` | disk-manager, Mover, SnapRAID-Wrapper, Health-Checks |
+| `archive-keyring` | öffentlicher Schlüssel des apt-Repos |
 
 ## Storage
 
@@ -105,9 +105,9 @@ SnapRAID läuft über einen Wrapper mit Timer: `diff`, Abbruch über einer Lösc
 `sync`, wöchentlich `scrub`. Mover und SnapRAID teilen sich ein Lock und laufen nie
 gleichzeitig.
 
-### dahlia-disk (ab Meilenstein 3)
+### disk (ab Meilenstein 3)
 
-`dahlia-disk` aus dem Paket `dahlia-storage` setzt das Layout um. `add` formatiert nie;
+`disk` aus dem Paket `storage` setzt das Layout um. `add` formatiert nie;
 nur `format` legt ein Dateisystem an: auf einer leeren Platte oder auf einer, deren Daten
 `import` nach `/mnt/user` kopiert und geprüft hat. `import` lässt `lost+found`,
 `System Volume Information` und `$RECYCLE.BIN` auf oberster Ebene aus. Eine Platte ohne
@@ -115,44 +115,44 @@ lesbare Signatur, die trotzdem eingehängt ist, oder mit mehreren Signaturen gil
 Zustand liegt in `/etc/dahlia/storage.json`, alles andere wird daraus erzeugt.
 
 ```sh
-dahlia-disk list                          # Platten und was Dahlia damit tun darf
-dahlia-disk add <UUID> --role data        # vorhandenes ext4/XFS/Btrfs als /mnt/diskN
-dahlia-disk add <UUID> --role parity      # als /mnt/parityN, nie im Pool
-dahlia-disk add <UUID> --role cache       # SSD-Dateisystem als /mnt/cache (ab M3b)
-dahlia-disk add <UUID> --role external    # z. B. NTFS unter /mnt/external/<name>
-dahlia-disk remove <UUID>                 # aushängen, Daten bleiben auf der Platte
-dahlia-disk format /dev/sdX --fs xfs      # leere Platte: GPT, eine Partition, XFS/ext4/Btrfs
-dahlia-disk import <UUID> --to <Name>     # nur lesend einhängen, rsync nach /mnt/user/<Name>, Vergleich
-dahlia-disk apply                         # Units und Pools aus storage.json neu erzeugen
-dahlia-disk snapraid-config [--write]     # /etc/snapraid.conf erzeugen
+disk list                          # Platten und was Dahlia damit tun darf
+disk add <UUID> --role data        # vorhandenes ext4/XFS/Btrfs als /mnt/diskN
+disk add <UUID> --role parity      # als /mnt/parityN, nie im Pool
+disk add <UUID> --role cache       # SSD-Dateisystem als /mnt/cache (ab M3b)
+disk add <UUID> --role external    # z. B. NTFS unter /mnt/external/<name>
+disk remove <UUID>                 # aushängen, Daten bleiben auf der Platte
+disk format /dev/sdX --fs xfs      # leere Platte: GPT, eine Partition, XFS/ext4/Btrfs
+disk import <UUID> --to <Name>     # nur lesend einhängen, rsync nach /mnt/user/<Name>, Vergleich
+disk apply                         # Units und Pools aus storage.json neu erzeugen
+disk snapraid-config [--write]     # /etc/snapraid.conf erzeugen
 ```
 
 Neue Datenplatten kommen per `user.mergerfs.branches` ohne Remount in die laufenden Pools.
 Die Pools laufen mit `cache.files=partial`: SQLite im WAL-Modus und MariaDB brauchen
 shared mmap, das mergerfs mit `cache.files=off` (direct_io) nicht bietet.
 Leere Mount-Points sind mit `chattr +i` gesperrt, damit bei fehlender Platte nichts auf
-der System-SSD landet. Die Units hängen mit `Wants=` an `dahlia-storage.target`, eine
+der System-SSD landet. Die Units hängen mit `Wants=` an `storage.target`, eine
 fehlende Platte blockiert also nicht den Boot.
 
 ### Cache, Mover, SnapRAID (ab Meilenstein 3b)
 
 Der Cache ist ein Dateisystem (Btrfs, bei zwei SSDs vorher als RAID1 angelegt:
-`mkfs.btrfs -d raid1 -m raid1 <ssd1> <ssd2>`). `dahlia-disk add --role cache` hängt es unter
+`mkfs.btrfs -d raid1 -m raid1 <ssd1> <ssd2>`). `disk add --role cache` hängt es unter
 `/mnt/cache` ein und setzt `/mnt/cache/shares` als ersten Zweig vor die Datenplatten in
 `/mnt/user`, ebenfalls ohne Remount. `/mnt/user` nutzt dann `category.create=ff`,
 `/mnt/storage` bleibt bei `mfs`.
 
 ```sh
-dahlia-mover [--dry-run] [--min-age MIN]       # Cache -> /mnt/storage, Pfad bleibt gleich
+mover [--dry-run] [--min-age MIN]       # Cache -> /mnt/storage, Pfad bleibt gleich
 dahlia-snapraid sync [--force]                 # diff, Lösch-Schwelle prüfen, sync
 dahlia-snapraid scrub                          # Teil des Arrays gegen die Parity prüfen
 dahlia-snapraid fix --disk N                   # Dateien von /mnt/diskN aus der Parity zurückholen, prüfen
 dahlia-snapraid fix --bad                      # vom Scrub gefundene defekte Blöcke reparieren
 dahlia-snapraid status [--json]                # Abdeckung, Scrub-Stand, Fehler, letzte Läufe
-dahlia-disk set-option snapraid_delete_threshold 50
-dahlia-disk set-option mover_min_age_minutes 1440
-dahlia-disk set-minfreespace 100G               # freier Platz pro Platte für mergerfs
-dahlia-disk settings                           # alle Einstellungen als JSON
+disk set-option snapraid_delete_threshold 50
+disk set-option mover_min_age_minutes 1440
+disk set-minfreespace 100G               # freier Platz pro Platte für mergerfs
+disk settings                           # alle Einstellungen als JSON
 ```
 
 Dieselben Werte setzt das Dashboard unter Platten > Einstellungen (ab Meilenstein 17).
@@ -174,7 +174,7 @@ formatieren und als Datenplatte hinzufügen. Sie bekommt die kleinste freie Numm
 der alten. Danach `fix --disk N`: `snapraid -d dN fix` (Protokoll in
 `/var/log/dahlia/snapraid-fix.log`) und `snapraid -d dN -a check`. Wiederhergestellt wird
 der Stand des letzten Syncs. Bis dahin verweigert SnapRAID den Sync, weil dN fehlt bzw. leer
-ist. Erzwungener Sync und Reparaturen laufen als Unit `dahlia-parity.service`.
+ist. Erzwungener Sync und Reparaturen laufen als Unit `parity.service`.
 
 ### Verschlüsselung (ab Meilenstein 35)
 
@@ -187,12 +187,12 @@ aus zwei Platten werden nicht verschlüsselt.
 | Thema | Umsetzung |
 | --- | --- |
 | Passwort | eins für alle verschlüsselten Platten; eine neue Platte muss das der vorhandenen haben. 8 bis 512 Zeichen, keine Steuerzeichen. Geht nur über stdin an cryptsetup, nie auf die Kommandozeile |
-| Nach dem Start | ohne Schlüsseldatei bleiben die Platten gesperrt; ihre Mount-Units überspringen sich (`ConditionPathExists=/dev/mapper/luks-…`). Übersicht und Speicher-Seite zeigen das, das Passwort entsperrt (`dahlia-disk unlock`): öffnen, einhängen, Zweige in die laufenden mergerfs-Pools |
+| Nach dem Start | ohne Schlüsseldatei bleiben die Platten gesperrt; ihre Mount-Units überspringen sich (`ConditionPathExists=/dev/mapper/luks-…`). Übersicht und Speicher-Seite zeigen das, das Passwort entsperrt (`disk unlock`): öffnen, einhängen, Zweige in die laufenden mergerfs-Pools |
 | Automatisch entsperren | optional: Schlüsseldatei `/etc/dahlia/luks/array.key` (64 Zufallsbytes, 0400) als zusätzlicher Key-Slot jeder Platte, dazu ein Block in `/etc/crypttab` (`luks,nofail`); systemd-cryptsetup öffnet die Platten beim Start, die Mount-Units warten darauf. Schützt Platten, die allein das Haus verlassen, nicht einen gestohlenen Server |
 | Passwort ändern | `luksChangeKey` auf jeder angeschlossenen Platte, nachdem das alte auf allen geprüft ist; der Slot der Schlüsseldatei bleibt |
 | Entfernen | Platte aushängen, Container schließen; Daten und Verschlüsselung bleiben |
 
-`dahlia-disk`: `format … --encrypt`, `unlock [--key-file DATEI]`, `auto-unlock on|off`,
+`disk`: `format … --encrypt`, `unlock [--key-file DATEI]`, `auto-unlock on|off`,
 `passphrase`, `crypt-status`. Agent: `storage.format` (`encrypt`, `passphrase`),
 `storage.encryption`, `storage.unlock`, `storage.auto_unlock`, `storage.change_passphrase`.
 Dashboard: `GET /api/storage/encryption`, `POST /api/storage/unlock`,
@@ -203,9 +203,9 @@ Passwort und Schlüsseldatei weg: die Daten sind verloren. Getestet wird gegen L
 
 ## Rechte und Sicherheit
 
-- `dahlia-dashboard` läuft als `dahlia-ui` mit systemd-Härtung und hört nur auf
+- `dashboard` läuft als `ui` mit systemd-Härtung und hört nur auf
   `127.0.0.1`. nginx macht TLS auf Port 443.
-- `dahlia-agent` läuft als root und nimmt nur Aktionen aus seiner Liste an. Jede Aktion
+- `agent` läuft als root und nimmt nur Aktionen aus seiner Liste an. Jede Aktion
   prüft ihre Parameter.
 - Docker veröffentlicht Container-Ports nur auf `127.0.0.1` (`daemon.json`: `"ip"`).
   Apps sind über nginx erreichbar. Apps, die LAN-Ports brauchen, sind im App-Template
@@ -215,10 +215,10 @@ Passwort und Schlüsseldatei weg: die Daten sind verloren. Getestet wird gegen L
 
 ### Firewall (ab Meilenstein 10)
 
-`dahlia-agent` verwaltet genau eine Tabelle, `inet dahlia`. Sie wird aus dem erzeugt, was
+`agent` verwaltet genau eine Tabelle, `inet dahlia`. Sie wird aus dem erzeugt, was
 in Benutzung ist, und als Ganzes in einer Transaktion ersetzt; andere Tabellen (Docker)
-bleiben unberührt. `dahlia-firewall.service` lädt sie beim Booten vor dem Netzwerk,
-`/etc/network/if-up.d/dahlia-firewall` nach jedem Interface-Start, Apps und Freigaben nach
+bleiben unberührt. `firewall.service` lädt sie beim Booten vor dem Netzwerk,
+`/etc/network/if-up.d/firewall` nach jedem Interface-Start, Apps und Freigaben nach
 jeder Änderung.
 
 - Eingehend (`input`, Policy drop): bestehende Verbindungen, `lo`, ICMPv6, DHCP und Ping
@@ -245,17 +245,17 @@ Kommentare mit Anführungszeichen. Ein `accept` mit `any` öffnet den Port für 
 dem Internet erreichbar ist er erst mit einer Weiterleitung im Router.
 
 ```
-dahlia-firewall status     # Einstellungen, lokale Netze, offene Ports (JSON)
-dahlia-firewall show       # Regelwerk, das apply laden würde
-dahlia-firewall apply      # neu laden
-sudo dahlia-firewall disable   # Notausgang: Tabelle entfernen
+firewall status     # Einstellungen, lokale Netze, offene Ports (JSON)
+firewall show       # Regelwerk, das apply laden würde
+firewall apply      # neu laden
+sudo firewall disable   # Notausgang: Tabelle entfernen
 ```
 
 ### Fernzugriff: WireGuard und Tailscale (ab Meilenstein 20)
 
-WireGuard: Dahlia betreibt das Interface `dahlia-wg` mit `wg-quick@dahlia-wg.service`.
+WireGuard: Dahlia betreibt das Interface `wg` mit `wg-quick@wg.service`.
 Einstellungen und Geräte liegen in `/etc/dahlia/wireguard.json` (0600), der Schlüssel des
-Servers in `/etc/wireguard/dahlia-wg.key`, daraus entsteht `/etc/wireguard/dahlia-wg.conf`.
+Servers in `/etc/wireguard/wg.key`, daraus entsteht `/etc/wireguard/wg.conf`.
 Für ein Gerät erzeugt der Server Schlüsselpaar und Preshared Key; Konfiguration und QR-Code
 (`qrencode`) zeigt das Dashboard einmal an, gespeichert wird nur der öffentliche Schlüssel.
 Neue oder entfernte Geräte lädt `wg syncconf`, ohne die anderen Tunnel zu trennen.
@@ -265,14 +265,14 @@ Neue oder entfernte Geräte lädt `wg syncconf`, ohne die anderen Tunnel zu tren
 | Netz | Tunnel `10.253.0.0/24` (änderbar, solange keine Geräte da sind, darf kein lokales Netz überlappen), Server `.1`, Geräte ab `.2` |
 | Routing | "nur das Heimnetz": Tunnel und die IPv4-Subnetze des Servers; "ganzer Verkehr": `0.0.0.0/0, ::/0`. DNS für Clients optional, z. B. AdGuard Home |
 | Firewall | UDP-Port (Standard 51820) offen aus dem Internet, Masquerading des Tunnelnetzes Richtung LAN in `inet dahlia`, auch bei abgeschalteter Firewall. Der Tunnel zählt als lokal (`10/8`) |
-| Weiterleitung | `/etc/sysctl.d/60-dahlia-forward.conf` (`net.ipv4.ip_forward = 1`). Docker setzt die iptables-Kette `FORWARD` auf DROP; `/usr/lib/dahlia/wireguard-forward.sh` (PostUp/PostDown) erlaubt den Tunnel in `DOCKER-USER` |
+| Weiterleitung | `/etc/sysctl.d/60-forward.conf` (`net.ipv4.ip_forward = 1`). Docker setzt die iptables-Kette `FORWARD` auf DROP; `/usr/lib/dahlia/wireguard-forward.sh` (PostUp/PostDown) erlaubt den Tunnel in `DOCKER-USER` |
 | Router | UDP-Port an den Server weiterleiten; die Adresse im Internet (DynDNS-Name oder IP) trägt man im Dashboard ein |
 
-Tailscale ist nicht in Debian. "Installieren" startet `dahlia-tailscale-install.service`
+Tailscale ist nicht in Debian. "Installieren" startet `tailscale-install.service`
 (`/usr/lib/dahlia/tailscale-install.sh`): Schlüssel nach
 `/usr/share/keyrings/tailscale-archive-keyring.gpg`, Quelle
 `/etc/apt/sources.list.d/tailscale.list`, Paket `tailscale`, wie in der Anleitung von
-Tailscale. "Verbinden" startet `tailscale up` als `dahlia-tailscale-up.service` (10 Minuten
+Tailscale. "Verbinden" startet `tailscale up` als `tailscale-up.service` (10 Minuten
 Zeit zum Anmelden); den Anmelde-Link liest das Dashboard aus `tailscale status --json`.
 Optionen: die IPv4-Subnetze des Servers als Route anbieten (in der Tailscale-Verwaltung
 freigeben) und Exit-Node. Tailscale-Adressen (`100.64/10`) zählen für die Firewall als lokal.
@@ -280,12 +280,12 @@ freigeben) und Exit-Node. Tailscale-Adressen (`100.64/10`) zählen für die Fire
 Debians `nftables.service` bleibt aus; sein `/etc/nftables.conf` beginnt mit
 `flush ruleset` und würde auch Dockers Regeln löschen.
 
-### dahlia-agent (ab Meilenstein 4)
+### agent (ab Meilenstein 4)
 
-Der Agent hört auf `/run/dahlia/agent.sock` (root:dahlia-agent, 0660) und wird von
-`dahlia-agent.socket` beim ersten Aufruf gestartet. Zusätzlich zu den Dateirechten prüft er
+Der Agent hört auf `/run/dahlia/agent.sock` (root:agent, 0660) und wird von
+`agent.socket` beim ersten Aufruf gestartet. Zusätzlich zu den Dateirechten prüft er
 die Gegenstelle per `SO_PEERCRED`: erlaubt sind root und Mitglieder der Gruppe
-`dahlia-agent`, dazu gehört der Dashboard-Benutzer `dahlia-ui`.
+`agent`, dazu gehört der Dashboard-Benutzer `ui`.
 
 Protokoll: eine Anfrage pro Verbindung, je eine JSON-Zeile hin und zurück.
 
@@ -305,21 +305,21 @@ Protokoll: eine Anfrage pro Verbindung, je eine JSON-Zeile hin und zurück.
 | `system.hardware` | - | Mainboard (DMI), CPU-Temperatur (hwmon), SMART je Platte mit `smartctl -n standby` (weckt keine schlafende Platte), laufender und letzter Selbsttest |
 | `system.health` | - | Gesundheitscheck: Befunde (`critical`, `warning`, `info`) mit Parametern, bestandene und nicht prüfbare Bereiche |
 | `disks.smart_test` | `device`, `kind` (`short`/`long`/`abort`) | `smartctl -t short\|long` bzw. `smartctl -X` |
-| `disks.locate`, `disks.locate_stop` | `device` | Aktivitäts-LED blinkt 2 Minuten: `dahlia-locate` liest kurz an zufälligen Stellen (`dd iflag=direct`), als `dahlia-locate.service` |
-| `disks.burnin_start` | `device`, `confirm` (Plattenname) | Plattentest als `dahlia-burnin@<name>.service`, nur auf leeren Platten |
+| `disks.locate`, `disks.locate_stop` | `device` | Aktivitäts-LED blinkt 2 Minuten: `disk-blink` liest kurz an zufälligen Stellen (`dd iflag=direct`), als `disk-blink.service` |
+| `disks.burnin_start` | `device`, `confirm` (Plattenname) | Plattentest als `burnin@<name>.service`, nur auf leeren Platten |
 | `disks.burnin_status`, `disks.burnin_stop`, `disks.burnin_clear` | bei `stop`/`clear`: `device` | Fortschritt und Ergebnis, abbrechen, Ergebnis löschen |
 | `system.log` | `lines`, `priority`, `unit` (optional) | `journalctl -n … -p …` |
-| `system.diagnostics` | – | Diagnosepaket nach `/run/dahlia-dashboard/diagnostics.tar.gz` (0600, Dashboard-Benutzer) |
+| `system.diagnostics` | – | Diagnosepaket nach `/run/dashboard/diagnostics.tar.gz` (0600, Dashboard-Benutzer) |
 | `settings.time` / `settings.set_time` | `timezone`, `ntp` | `timedatectl set-timezone`, `set-ntp` |
-| `settings.network` / `settings.set_network` | `mode` (`dhcp`/`static`), `address` (CIDR), `gateway`, `dns` | `/etc/network/interfaces`, Anwendung über `dahlia-network` mit Rückfall |
+| `settings.network` / `settings.set_network` | `mode` (`dhcp`/`static`), `address` (CIDR), `gateway`, `dns` | `/etc/network/interfaces`, Anwendung über `network` mit Rückfall |
 | `settings.confirm_network` | – | bestätigt die neue Netzwerkeinstellung |
 | `settings.network_layout` / `settings.set_network_layout` | `nics`, `bond_mode` (`active-backup`/`802.3ad`/`balance-alb`), `bridge`, `vlans` (`id`, `mode` `static`/`manual`, `address`) | schreibt `/etc/network/interfaces` ganz neu, Anwendung wie oben mit Rückfall |
-| `settings.set_wol` | `port`, `enabled` | `ethtool -s <Port> wol g\|d`, beim Booten `dahlia-wol@<Port>.service` |
+| `settings.set_wol` | `port`, `enabled` | `ethtool -s <Port> wol g\|d`, beim Booten `wol@<Port>.service` |
 | `settings.spindown` / `settings.set_spindown` | `default`, `disks` (Seriennummer → Minuten) | `/etc/dahlia/spindown.json`, `hdparm -S` |
-| `power.get` / `power.set_governor` | `governor` (einer der vom Kernel angebotenen) | cpufreq in `/sys`, dauerhaft über `/etc/tmpfiles.d/dahlia-cpu-governor.conf` |
+| `power.get` / `power.set_governor` | `governor` (einer der vom Kernel angebotenen) | cpufreq in `/sys`, dauerhaft über `/etc/tmpfiles.d/cpu-governor.conf` |
 | `system.devices` | - | PCI (`lspci -vmm -nn -k`: Klasse, IDs, Treiber, IOMMU-Gruppe) und USB (`lsusb`) |
 
-| `settings.syslog` / `settings.set_syslog` | `enabled`, `host`, `port`, `protocol` (`udp`/`tcp`), `severity` | `/etc/dahlia/syslog.json`, `/etc/rsyslog.d/90-dahlia-remote.conf`, journald `ForwardToSyslog=yes` |
+| `settings.syslog` / `settings.set_syslog` | `enabled`, `host`, `port`, `protocol` (`udp`/`tcp`), `severity` | `/etc/dahlia/syslog.json`, `/etc/rsyslog.d/90-remote.conf`, journald `ForwardToSyslog=yes` |
 | `vpn.status` | - | WireGuard (Einstellungen, Geräte mit letztem Handshake und Daten) und Tailscale (installiert, Zustand, Anmelde-Link, Adressen) |
 | `vpn.wireguard_set` | `enabled`, `port`, `endpoint`, `route` (`lan`/`all`), `dns`, `subnet` | schreibt die Konfiguration, lädt Firewall und Interface |
 | `vpn.wireguard_add_peer`, `vpn.wireguard_remove_peer` | `name` | neues Gerät (Konfiguration und QR-Code einmal) bzw. entfernen |
@@ -330,7 +330,7 @@ Protokoll: eine Anfrage pro Verbindung, je eine JSON-Zeile hin und zurück.
 | `shares.list` | – | Freigaben, SMB-Benutzer, ob `/mnt/user` eingehängt ist, ob `smbd` und `nfs-server` laufen |
 | `shares.set` / `shares.remove` | `name`, `comment`, `security` (`public`/`secure`/`private`), `users` (Name → `rw`/`ro`), `time_machine`, `time_machine_size` (GB, 0 = ohne Grenze), `nfs`, `recycle_days` (0 = kein Papierkorb, bis 365) | erzeugt `/etc/samba/smb.conf`, prüft mit `testparm`, startet `smbd`; bei `nfs` `/etc/exports.d/dahlia.exports`, `exportfs -ra`, `nfs-server` |
 | `shares.empty_recycle` | `name` | leert `<Freigabe>/.recycle` sofort |
-| `shares.user_add` / `shares.user_password` / `shares.user_remove` | `name`, `password` | `useradd`/`userdel` (Gruppen `dahlia`, `dahlia-smb`), `smbpasswd` über stdin |
+| `shares.user_add` / `shares.user_password` / `shares.user_remove` | `name`, `password` | `useradd`/`userdel` (Gruppen `dahlia`, `smb`), `smbpasswd` über stdin |
 | `notify.get` | – | Kanäle ohne Geheimnisse, Schalter, letzte Meldungen |
 | `notify.set` | `channel` (`email`/`ntfy`/`gotify`), `settings` | `/etc/dahlia/notify.json` (0600); leeres Passwort/Token behält das alte |
 | `notify.set_events` / `notify.test` | `events` (Name → bool) | Meldungsarten an/aus, Testnachricht an alle aktiven Kanäle |
@@ -341,36 +341,36 @@ Protokoll: eine Anfrage pro Verbindung, je eine JSON-Zeile hin und zurück.
 | `docker.prune` | - | `docker image prune -a`, `docker builder prune` |
 | `system.set_hostname` | `hostname` (ein DNS-Label, klein) | `hostnamectl`, `/etc/hosts`, Avahi, neues Zertifikat |
 | `system.reboot`, `system.poweroff` | - | `systemctl --no-block ...` |
-| `storage.list` | - | `dahlia-disk list --json` |
-| `storage.add` | `uuid`, `role` (data, parity, cache, external) | `dahlia-disk add` |
-| `storage.remove` | `uuid`, `force` (optional) | `dahlia-disk remove` |
-| `storage.set_option` | `name`, `value` (Zahl) | `dahlia-disk set-option` |
-| `storage.settings` | – | `dahlia-disk settings` |
-| `storage.set_minfreespace` | `size` (z. B. `100G`, M/G/T) | `dahlia-disk set-minfreespace` |
-| `storage.format` | `device` (ganze Platte), `filesystem` (`xfs`, `ext4`, `btrfs`), `confirm` (Plattenname wiederholt) | `dahlia-disk format`, nur leere oder übernommene Platten |
-| `storage.import` / `storage.import_status` | `uuid`, `target` (Name unter `/mnt/user`) | `dahlia-disk import` als Unit `dahlia-import`, Fortschritt in `/run/dahlia/import.json` |
+| `storage.list` | - | `disk list --json` |
+| `storage.add` | `uuid`, `role` (data, parity, cache, external) | `disk add` |
+| `storage.remove` | `uuid`, `force` (optional) | `disk remove` |
+| `storage.set_option` | `name`, `value` (Zahl) | `disk set-option` |
+| `storage.settings` | – | `disk settings` |
+| `storage.set_minfreespace` | `size` (z. B. `100G`, M/G/T) | `disk set-minfreespace` |
+| `storage.format` | `device` (ganze Platte), `filesystem` (`xfs`, `ext4`, `btrfs`), `confirm` (Plattenname wiederholt) | `disk format`, nur leere oder übernommene Platten |
+| `storage.import` / `storage.import_status` | `uuid`, `target` (Name unter `/mnt/user`) | `disk import` als Unit `import`, Fortschritt in `/run/dahlia/import.json` |
 | `job.start` | `job` (mover, snapraid-sync, snapraid-scrub, backup) | startet die Unit, kehrt sofort zurück |
 | `job.status` | `job` (dazu `update`) | Zustand und letztes Ergebnis |
 | `parity.get` | – | `dahlia-snapraid status --json` und Zustand von Sync, Scrub, Mover und Reparatur |
-| `parity.sync` | `force` (optional) | Sync starten; mit `force` ohne Lösch-Schwelle als `dahlia-parity.service` |
-| `parity.fix` | `what` (`bad` oder `diskN`) | `dahlia-snapraid fix --bad` bzw. `--disk N` als `dahlia-parity.service` |
+| `parity.sync` | `force` (optional) | Sync starten; mit `force` ohne Lösch-Schwelle als `parity.service` |
+| `parity.fix` | `what` (`bad` oder `diskN`) | `dahlia-snapraid fix --bad` bzw. `--disk N` als `parity.service` |
 | `updates.check` | - | `apt-get update`, Liste der Upgrades |
-| `updates.apply` | - | `apt-get full-upgrade` über die Unit `dahlia-update.service`; die geplanten Pakete (Simulation) in `/run/dahlia/update.json` |
+| `updates.apply` | - | `apt-get full-upgrade` über die Unit `update.service`; die geplanten Pakete (Simulation) in `/run/dahlia/update.json` |
 | `updates.auto` | - | Schalter und Neustart-Einstellungen, letzter Lauf von unattended-upgrades, ausstehender Neustart |
 | `snapshots.list` | – | `snapper --jsonout list`, `btrfs subvolume list /`, `/var/lib/dahlia/rollback.json` |
 | `snapshots.create` | `description` | `snapper create --cleanup-algorithm number` |
 | `snapshots.delete` | `number` | `snapper delete` |
-| `snapshots.rollback` | `number` | `dahlia-rollback.service` → `rollback.sh N --reboot` |
+| `snapshots.rollback` | `number` | `rollback.service` → `rollback.sh N --reboot` |
 | `snapshots.delete_old_root` | `name` (`<subvol>.pre-rollback-<Zeit>`) | `rollback.sh --delete-old` |
-| `updates.set_auto` | `enabled`, `reboot`, `reboot_time` (`HH:MM`) | `20auto-upgrades`, `52dahlia-auto-reboot`, `/etc/dahlia/updates.json` |
+| `updates.set_auto` | `enabled`, `reboot`, `reboot_time` (`HH:MM`) | `20auto-upgrades`, `52auto-reboot`, `/etc/dahlia/updates.json` |
 | `updates.progress` | - | Zustand, Prozent, je Paket wartet/geladen/eingerichtet/fertig aus der apt-Ausgabe im Journal dieses Laufs; das Dashboard zeigt es auf der Update-Seite |
 | `apps.catalog` | `refresh` (optional) | App-Katalog und sein Stand, mit `refresh` vorher herunterladen |
 | `apps.list` | - | installierte Apps mit Container-Zustand, Version, verfügbarem Update |
 | `apps.install`, `apps.update` | `id`, bei `install` `location` (optional, `/mnt/user` oder `/srv`) und `folders` (optional, Freigabe -> Ordner unter `/mnt/user` oder `/srv`) | im Hintergrund als Unit `dahlia-app-<id>`; die Ordner bleiben bei Updates erhalten |
-| `apps.custom_install`, `apps.custom_update` | `id`, `spec` (Formular, siehe Apps), bei `install` `location` | eigener Container; der Agent legt `spec` unter `/run/dahlia/apps-custom/<id>.json` ab, `dahlia-apps` prüft jedes Feld |
+| `apps.custom_install`, `apps.custom_update` | `id`, `spec` (Formular, siehe Apps), bei `install` `location` | eigener Container; der Agent legt `spec` unter `/run/dahlia/apps-custom/<id>.json` ab, `apps` prüft jedes Feld |
 | `apps.job` | `id` | Zustand der letzten Installation bzw. Aktualisierung |
 | `apps.start`, `apps.stop` | `id` | starten bzw. stoppen, gilt auch für den nächsten Boot |
-| `apps.all`, `apps.all_job` | `op` (`start`/`stop`) | im Hintergrund (`dahlia-apps-all.service`): alle Apps mit Autostart starten (`dahlia-apps start-enabled`) bzw. alle stoppen (`stop-all`, Autostart bleibt) |
+| `apps.all`, `apps.all_job` | `op` (`start`/`stop`) | im Hintergrund (`apps-all.service`): alle Apps mit Autostart starten (`apps start-enabled`) bzw. alle stoppen (`stop-all`, Autostart bleibt) |
 | `apps.remove` | `id`, `delete_data` (optional) | Container entfernen, Daten nur auf Wunsch |
 | `remotes.list` | – | eingebundene Freigaben anderer Geräte mit Zustand (`mounted`, `idle`, `error`, `off`), ohne Passwort |
 | `remotes.set` | `name`, `type` (`smb`/`nfs`), `host`, `share`, `username`, `password` (weggelassen = bisheriges), `readonly` | Probe-Einhängen, dann `/etc/dahlia/remotes.json`, Zugangsdaten `/etc/dahlia/remotes/<Name>.cred` (0600), `.mount`- und `.automount`-Unit |
@@ -378,24 +378,24 @@ Protokoll: eine Anfrage pro Verbindung, je eine JSON-Zeile hin und zurück.
 | `files.browse` | `root` (`/mnt/user`, `/srv` oder `/mnt/remotes`), `path` (relativ dazu) | Unterordner für die Ordnerauswahl, ohne versteckte Ordner und Symlinks, höchstens 500; dazu, welche Speicherorte nutzbar sind |
 | `files.mkdir` | `root`, `path` | neuen Ordner anlegen (Gruppe `dahlia`, 2775), nicht unter `appdata` |
 | `domains.get` | - | mDNS-Aliase, Namen in den Zertifikaten, Zertifikate |
-| `domains.set` | `mdns_aliases` | `dahlia-domains set`, App-Zertifikat und Proxy neu |
+| `domains.set` | `mdns_aliases` | `domains set`, App-Zertifikat und Proxy neu |
 | `backup.get` | – | Ziel, letztes Ergebnis, öffentlicher SSH-Schlüssel, mögliche Zielplatten (`/mnt/diskN`, `/mnt/cache`, `/mnt/user`, `/media/…`) |
-| `backup.set` | `target` (`{"type": "folder", "path": …}` oder `{"type": "sftp", "host", "port", "user", "path"}`), `stop_apps`, `folders` (optional, weitere Ordner unter `/mnt/user` oder `/srv`) | `/etc/dahlia/backup.json`, legt Passwort und SSH-Schlüssel an, schaltet `dahlia-backup.timer` ein |
+| `backup.set` | `target` (`{"type": "folder", "path": …}` oder `{"type": "sftp", "host", "port", "user", "path"}`), `stop_apps`, `folders` (optional, weitere Ordner unter `/mnt/user` oder `/srv`) | `/etc/dahlia/backup.json`, legt Passwort und SSH-Schlüssel an, schaltet `backup.timer` ein |
 | `backup.key` | – | Passwort des Repositorys |
 | `backup.snapshots` | – | `restic snapshots` |
-| `backup.restore` | `snapshot`, `what` (`config` oder App-ID) | im Hintergrund als Unit `dahlia-backup-restore` |
+| `backup.restore` | `snapshot`, `what` (`config` oder App-ID) | im Hintergrund als Unit `backup-restore` |
 | `agent.actions` | - | diese Liste |
 
 Unbekannte Aktionen, unbekannte oder fehlende Parameter und falsche Typen werden abgelehnt,
 bevor ein Befehl läuft. Befehle laufen als Argumentlisten, nie über eine Shell. Ändernde
 Aktionen laufen nacheinander. Jeder Aufruf steht mit UID und Ergebnis im Journal
-(`journalctl -u dahlia-agent`).
+(`journalctl -u agent`).
 
 Zum Testen auf der Konsole:
 
 ```sh
-sudo dahlia-agent-call system.info
-sudo dahlia-agent-call storage.add '{"uuid": "<UUID>", "role": "data"}'
+sudo agent-call system.info
+sudo agent-call storage.add '{"uuid": "<UUID>", "role": "data"}'
 ```
 
 ### Dashboard (ab Meilenstein 5)
@@ -411,13 +411,13 @@ nur für das Web-UI, nicht für SSH oder die Konsole.
 
 | Teil | Umsetzung |
 | --- | --- |
-| Backend | FastAPI/uvicorn als `dahlia-ui` auf `127.0.0.1:8080`, systemd-Härtung (`ProtectSystem=strict`, keine Capabilities) |
-| Frontend | statische Dateien unter `/usr/share/dahlia-dashboard/www`, von nginx ausgeliefert, Texte aus `locales/de.json` und `locales/en.json` |
-| Konten | `/var/lib/dahlia-dashboard/users.json` (0600), Passwörter mit scrypt |
+| Backend | FastAPI/uvicorn als `ui` auf `127.0.0.1:8080`, systemd-Härtung (`ProtectSystem=strict`, keine Capabilities) |
+| Frontend | statische Dateien unter `/usr/share/dashboard/www`, von nginx ausgeliefert, Texte aus `locales/de.json` und `locales/en.json` |
+| Konten | `/var/lib/dashboard/users.json` (0600), Passwörter mit scrypt |
 | Zweiter Faktor | optional TOTP (RFC 6238, SHA-1, 6 Stellen, 30 s, ±1 Schritt), jeder Code nur einmal; 10 Wiederherstellungscodes (SHA-256, je einmal); QR-Code über `qrencode` |
 | Sitzungen | zufälliges Token im Speicher, Cookie `HttpOnly`, `Secure`, `SameSite=Strict`; 2 h Leerlauf, höchstens 12 h |
 | Schutz | ändernde Anfragen brauchen den Header `X-Dahlia-Request`; 5 Fehlversuche pro IP in 5 Minuten, dann Sperre |
-| root-Aktionen | nur über `dahlia-agent`; `dahlia-ui` ist Mitglied der Gruppe `dahlia-agent` |
+| root-Aktionen | nur über `agent`; `ui` ist Mitglied der Gruppe `agent` |
 
 Aufbau: Seitenleiste mit Servername und Version, Inhalt in Kacheln. Bestätigungen laufen
 über einen eigenen Dialog, Meldungen erscheinen unten rechts. Unter 48rem Breite (Handy)
@@ -439,9 +439,9 @@ wird die Seitenleiste zum Menü, Tabellen werden zu Karten. Ein Web-App-Manifest
 
 SMART-Selbsttests und Plattentest (M23):
 
-- Selbsttests laufen in der Platte selbst, sie bleibt dabei nutzbar. `dahlia-smart-short.timer`
-  (wöchentlich, Samstag 05:00) und `dahlia-smart-long.timer` (Standard aus, ein Langtest einer
-  großen HDD dauert einen Tag) starten `dahlia-smart-test@short|long.service`, das den Test auf
+- Selbsttests laufen in der Platte selbst, sie bleibt dabei nutzbar. `smart-short.timer`
+  (wöchentlich, Samstag 05:00) und `smart-long.timer` (Standard aus, ein Langtest einer
+  großen HDD dauert einen Tag) starten `smart-test@short|long.service`, das den Test auf
   jeder Platte anstößt. Zeiten unter Einstellungen → Zeitpläne. Ein Kurztest weckt schlafende
   Platten.
 - Ergebnis aus dem Selbsttest-Protokoll (ATA und NVMe): laufend mit Restprozent, letzter Test
@@ -457,14 +457,14 @@ Benachrichtigungen und USV (M9d):
 
 - Kanäle: E-Mail (SMTP mit STARTTLS oder TLS), ntfy, Gotify. Zugangsdaten stehen in
   `/etc/dahlia/notify.json` (root, 0600); das Dashboard sieht nur, ob eines gesetzt ist.
-- `dahlia-notify.timer` prüft alle 10 Minuten SMART (auch einen fehlgeschlagenen Selbsttest), Plattentemperatur (ab 55 °C HDD,
+- `notify.timer` prüft alle 10 Minuten SMART (auch einen fehlgeschlagenen Selbsttest), Plattentemperatur (ab 55 °C HDD,
   70 °C SSD) und Belegung (ab 90 %, kritisch ab 97 %). Gemeldet wird nur eine Änderung,
   ein behobenes Problem als "Resolved". Zustand in `/var/lib/dahlia/notify-state.json`.
-- Mover, SnapRAID-Sync/-Scrub und Update haben `OnFailure=dahlia-notify-failure@%n`;
+- Mover, SnapRAID-Sync/-Scrub und Update haben `OnFailure=notify-failure@%n`;
   die Meldung enthält die letzten 15 Journalzeilen.
 - USV über NUT: USB (`usbhid-ups`, `upsd` nur auf localhost) oder ein NUT-Server im Netz
-  (`netclient`). `upsmon` ruft bei jedem Ereignis `dahlia-notify ups-event` auf. Bei
-  Akkubetrieb startet ein Timer `dahlia-ups-shutdown`, der nach der eingestellten Zeit
+  (`netclient`). `upsmon` ruft bei jedem Ereignis `notify ups-event` auf. Bei
+  Akkubetrieb startet ein Timer `ups-shutdown`, der nach der eingestellten Zeit
   ausschaltet; zurück am Netz wird er gestoppt. Ohne Zeit fährt `upsmon` bei schwachem
   Akku herunter.
 
@@ -476,7 +476,7 @@ SMB-Freigaben (M9c):
   bleibt als `smb.conf.dahlia-orig`. Mindestens SMB2, keine Drucker, kein NetBIOS (`nmbd` aus).
 - Zugriff: öffentlich (Gast liest und schreibt), geschützt (Gast liest, ausgewählte Benutzer
   schreiben), privat (nur ausgewählte Benutzer). Dateien bekommen die Gruppe `dahlia`.
-- SMB-Benutzer sind Systemkonten ohne Shell und Home in den Gruppen `dahlia-smb` und
+- SMB-Benutzer sind Systemkonten ohne Shell und Home in den Gruppen `smb` und
   `dahlia`. Das Passwort geht nur über stdin an `smbpasswd`.
 - Finden im Netz: `wsdd` für Windows, eine Avahi-Datei (`_smb._tcp`, bei Time Machine
   `_adisk._tcp`) für macOS. Ohne Freigabe sind `smbd` und `wsdd` aus.
@@ -484,7 +484,7 @@ SMB-Freigaben (M9c):
   (`fruit:time machine max size`). Mehrere Macs auf einer Freigabe teilen sich die Grenze.
 - Papierkorb (M32): mit `recycle_days` > 0 verschiebt `vfs_recycle` über SMB gelöschte Dateien
   nach `<Freigabe>/.recycle` (Ordnerbaum bleibt, Versionen bei gleichem Namen, Zugriffszeit =
-  Löschzeit). `dahlia-recycle.timer` löscht täglich, was älter als die eingestellten Tage ist,
+  Löschzeit). `recycle.timer` löscht täglich, was älter als die eingestellten Tage ist,
   und leere Ordner; Symlinks werden nicht verfolgt. `shares.empty_recycle` leert sofort.
   Zurückholen: Datei aus `.recycle` zurückkopieren. Über NFS Gelöschtes ist sofort weg.
 
@@ -517,7 +517,7 @@ Freigaben anderer Geräte (M24):
   `.automount`-Unit in `/etc/systemd/system` mit `_netdev,nofail` und 30 s Zeitlimit. Ein
   ausgeschaltetes Gerät hält den Start nicht auf; eingehängt wird beim ersten Zugriff.
 - SMB: Benutzer und Passwort in `/etc/dahlia/remotes/<Name>.cred` (root, 0600), ohne Benutzer
-  als Gast. Dateien gehören `dahlia-apps:dahlia` (0664/0775, `noperm`), damit Apps schreiben
+  als Gast. Dateien gehören `apps:dahlia` (0664/0775, `noperm`), damit Apps schreiben
   können. NFS: `soft,timeo=300,retrans=4`, die Besitzer kommen vom anderen Gerät.
 - Optional nur lesen (`ro`). Entfernen lässt sich eine Freigabe erst, wenn keine App mehr
   einen Ordner darauf nutzt, oder ausdrücklich trotzdem. Die Dateien auf dem anderen Gerät
@@ -525,7 +525,7 @@ Freigaben anderer Geräte (M24):
 
 Verlauf und InfluxDB (M25):
 
-- `dahlia-history.service` (`/usr/sbin/dahlia-history run`) nimmt jede volle Minute CPU-Auslastung,
+- `history.service` (`/usr/sbin/history run`) nimmt jede volle Minute CPU-Auslastung,
   belegten Arbeitsspeicher, Last, CPU-Temperatur (hwmon, in VMs meist keine) und die Datenrate
   jeder physischen Netzwerkschnittstelle auf. Plattentemperaturen nicht, damit schlafende
   Platten schlafen.
@@ -544,7 +544,7 @@ Verlauf und InfluxDB (M25):
 Einstellungen (M9b):
 
 - Netzwerk: `settings.set_network` schreibt die neue Konfiguration nach
-  `/etc/network/interfaces.dahlia-new` und startet `dahlia-network apply` als
+  `/etc/network/interfaces.dahlia-new` und startet `network apply` als
   transiente Unit. Diese nimmt das Interface mit der alten Konfiguration herunter,
   tauscht die Dateien und startet es neu. Wird die Änderung nicht innerhalb von
   180 Sekunden über `settings.confirm_network` bestätigt, stellt sie die alte
@@ -552,31 +552,31 @@ Einstellungen (M9b):
 - Netzwerk-Aufbau (M31): Anschlüsse → `bond0` (ab zwei Anschlüssen, ifenslave) → `br0`
   (optional, bridge-utils) → VLANs `<Haupt>.<ID>` (feste Adresse ohne Gateway oder ohne
   Adresse). Die IPv4-Einstellung der Hauptschnittstelle zieht mit auf `bond0` bzw. `br0`.
-  Die Datei wird als Ganzes neu geschrieben (Kopfzeile „Written by dahlia-agent“);
-  `dahlia-network apply` nimmt alle Schnittstellen der alten Datei herunter (VLANs und
+  Die Datei wird als Ganzes neu geschrieben (Kopfzeile „Written by agent“);
+  `network apply` nimmt alle Schnittstellen der alten Datei herunter (VLANs und
   Bridge zuerst) und startet die `auto`-Schnittstellen der neuen, mit demselben Rückfall.
   Eine Adressänderung danach lässt Bridge- und Bond-Optionen stehen.
 - Wake-on-LAN (M31): je Anschluss mit Unterstützung für Magic Packet (`Supports Wake-on`
-  enthält `g`); sofort per `ethtool` und bei jedem Start über `dahlia-wol@<Port>.service`,
+  enthält `g`); sofort per `ethtool` und bei jedem Start über `wol@<Port>.service`,
   weil Treiber die Einstellung beim Booten zurücksetzen.
 - Spindown: Standard für alle drehenden Platten plus Werte pro Seriennummer.
-  `dahlia-spindown.service` wendet sie beim Booten an, eine udev-Regel bei neu
+  `spindown.service` wendet sie beim Booten an, eine udev-Regel bei neu
   angeschlossenen Platten. SSDs und NVMe werden übersprungen.
-- Zeitpläne: Drop-ins unter `/etc/systemd/system/<timer>.d/dahlia-schedule.conf`,
+- Zeitpläne: Drop-ins unter `/etc/systemd/system/<timer>.d/schedule.conf`,
   gespeicherte Werte in `/etc/dahlia/schedules.json`. „Aus“ deaktiviert den Timer.
 
 Die Live-Werte liefert die Agent-Aktion `system.stats` (`/proc`, `statvfs`, `ip -j addr`);
 die Übersicht fragt sie alle 3 Sekunden ab, solange sie offen ist. Die CPU-Auslastung
 rechnet das Frontend aus zwei Messungen.
 
-Passwort vergessen: `sudo rm /var/lib/dahlia-dashboard/users.json` und
-`sudo systemctl restart dahlia-dashboard` öffnen den Einrichtungsassistenten mit neuem Code.
+Passwort vergessen: `sudo rm /var/lib/dashboard/users.json` und
+`sudo systemctl restart dashboard` öffnen den Einrichtungsassistenten mit neuem Code.
 
 Zwei-Faktor-Anmeldung (M22): unter Einstellungen mit dem Passwort einrichten, QR-Code
 scannen, mit einem Code bestätigen. Erst dann ist sie an; andere angemeldete Browser werden
 abgemeldet. Bei der Anmeldung fragt das Formular nach dem Code erst, wenn das Passwort
 stimmt. Falsche Codes zählen zu den Fehlversuchen. Ausschalten braucht Passwort und Code.
-Handy und Wiederherstellungscodes weg: `sudo dahlia-dashboard --disable-totp <Konto>`.
+Handy und Wiederherstellungscodes weg: `sudo dashboard --disable-totp <Konto>`.
 
 API-Tokens (M26): für Home Assistant, Homepage oder Skripte, unter Einstellungen erstellt und
 widerrufen (höchstens 20). Ein Token (`dahlia_` + 43 Zeichen) wird nur beim Erstellen
@@ -612,7 +612,7 @@ Freigaben zeigt). Orte wie beim Ordnerwähler: `/mnt/user`, `/srv` und `/mnt/rem
 | Herunterladen | `files.open` öffnet die Datei und gibt den Dateideskriptor über den Socket weiter (SCM_RIGHTS); das Backend streamt ihn, nginx puffert nicht |
 | Hochladen | `files.upload` legt `.dahlia-upload-<zufall>` an (Besitzer und Gruppe wie der Ordner, 0664) und gibt den Deskriptor weiter; das Backend schreibt den Request-Body hinein, `files.upload_finish` benennt um, bei Fehlern löscht `files.upload_abort`. Keine Größengrenze (`client_max_body_size 0` nur für diesen Pfad) |
 | Neuer Ordner, Umbenennen | `files.create_dir`, `files.rename`, sofort |
-| Löschen, Kopieren, Verschieben | `files.start` startet `dahlia-files.service` (transient, `/usr/sbin/dahlia-files`); Fortschritt in `/run/dahlia/files-progress.json`, abgefragt über `files.job`, Abbruch mit `files.cancel` |
+| Löschen, Kopieren, Verschieben | `files.start` startet `files.service` (transient, `/usr/sbin/files`); Fortschritt in `/run/dahlia/files-progress.json`, abgefragt über `files.job`, Abbruch mit `files.cancel` |
 
 Regeln: Pfade werden Ordner für Ordner mit `O_NOFOLLOW` geöffnet, Symlinks werden angezeigt,
 aber nicht verfolgt. Direkt in einem Ort (Freigabe-, App- und Remote-Ordner) und unter
@@ -633,22 +633,22 @@ Die Seite Terminal im Dashboard ist eine Shell im Browser (xterm.js, MIT, unter
 
 1. Browser → `wss://<server>/api/terminal` (nginx mit Upgrade-Headern). Das Backend prüft
    die Dashboard-Sitzung und dass `Origin` der eigene Server ist.
-2. Backend → Unix-Socket `/run/dahlia-terminal/terminal.sock` (Gruppe `dahlia-ui`, 0660).
-3. `dahlia-terminal.service` läuft als `dahlia-term` ohne Rechte und startet je Sitzung
+2. Backend → Unix-Socket `/run/terminal/terminal.sock` (Gruppe `ui`, 0660).
+3. `terminal.service` läuft als `term` ohne Rechte und startet je Sitzung
    `su -l <Benutzer>` in einem Pseudo-Terminal. `su` fragt das Linux-Passwort; Root-Rechte
    gibt es danach mit `sudo` wie bei SSH. Erlaubt sind nur Konten ab UID 1000 mit
    Login-Shell, voreingestellt das Konto mit dem Namen des Dashboard-Kontos.
 
 Höchstens 4 Sitzungen, Trennung nach 15 Minuten ohne Eingabe. Beginn und Ende jeder
-Sitzung (Linux-Konto, Dashboard-Konto, IP) stehen im Journal von `dahlia-terminal`.
-Ein Update von `dahlia-dashboard` startet das Backend neu und trennt offene Sitzungen;
+Sitzung (Linux-Konto, Dashboard-Konto, IP) stehen im Journal von `terminal`.
+Ein Update von `dashboard` startet das Backend neu und trennt offene Sitzungen;
 Paket-Updates daher über die Update-Seite oder in `tmux`/`screen`.
 
 ### Apps (ab Meilenstein 6)
 
 Apps sind Docker-Container aus App-Vorlagen. Der Katalog liegt im Repo
-[dahlia-apps](https://github.com/Fabiy99/dahlia-apps) und wird von
-`https://raw.githubusercontent.com/Fabiy99/dahlia-apps/main/` geladen
+[apps](https://github.com/Fabiy99/apps) und wird von
+`https://raw.githubusercontent.com/Fabiy99/apps/main/` geladen
 (`/etc/dahlia/apps.json`, auch `file:///` für eigene Kataloge).
 
 Eine Vorlage (YAML) beschreibt eine App. Ab `schema: 2` ist das ein kleiner Stack: der
@@ -678,32 +678,32 @@ Vorlage unter `login` nennt.
 | LAN-Ports | nur wenn die Vorlage sie nennt; das Dashboard zeigt sie vor der Installation |
 | Speicherort | Array `/mnt/user` oder System-SSD `/srv` (FHS: Daten, die das System bereitstellt). Wahl bei der Installation, ohne Array automatisch `/srv`. Apps von vor 0.7 liegen auf dem Array |
 | System-SSD | `/srv` ist auf Btrfs ein eigenes Subvolume `@srv` auf oberster Ebene wie bei openSUSE, eingehängt über `srv.mount` (angelegt von `/usr/lib/dahlia/system-data.sh` im postinst). Es gehört nicht zu den snapper-Snapshots von `/`: ein Rollback setzt App-Daten nicht zurück und verliert sie nicht. Auf anderen Dateisystemen ein normaler Ordner |
-| Daten | `<Ort>/appdata/<id>/...` (Besitzer `dahlia-apps`), Freigaben `<Ort>/<name>`; Apps auf dem Array starten nur mit eingehängtem Array |
+| Daten | `<Ort>/appdata/<id>/...` (Besitzer `apps`), Freigaben `<Ort>/<name>`; Apps auf dem Array starten nur mit eingehängtem Array |
 | Einrichtung | Das Dashboard zeigt vor der Installation die Voraussetzungen und die Freigaben der App. Man wählt den Speicherort; "Ändern" öffnet einen Ordnerbaum auf System-SSD oder Array (mit "Neuer Ordner"), auch gemischt; der Pfad im Container bleibt gleich |
-| Start | Docker startet nichts selbst (`restart: no`); `dahlia-apps.service` startet die aktivierten Apps nach den Platten |
+| Start | Docker startet nichts selbst (`restart: no`); `apps.service` startet die aktivierten Apps nach den Platten |
 | Container | `no-new-privileges`, Log-Treiber `local` mit 3 x 10 MB; Hauptdienst `dahlia-<id>`, Hilfsdienste `dahlia-<id>-<dienst>` |
 | Stack | eigenes Docker-Netz je App, Dienste erreichen sich über den Dienstnamen; Hilfsdienste veröffentlichen keine Ports |
 | Katalog | `catalog.json` (alle Vorlagen in einer Datei), sonst `index.json` und `apps/<id>.yaml`; Vorlagen mit neuerem Schema werden übersprungen |
 | Logos | `catalog.json` nennt unter `icons` je App `icons/<id>.svg` oder `.png` mit SHA-256. Der Agent lädt nur geänderte Logos, prüft Hash, Größe (64 KB) und Dateityp und legt sie in `/var/lib/dahlia/apps-catalog/icons/`; nginx liefert sie als `/app-icons/` mit `sandbox`-CSP aus. Ohne Logo zeigt das Dashboard den Anfangsbuchstaben |
-| Updates | `dahlia-apps-catalog.timer` lädt den Katalog alle 6 Stunden; weicht die Vorlage einer installierten App ab, zeigt das Dashboard "Update auf <Version>" und "Alle aktualisieren". Alte Images werden danach gelöscht |
+| Updates | `apps-catalog.timer` lädt den Katalog alle 6 Stunden; weicht die Vorlage einer installierten App ab, zeigt das Dashboard "Update auf <Version>" und "Alle aktualisieren". Alte Images werden danach gelöscht |
 
 ```sh
-dahlia-apps catalog --refresh
-dahlia-apps install jellyfin [--location /srv] [--folder media=/mnt/user/Filme/Serien]
-dahlia-apps list
-dahlia-apps updates                # Apps mit neuerer Vorlage im Katalog
-dahlia-apps update jellyfin
-dahlia-apps remove jellyfin [--delete-data]
-dahlia-apps check app.yaml        # Vorlage prüfen
-dahlia-apps install kuma --spec kuma.json [--location /srv]   # eigener Container
-dahlia-apps update kuma [--spec kuma.json]
+apps catalog --refresh
+apps install jellyfin [--location /srv] [--folder media=/mnt/user/Filme/Serien]
+apps list
+apps updates                # Apps mit neuerer Vorlage im Katalog
+apps update jellyfin
+apps remove jellyfin [--delete-data]
+apps check app.yaml        # Vorlage prüfen
+apps install kuma --spec kuma.json [--location /srv]   # eigener Container
+apps update kuma [--spec kuma.json]
 ```
 
 Eigene Container (ab Meilenstein 19): Für ein Image, das nicht im Katalog ist, gibt es unter
 Apps "Eigener Container". Das Formular fragt Kennung, Name, Image mit fester Version,
 optional Web-Port und Port im Netzwerk, weitere LAN-Ports, Ordner (App-Daten unter
 `<Ort>/appdata/<id>/` oder ein Ordner aus dem Ordner-Dialog), Umgebungsvariablen mit den
-Platzhaltern oben und GPU ab. `dahlia-apps` baut daraus eine Vorlage mit nur dem Dienst
+Platzhaltern oben und GPU ab. `apps` baut daraus eine Vorlage mit nur dem Dienst
 `app` und prüft sie wie jede Katalog-Vorlage, es gibt also auch hier kein `privileged`,
 kein Host-Netz und keine freien Geräte. Ordner werden zu den Freigaben `folder1`,
 `folder2` usw. Das Formular liegt in `/var/lib/dahlia/apps/<id>/custom.json` (0600),
@@ -714,11 +714,11 @@ installiert neu (Daten und Secrets bleiben), "Update" lädt das Image neu.
 
 ## Backup (ab Meilenstein 13)
 
-`dahlia-backup` sichert mit restic, was zum Wiederherstellen eines Servers nötig ist:
+`backup` sichert mit restic, was zum Wiederherstellen eines Servers nötig ist:
 
 - `/etc/dahlia`
 - `/var/lib/dahlia/apps` (Vorlagen, Zustand und Geheimnisse der installierten Apps)
-- `/var/lib/dahlia-dashboard` (Dashboard-Konten)
+- `/var/lib/dashboard` (Dashboard-Konten)
 - `<Speicherort>/appdata/<id>` jeder installierten App
 - weitere Ordner aus `folders` in `/etc/dahlia/backup.json`
 
@@ -734,7 +734,7 @@ wiederherstellen, daher zeigt das Dashboard es zum Aufbewahren an.
 
 Laufende Apps werden für die Sicherung gestoppt und danach wieder gestartet, damit die
 Datenbanken konsistent sind (abschaltbar). Danach behält restic 7 tägliche, 4 wöchentliche
-und 6 monatliche Snapshots. `dahlia-backup.timer` läuft täglich um 02:00 und wird erst
+und 6 monatliche Snapshots. `backup.timer` läuft täglich um 02:00 und wird erst
 eingeschaltet, wenn ein Ziel gespeichert ist; die Zeit steht unter Einstellungen > Zeitpläne.
 Fehler gehen wie bei den anderen Jobs an die Benachrichtigungen.
 
@@ -742,10 +742,10 @@ Wiederherstellen geht je App (Container gestoppt, `appdata` ersetzt, wieder gest
 für die Konfiguration (`/etc/dahlia` und die App-Liste).
 
 ```sh
-sudo dahlia-backup run
-sudo dahlia-backup snapshots
-sudo dahlia-backup restore 4f2a9c1d paperless
-sudo dahlia-backup restore 4f2a9c1d config
+sudo backup run
+sudo backup snapshots
+sudo backup restore 4f2a9c1d paperless
+sudo backup restore 4f2a9c1d config
 ```
 
 Auf einem neuen Server: Dahlia installieren, das alte Passwort nach `/etc/dahlia/backup.pass`
@@ -767,12 +767,12 @@ Einen eigenen DNS-Server oder eine eigene Domain braucht Dahlia nicht (bis 1.0 g
 Der Platzhalter `{DOMAIN}` in App-Vorlagen steht für `local`, `https://<app>.{DOMAIN}` ist
 also der mDNS-Alias der App.
 
-mDNS-Aliase: `dahlia-mdns.service` (ohne Rechte, Benutzer `dahlia-mdns`) veröffentlicht für jede App
+mDNS-Aliase: `mdns.service` (ohne Rechte, Benutzer `mdns`) veröffentlicht für jede App
 mit Web-Oberfläche `<app>.local` per `avahi-publish` auf der primären IPv4-Adresse. Ändert
 sich die Adresse, folgen die Aliase nach höchstens 10 Sekunden. Eine App, die so heißt wie
 der Server, bekommt keinen Alias.
 
-Zertifikate (`dahlia-domains`, Teil von `dahlia-agent`):
+Zertifikate (`domains`, Teil von `agent`):
 
 | Datei | Inhalt |
 | --- | --- |
@@ -787,7 +787,7 @@ ihr also für keine anderen Websites. Das Server-Zertifikat enthält `<server>.l
 privaten IPv4-Adressen des Servers, das App-Zertifikat die mDNS-Aliase. Ohne Aliase lauscht
 der App-Proxy nur auf dem Port-Link. Apps
 installieren oder entfernen ändert so nur das App-Zertifikat; ein Browser, der das
-Server-Zertifikat einmal akzeptiert hat, verliert das Dashboard nicht. `dahlia-domains.timer`
+Server-Zertifikat einmal akzeptiert hat, verliert das Dashboard nicht. `domains.timer`
 prüft täglich und nach dem Boot: neue Adresse, neue App, weniger als 30 Tage Restlaufzeit
 führen zu einem neuen Zertifikat.
 
@@ -799,16 +799,16 @@ nach `/usr/local/share/ca-certificates/dahlia-ca.crt` kopieren und `update-ca-ce
 Firefox nutzt seinen eigenen Speicher (Einstellungen > Zertifikate > Importieren).
 
 ```sh
-dahlia-domains show
-dahlia-domains set --mdns off     # nur noch Port-Links
-dahlia-domains apply              # Zertifikat und Proxy prüfen, nur bei Bedarf neu
+domains show
+domains set --mdns off     # nur noch Port-Links
+domains apply              # Zertifikat und Proxy prüfen, nur bei Bedarf neu
 ```
 
 ## Energiesparmodus und Geräte (ab Meilenstein 28)
 
 Einstellungen > Energiesparmodus setzt den CPU-Governor auf allen cpufreq-Policies
 (`/sys/devices/system/cpu/cpufreq/policy*/scaling_governor`). Damit er nach dem Neustart
-gilt, schreibt der Agent eine `w`-Zeile nach `/etc/tmpfiles.d/dahlia-cpu-governor.conf`;
+gilt, schreibt der Agent eine `w`-Zeile nach `/etc/tmpfiles.d/cpu-governor.conf`;
 systemd-tmpfiles setzt den Wert beim Booten. Zur Wahl stehen nur die Governor, die der
 Kernel in `scaling_available_governors` anbietet (bei `intel_pstate` meist nur `powersave`
 und `performance`). Ohne cpufreq, wie in den meisten VMs, zeigt die Karte nur einen Hinweis.
@@ -833,11 +833,11 @@ führt zur Seite, auf der man es behebt. Ein Bereich, der sich nicht prüfen lä
 ## Betrieb: Remote-Syslog, Platte finden, Parity-Verlauf, alle Apps (ab Meilenstein 30)
 
 - Remote-Syslog (Einstellungen): journald behält das lokale Protokoll. Eingeschaltet reicht
-  journald jede Meldung an rsyslog weiter (`/etc/systemd/journald.conf.d/dahlia-remote-syslog.conf`),
+  journald jede Meldung an rsyslog weiter (`/etc/systemd/journald.conf.d/remote-syslog.conf`),
   rsyslog schickt sie per `omfwd` (UDP oder TCP) an den Server und verwirft sie danach (`stop`),
   damit unter `/var/log` keine zweite Kopie entsteht. Ausgeschaltet ist rsyslog gestoppt und
   deaktiviert; der Postinst schaltet es aus, solange nichts eingerichtet ist.
-- Platte finden (Speicher, je Platte „LED blinken“): `dahlia-locate` liest zwei Minuten lang
+- Platte finden (Speicher, je Platte „LED blinken“): `disk-blink` liest zwei Minuten lang
   zweimal pro Sekunde 16 MiB an zufälligen Stellen, an der Seite vorbei (`iflag=direct`),
   mit niedriger I/O-Priorität. Nur lesend; eine schlafende Platte wacht dabei auf.
 - Parity-Verlauf: `dahlia-snapraid` hängt jeden Lauf (Sync, Scrub, Reparatur) an `history` in
@@ -852,7 +852,7 @@ führt zur Seite, auf der man es behebt. Ein Bereich, der sich nicht prüfen lä
 Für Fehlermeldungen: Systemprotokoll > "Diagnosepaket herunterladen". Der Agent sammelt
 Versionen (`dpkg-query`, `uname`, `/etc/os-release`), Dienste und Timer, Journal des
 aktuellen Boots (Warnungen, `dahlia*`, Kernel) und Fehler des vorigen, Platten (`lsblk`,
-`findmnt`, `df`, `dahlia-disk list`, Parity-Status, `/etc/snapraid.conf`), Netzwerk
+`findmnt`, `df`, `disk list`, Parity-Status, `/etc/snapraid.conf`), Netzwerk
 (`ip`, `nft list ruleset`, `ss -tulpn`), Docker (`ps`, `info`, `system df`), die Enden von
 apt- und unattended-upgrades-Log sowie `state.json` und `app.yaml` jeder App. Draußen
 bleiben `compose.json` und `secrets.json` der Apps, `/etc/dahlia/backup.pass`, SSH- und
@@ -863,14 +863,14 @@ dem ersten Herunterladen gelöscht.
 ## Updates
 
 - Debian-Sicherheitsupdates über `unattended-upgrades` (ab Meilenstein 15), standardmäßig an.
-  `dahlia-base` liefert `/etc/apt/apt.conf.d/51dahlia-unattended-upgrades`: nur
+  `base` liefert `/etc/apt/apt.conf.d/51unattended-upgrades`: nur
   `${distro_codename}-security`, alte Kernel werden entfernt. Der Schalter ist Debians
   `20auto-upgrades`, der automatische Neustart (aus, Uhrzeit wählbar) steht in
-  `52dahlia-auto-reboot`; beides setzt das Dashboard unter Updates. Ausgeführt wird es von
+  `52auto-reboot`; beides setzt das Dashboard unter Updates. Ausgeführt wird es von
   `apt-daily-upgrade.timer` (täglich gegen 06:00), snapper legt wie bei jedem apt-Lauf
   Snapshots an. Das Dashboard zeigt den letzten Lauf aus
   `/var/log/unattended-upgrades/unattended-upgrades.log` und einen nötigen Neustart
-  (`/run/reboot-required`). Ohne automatischen Neustart meldet `dahlia-notify` ihn einmal
+  (`/run/reboot-required`). Ohne automatischen Neustart meldet `notify` ihn einmal
   (Meldungsart `updates`).
 - Dahlia-Pakete und übrige Updates per Klick im UI, immer mit Snapshot vorher.
 - Das apt-Repo wird in CI gebaut, signiert und auf GitHub Pages veröffentlicht

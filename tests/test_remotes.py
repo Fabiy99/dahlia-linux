@@ -1,4 +1,4 @@
-"""remotes.* actions of dahlia-agent: SMB and NFS shares of other devices."""
+"""remotes.* actions of agent: SMB and NFS shares of other devices."""
 
 import json
 
@@ -6,7 +6,7 @@ import pytest
 from dahlia_agent import actions, apps, protocol, remotes
 from test_agent import FakeRunner, err_code, run
 
-PASSWD = (0, "dahlia-apps:x:997:997::/nonexistent:/usr/sbin/nologin\n", "")
+PASSWD = (0, "apps:x:997:997::/nonexistent:/usr/sbin/nologin\n", "")
 GROUP = (0, "dahlia:x:996:\n", "")
 
 
@@ -19,7 +19,7 @@ def ctx(tmp_path):
     c.proc.mkdir()
     (c.proc / "self").mkdir()
     (c.proc / "self/mounts").write_text("sysfs /sys sysfs rw 0 0\n")
-    c.runner.answers[("getent", "passwd", "dahlia-apps")] = PASSWD
+    c.runner.answers[("getent", "passwd", "apps")] = PASSWD
     c.runner.answers[("getent", "group", "dahlia")] = GROUP
     c.runner.answers[("systemctl", "show")] = (0, "Result=success\n", "")
     return c

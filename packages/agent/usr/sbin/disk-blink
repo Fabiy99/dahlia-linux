@@ -1,0 +1,20 @@
+#!/bin/bash
+# Make the activity LED of a disk blink so it can be found in the case:
+# short direct reads at random places, twice a second. Reads only.
+# Usage: disk-blink /dev/sdX [seconds]
+set -euo pipefail
+
+dev="${1:-}"
+seconds="${2:-120}"
+if [[ ! "$dev" =~ ^/dev/[a-z0-9]+$ || ! -b "$dev" || ! "$seconds" =~ ^[0-9]+$ ]]; then
+    echo "usage: disk-blink /dev/sdX [seconds]" >&2
+    exit 2
+fi
+size_mb=$(( $(blockdev --getsize64 "$dev") / 1048576 ))
+span=$(( size_mb > 64 ? size_mb - 64 : 1 ))
+end=$(( SECONDS + seconds ))
+while (( SECONDS < end )); do
+    skip=$(( (RANDOM * 32768 + RANDOM) % span ))
+    dd if="$dev" of=/dev/null bs=1M count=16 skip="$skip" iflag=direct status=none || true
+    sleep 0.5
+done

@@ -1,4 +1,4 @@
-"""power.* and system.devices actions of dahlia-agent (fake sysfs, fake lspci/lsusb)."""
+"""power.* and system.devices actions of agent (fake sysfs, fake lspci/lsusb)."""
 
 import pytest
 from dahlia_agent import actions, power, protocol
@@ -49,7 +49,7 @@ def test_set_governor_writes_sysfs_and_tmpfiles(ctx):
     out = run(ctx, "power.set_governor", {"governor": "performance"})["result"]
     assert out["current"] == "performance"
     assert out["saved"] == "performance"
-    conf = (ctx.etc / "tmpfiles.d/dahlia-cpu-governor.conf").read_text()
+    conf = (ctx.etc / "tmpfiles.d/cpu-governor.conf").read_text()
     assert ("w /sys/devices/system/cpu/cpufreq/policy*/scaling_governor - - - - performance\n"
             in conf)
     for i in range(2):
@@ -63,7 +63,7 @@ def test_set_governor_rejects_unknown(ctx):
         == protocol.INVALID_PARAMS
     assert err_code(run(ctx, "power.set_governor", {"governor": "x; rm -rf /"})) \
         == protocol.INVALID_PARAMS
-    assert not (ctx.etc / "tmpfiles.d/dahlia-cpu-governor.conf").exists()
+    assert not (ctx.etc / "tmpfiles.d/cpu-governor.conf").exists()
 
 
 def test_set_governor_without_cpufreq(ctx):

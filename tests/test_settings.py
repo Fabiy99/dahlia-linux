@@ -1,4 +1,4 @@
-"""settings.* actions of dahlia-agent: time, network, spindown, schedules."""
+"""settings.* actions of agent: time, network, spindown, schedules."""
 
 import json
 
@@ -117,16 +117,16 @@ def test_schedules_defaults(ctx):
 def test_set_schedule(ctx):
     assert run(ctx, "settings.set_schedule", {"job": "snapraid-sync", "frequency": "weekly",
                                               "time": "05:45", "weekday": "sat"})["ok"]
-    dropin = ctx.etc / "systemd/system/dahlia-snapraid-sync.timer.d/dahlia-schedule.conf"
+    dropin = ctx.etc / "systemd/system/snapraid-sync.timer.d/schedule.conf"
     assert dropin.read_text() == "[Timer]\nOnCalendar=\nOnCalendar=Sat *-*-* 05:45:00\n"
-    assert ctx.runner.calls[-1] == ["systemctl", "restart", "dahlia-snapraid-sync.timer"]
+    assert ctx.runner.calls[-1] == ["systemctl", "restart", "snapraid-sync.timer"]
     assert settings.saved_schedules(ctx)["snapraid-sync"]["weekday"] == "sat"
     assert settings.saved_schedules(ctx)["mover"]["time"] == "03:00"
 
 
 def test_set_schedule_off(ctx):
     assert run(ctx, "settings.set_schedule", {"job": "mover", "frequency": "off"})["ok"]
-    assert ctx.runner.calls == [["systemctl", "disable", "--now", "dahlia-mover.timer"]]
+    assert ctx.runner.calls == [["systemctl", "disable", "--now", "mover.timer"]]
 
 
 @pytest.mark.parametrize("params", [
@@ -213,10 +213,10 @@ def test_set_network_static(net):
     assert "iface ens18 inet static\n    address 192.168.1.20/24\n" in staged
     assert (net.etc / "resolv.conf.dahlia-new").read_text() == \
         "nameserver 192.168.1.1\nnameserver 9.9.9.9\n"
-    # The live file is untouched until dahlia-network applies it.
+    # The live file is untouched until network applies it.
     assert (net.etc / "network/interfaces").read_text() == INTERFACES
-    assert net.runner.calls[-1] == ["systemd-run", "--unit=dahlia-network-apply", "--collect",
-                                    "dahlia-network", "apply", "--iface", "ens18"]
+    assert net.runner.calls[-1] == ["systemd-run", "--unit=network-apply", "--collect",
+                                    "network", "apply", "--iface", "ens18"]
 
 
 @pytest.mark.parametrize("params", [

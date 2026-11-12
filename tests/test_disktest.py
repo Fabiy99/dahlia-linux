@@ -1,4 +1,4 @@
-"""SMART self-tests and the disk test (burn-in) of dahlia-agent."""
+"""SMART self-tests and the disk test (burn-in) of agent."""
 
 import json
 
@@ -26,7 +26,7 @@ def ctx(tmp_path):
     c = actions.Context(runner=FakeRunner(), etc=tmp_path / "etc", run_dir=tmp_path / "run",
                         var=tmp_path / "var", sys=tmp_path / "sys", proc=tmp_path / "proc")
     c.runner.answers[("lsblk",)] = (0, LSBLK, "")
-    c.runner.answers[("dahlia-disk", "list")] = (0, disk_list(), "")
+    c.runner.answers[("disk", "list")] = (0, disk_list(), "")
     c.runner.answers[("systemctl", "is-active")] = (3, "inactive\n", "")
     return c
 
@@ -114,7 +114,7 @@ def test_smart_test_rejects(ctx):
 
 def test_burnin_start(ctx):
     assert run(ctx, "disks.burnin_start", {"device": "/dev/sdb", "confirm": "sdb"})["ok"]
-    assert ["systemctl", "start", "--no-block", "dahlia-burnin@sdb.service"] in ctx.runner.calls
+    assert ["systemctl", "start", "--no-block", "burnin@sdb.service"] in ctx.runner.calls
 
 
 @pytest.mark.parametrize("device,confirm,code", [
@@ -133,7 +133,7 @@ def test_burnin_rejects(ctx, device, confirm, code):
 @pytest.mark.parametrize("status,kind", [("candidate", "part"), ("empty", "part"),
                                          ("mounted", "disk")])
 def test_burnin_only_on_blank_disks(ctx, status, kind):
-    ctx.runner.answers[("dahlia-disk", "list")] = (0, disk_list(status, kind), "")
+    ctx.runner.answers[("disk", "list")] = (0, disk_list(status, kind), "")
     reply = run(ctx, "disks.burnin_start", {"device": "/dev/sdb", "confirm": "sdb"})
     assert err_code(reply) == protocol.FAILED and "not empty" in reply["error"]["message"]
 
@@ -145,7 +145,7 @@ def test_burnin_not_twice_and_blocks_format(ctx):
     reply = run(ctx, "storage.format", {"device": "/dev/sdb", "filesystem": "xfs",
                                         "confirm": "sdb"})
     assert err_code(reply) == protocol.FAILED and "disk test" in reply["error"]["message"]
-    assert not any(c[0] == "dahlia-disk" and c[1] == "format" for c in ctx.runner.calls)
+    assert not any(c[0] == "disk" and c[1] == "format" for c in ctx.runner.calls)
 
 
 LOG = ("Checking for bad blocks in read-write mode\nFrom block 0 to 976754645\n"
@@ -198,7 +198,7 @@ def test_burnin_status(ctx):
 
 def test_burnin_stop(ctx):
     assert run(ctx, "disks.burnin_stop", {"device": "/dev/sdb"})["ok"]
-    assert ctx.runner.calls[-1] == ["systemctl", "stop", "--no-block", "dahlia-burnin@sdb.service"]
+    assert ctx.runner.calls[-1] == ["systemctl", "stop", "--no-block", "burnin@sdb.service"]
 
 
 def test_smart_schedules(ctx):
@@ -208,10 +208,10 @@ def test_smart_schedules(ctx):
     assert s["smart-long"]["frequency"] == "off"
     assert run(ctx, "settings.set_schedule", {"job": "smart-long", "frequency": "monthly",
                                               "monthday": 15, "time": "05:00"})["ok"]
-    dropin = ctx.etc / "systemd/system/dahlia-smart-long.timer.d/dahlia-schedule.conf"
+    dropin = ctx.etc / "systemd/system/smart-long.timer.d/schedule.conf"
     assert "OnCalendar=*-*-15 05:00:00" in dropin.read_text()
 
 
 def test_smart_jobs_startable(ctx):
     assert run(ctx, "job.start", {"job": "smart-short"})["ok"]
-    assert any("dahlia-smart-test@short.service" in c for c in ctx.runner.calls)
+    assert any("smart-test@short.service" in c for c in ctx.runner.calls)

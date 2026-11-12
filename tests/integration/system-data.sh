@@ -7,7 +7,7 @@
 set -euo pipefail
 
 SCRIPT="${SCRIPT:-/usr/lib/dahlia/system-data.sh}"
-WORK="$(mktemp -d /var/tmp/dahlia-sysdata-test.XXXXXX)"
+WORK="$(mktemp -d /var/tmp/sysdata-test.XXXXXX)"
 LOOPS=()
 
 fail() { echo "FAIL: $*" >&2; exit 1; }

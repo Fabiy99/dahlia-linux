@@ -227,7 +227,7 @@ def test_proxy_conf(d):
     assert f"ssl_certificate     {d.paths.tls.apps_crt};" in conf
     assert f"ssl_certificate_key {d.paths.tls.apps_key};" in conf
     assert conf.count("proxy_pass http://127.0.0.1:41000;") == 2
-    assert (d.paths.nginx / "dahlia-apps-map.conf").exists()
+    assert (d.paths.nginx / "apps-map.conf").exists()
 
 
 def test_stale_proxy_removed(d):

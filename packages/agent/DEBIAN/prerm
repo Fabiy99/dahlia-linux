@@ -1,0 +1,24 @@
+#!/bin/bash
+# agent prerm
+set -euo pipefail
+
+case "$1" in
+    remove)
+        if [ -d /run/systemd/system ]; then
+            systemctl stop agent.socket agent.service mdns.service \
+                domains.timer apps-catalog.timer backup.timer history.service recycle.timer || true
+        fi
+        systemctl disable agent.socket mdns.service domains.timer \
+            apps-catalog.timer backup.timer recycle.timer firewall.service history.service >/dev/null 2>&1 || true
+        # Without the agent nothing keeps the firewall table up to date.
+        nft delete table inet dahlia 2>/dev/null || true
+        ;;
+    upgrade|deconfigure|failed-upgrade)
+        ;;
+    *)
+        echo "prerm called with unknown argument '$1'" >&2
+        exit 1
+        ;;
+esac
+
+exit 0

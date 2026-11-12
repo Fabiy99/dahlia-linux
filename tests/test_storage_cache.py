@@ -58,7 +58,7 @@ def test_cache_mountpoint_and_unit():
 def test_cache_is_not_protected_by_snapraid():
     text = snapraid.render(layout())
     assert "/mnt/cache" not in text
-    assert "exclude *.dahlia-mover.tmp" in text
+    assert "exclude *.mover.tmp" in text
 
 
 def test_state_rejects_second_cache():

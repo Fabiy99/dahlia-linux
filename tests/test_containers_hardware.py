@@ -1,4 +1,4 @@
-"""docker.* and system.hardware / system.log actions of dahlia-agent."""
+"""docker.* and system.hardware / system.log actions of agent."""
 
 import json
 

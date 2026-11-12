@@ -27,7 +27,7 @@ def test_disk_unit_is_weak_dependency():
     text = units.disk_unit(layout().disks[0])
     assert "What=/dev/disk/by-uuid/u1" in text
     assert "Where=/mnt/disk1" in text
-    assert "WantedBy=dahlia-storage.target" in text
+    assert "WantedBy=storage.target" in text
     assert "Requires" not in text
 
 
