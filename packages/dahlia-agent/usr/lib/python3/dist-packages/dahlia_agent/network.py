@@ -100,7 +100,11 @@ def render_interfaces(text: str, iface: str, mode: str, address: str, gateway: s
     for i, line in enumerate(lines):
         words = line.split()
         if words[:3] == ["iface", iface, "inet"]:
-            lines[i:stanza_lines(lines, i)] = new
+            end = stanza_lines(lines, i)
+            # Bridge and bond options stay; only the IPv4 settings change.
+            keep = [ln for ln in lines[i + 1:end]
+                    if ln.split()[0] not in ("address", "netmask", "gateway")]
+            lines[i:end] = new + keep
             return "\n".join(lines) + "\n"
     raise AgentError(FAILED, f"no IPv4 configuration for {iface} in /etc/network/interfaces")
 
@@ -221,13 +225,31 @@ def settings_confirm_network(ctx: Context):
 # --- dahlia-network apply -----------------------------------------------------
 
 
+def started_ifaces(text: str) -> list[str]:
+    """Interfaces brought up at boot ("auto" and "allow-hotplug" lines), without lo."""
+    out = []
+    for line in text.splitlines():
+        words = line.split()
+        if words[:1] in (["auto"], ["allow-hotplug"]):
+            out += [w for w in words[1:] if w != "lo" and w not in out]
+    return out
+
+
 def swap_in(paths: Paths, runner: Runner, iface: str, files: list[tuple[Path, Path]]) -> None:
-    """Take iface down with the config it was brought up with, swap, bring up."""
-    runner.run(["ifdown", "--force", iface], timeout=60, check=False)
+    """Take the interfaces down with the config they were brought up with, swap,
+    bring up the ones of the new config. iface is the main interface; bridges,
+    bonds and VLANs of a changed layout come from the files themselves."""
+    old = paths.interfaces.read_text() if paths.interfaces.exists() else ""
+    down = list(dict.fromkeys([iface, *started_ifaces(old)]))
+    # VLANs and bridges first, the device under them last.
+    for name in reversed(down):
+        runner.run(["ifdown", "--force", name], timeout=60, check=False)
     for src, dst in files:
         shutil.copyfile(src, dst)
-    runner.run(["ip", "addr", "flush", "dev", iface], check=False)
-    runner.run(["ifup", iface], timeout=120, check=False)
+    for name in down:
+        runner.run(["ip", "addr", "flush", "dev", name], check=False)
+    for name in started_ifaces(paths.interfaces.read_text()) or [iface]:
+        runner.run(["ifup", name], timeout=120, check=False)
 
 
 def apply(paths: Paths, runner: Runner, iface: str, timeout: int = ROLLBACK_SECONDS,

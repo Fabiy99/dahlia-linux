@@ -2759,7 +2759,7 @@ async function loadAccount() {
   setSidebar(info);
   document.querySelector("#hostname-form [name=hostname]").value = info.hostname;
   // Each card loads on its own; one failing part does not hide the others.
-  await Promise.all([loadTime(), loadNetwork(), loadSpindown(), loadFirewall(), loadSchedules(),
+  await Promise.all([loadTime(), loadNetwork(), loadNetLayout(), loadSpindown(), loadFirewall(), loadSchedules(),
                loadNotify(), loadUps(), loadVpn(), loadTotp()]
     .map((p) => p.catch(sayError)));
 }
@@ -2832,6 +2832,86 @@ async function loadNetwork() {
   } else if (data.reverted) {
     document.getElementById("net-pending-text").textContent = t("settings.net_reverted");
   }
+}
+
+// --- settings: network layout (bond, bridge, VLAN) and Wake-on-LAN ----------------
+
+function vlanRow(v) {
+  const row = el("div", "vlan-row");
+  const id = el("input");
+  Object.assign(id, { type: "number", min: 1, max: 4094, value: v.id ?? "", required: true });
+  id.dataset.field = "id";
+  const mode = el("select");
+  fillOptions(mode, ["static", "manual"], (m) => t(`netlayout.vlan_${m}`));
+  mode.value = v.mode || "static";
+  mode.dataset.field = "mode";
+  const address = el("input");
+  Object.assign(address, { value: v.address || "", placeholder: "10.0.20.5/24", autocomplete: "off" });
+  address.dataset.field = "address";
+  const sync = () => { address.disabled = mode.value !== "static"; };
+  mode.addEventListener("change", sync);
+  sync();
+  const labelled = (key, input) => {
+    const l = el("label");
+    l.append(el("span", "", t(key)), input);
+    return l;
+  };
+  const remove = el("button", "", t("common.remove"));
+  remove.type = "button";
+  remove.addEventListener("click", () => row.remove());
+  row.append(labelled("netlayout.vlan_id", id), labelled("netlayout.vlan_mode", mode),
+             labelled("netlayout.vlan_address", address), remove);
+  return row;
+}
+
+function renderBondField() {
+  const f = document.getElementById("netlayout-form");
+  const used = f.querySelectorAll("#netlayout-ports input[data-use]:checked").length;
+  document.getElementById("netlayout-bond").hidden = used < 2;
+}
+
+async function loadNetLayout() {
+  const data = await api("GET", "settings/network/layout");
+  const f = document.getElementById("netlayout-form");
+  const parts = [t("netlayout.main", { iface: data.main })];
+  if (data.bond_mode) parts.push(t("netlayout.has_bond", { ports: data.nics.join(", "), mode: t(`netlayout.mode_${data.bond_mode}`) }));
+  if (data.bridge) parts.push(t("netlayout.has_bridge"));
+  if (data.vlans.length) parts.push(t("netlayout.has_vlans", { ids: data.vlans.map((v) => v.id).join(", ") }));
+  document.getElementById("netlayout-current").textContent = parts.join(" · ");
+  const tbody = document.getElementById("netlayout-ports");
+  tbody.replaceChildren();
+  for (const p of data.ports) {
+    const tr = el("tr");
+    const use = el("input");
+    use.type = "checkbox";
+    use.dataset.use = p.name;
+    use.checked = data.nics.includes(p.name);
+    use.addEventListener("change", renderBondField);
+    cell(tr, use);
+    cell(tr, el("b", "", p.name));
+    cell(tr, p.mac || "–");
+    cell(tr, p.link ? badge(p.speed ? `${p.speed} Mbit/s` : t("netlayout.up"), "ok") : badge(t("netlayout.down"), ""));
+    const wol = el("input");
+    wol.type = "checkbox";
+    wol.checked = p.wol || p.wol_at_boot;
+    wol.disabled = !p.wol_supported;
+    wol.title = p.wol_supported ? "" : t("netlayout.wol_unsupported");
+    wol.addEventListener("change", () => guarded(null, async () => {
+      try {
+        await api("POST", "settings/wol", { port: p.name, enabled: wol.checked });
+        say(t(wol.checked ? "netlayout.wol_on" : "netlayout.wol_off", { port: p.name, mac: p.mac }), "ok");
+      } finally {
+        await loadNetLayout();
+      }
+    }));
+    cell(tr, wol);
+    tbody.append(tr);
+  }
+  fillOptions(f.elements.bond_mode, data.bond_modes, (m) => t(`netlayout.mode_${m}`));
+  f.elements.bond_mode.value = data.bond_mode || data.bond_modes[0];
+  f.elements.bridge.checked = data.bridge;
+  document.getElementById("netlayout-vlans").replaceChildren(...data.vlans.map(vlanRow));
+  renderBondField();
 }
 
 async function loadSpindown() {
@@ -3395,8 +3475,35 @@ function bindForms() {
   netConfirm.addEventListener("click", () => guarded(netConfirm, async () => {
     await api("POST", "settings/network/confirm");
     say(t("settings.net_kept"), "ok");
-    setTimeout(() => loadNetwork().catch(sayError), 1500);
+    setTimeout(() => Promise.all([loadNetwork(), loadNetLayout()]).catch(sayError), 1500);
   }));
+
+  document.getElementById("netlayout-vlan-add").addEventListener("click", () => {
+    document.getElementById("netlayout-vlans").append(vlanRow({}));
+  });
+  document.getElementById("netlayout-form").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const f = e.target;
+    const nics = [...f.querySelectorAll("#netlayout-ports input[data-use]:checked")].map((c) => c.dataset.use);
+    const vlans = [...f.querySelectorAll(".vlan-row")].map((row) => {
+      const get = (name) => row.querySelector(`[data-field=${name}]`).value.trim();
+      const v = { id: Number(get("id")), mode: get("mode") };
+      if (v.mode === "static") v.address = get("address");
+      return v;
+    });
+    const body = { nics, bond_mode: nics.length > 1 ? f.elements.bond_mode.value : "",
+                   bridge: f.elements.bridge.checked, vlans };
+    if (!nics.length) {
+      say(t("netlayout.no_port"), "error");
+      return;
+    }
+    guarded(e.submitter, async () => {
+      if (!await ask(t("netlayout.confirm"), "netlayout.apply", true)) return;
+      const res = await api("POST", "settings/network/layout", body);
+      say(t("settings.net_started", { s: res.rollback_seconds }), "ok");
+      pollNetwork();
+    });
+  });
 
   document.getElementById("spindown-form").addEventListener("submit", (e) => {
     e.preventDefault();
