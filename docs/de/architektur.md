@@ -258,6 +258,9 @@ Protokoll: eine Anfrage pro Verbindung, je eine JSON-Zeile hin und zurück.
 | --- | --- | --- |
 | `system.info` | - | Hostname, Version, Kernel, Uptime, Last, Speicher |
 | `system.stats` | - | CPU-Zähler, Speicher, Swap, Netzwerk, Belegung von `/` und `/mnt/*` |
+| `history.get` | `range` (`hour`/`day`/`week`/`month`/`year`) | Verlauf aus `/var/lib/dahlia/history.db`, gemittelt pro Schritt (1 min bis 1 Tag) |
+| `history.influx` | – | InfluxDB-Ziel ohne Token/Passwort, Ergebnis des letzten Exports |
+| `history.set_influx` | `enabled`, `url`, `version` (1/2), `org`, `bucket`, `token` bzw. `database`, `username`, `password` (weggelassen = bisheriges) | Testschreiben, dann `/etc/dahlia/history.json` (0600) |
 | `system.hardware` | - | Mainboard (DMI), CPU-Temperatur (hwmon), SMART je Platte mit `smartctl -n standby` (weckt keine schlafende Platte), laufender und letzter Selbsttest |
 | `disks.smart_test` | `device`, `kind` (`short`/`long`/`abort`) | `smartctl -t short\|long` bzw. `smartctl -X` |
 | `disks.burnin_start` | `device`, `confirm` (Plattenname) | Plattentest als `dahlia-burnin@<name>.service`, nur auf leeren Platten |
@@ -462,6 +465,24 @@ Freigaben anderer Geräte (M24):
 - Optional nur lesen (`ro`). Entfernen lässt sich eine Freigabe erst, wenn keine App mehr
   einen Ordner darauf nutzt, oder ausdrücklich trotzdem. Die Dateien auf dem anderen Gerät
   bleiben immer unberührt.
+
+Verlauf und InfluxDB (M25):
+
+- `dahlia-history.service` (`/usr/sbin/dahlia-history run`) nimmt jede volle Minute CPU-Auslastung,
+  belegten Arbeitsspeicher, Last, CPU-Temperatur (hwmon, in VMs meist keine) und die Datenrate
+  jeder physischen Netzwerkschnittstelle auf. Plattentemperaturen nicht, damit schlafende
+  Platten schlafen.
+- Speicher: SQLite in `/var/lib/dahlia/history.db`. Minutenwerte zwei Tage, 15-Minuten-Mittel
+  35 Tage, Stundenmittel 400 Tage; die Mittel werden bei jedem Messwert fortgeschrieben. Die
+  Datei bleibt bei wenigen MB.
+- Die Übersicht zeigt den Verlauf für Stunde, Tag, Woche, Monat und Jahr als einfache
+  SVG-Linien, ohne Diagramm-Bibliothek.
+- Optional schreibt der Dienst jeden Messwert per Line-Protokoll in eine InfluxDB (1.x mit
+  Datenbank, 2.x mit Organisation, Bucket und Token), Messungen `dahlia` und `dahlia_net`
+  (Tag `interface`), jeweils mit Tag `host`. Vor dem Speichern geht ein Testwert raus; das
+  Ergebnis des letzten Exports steht in `/var/lib/dahlia/history-influx.json` und in den
+  Einstellungen.
+- Der Dienst läuft mit `ProtectSystem=strict` und darf nur nach `/var/lib/dahlia` schreiben.
 
 Einstellungen (M9b):
 
