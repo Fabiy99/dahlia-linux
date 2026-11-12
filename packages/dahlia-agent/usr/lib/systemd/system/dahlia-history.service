@@ -1,0 +1,22 @@
+[Unit]
+Description=Dahlia history: CPU, memory, network and temperature every minute
+Documentation=https://github.com/Fabiy99/dahlia-linux
+
+[Service]
+ExecStart=/usr/sbin/dahlia-history run
+Restart=on-failure
+RestartSec=30
+# Reads /proc and /sys, writes the database and talks to InfluxDB.
+ProtectSystem=strict
+ReadWritePaths=/var/lib/dahlia
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+NoNewPrivileges=yes
+ProtectKernelTunables=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+Nice=10
+
+[Install]
+WantedBy=multi-user.target
