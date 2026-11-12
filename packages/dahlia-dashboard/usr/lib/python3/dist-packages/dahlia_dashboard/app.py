@@ -198,6 +198,18 @@ class DeviceBody(BaseModel):
     device: str
 
 
+class NetLayoutBody(BaseModel):
+    nics: list[str]
+    bond_mode: str = ""
+    bridge: bool = False
+    vlans: list[dict] = []
+
+
+class WolBody(BaseModel):
+    port: str
+    enabled: bool
+
+
 class SyslogBody(BaseModel):
     enabled: bool
     host: str = ""
@@ -264,6 +276,7 @@ class ShareBody(BaseModel):
     time_machine: bool = False
     time_machine_size: int = 0
     nfs: bool = False
+    recycle_days: int = 0
 
 
 class RemoteBody(BaseModel):
@@ -905,6 +918,18 @@ def create_app(cfg: Config | None = None) -> FastAPI:
     def settings_set_network(body: NetworkBody):
         return agent("settings.set_network", body.model_dump())
 
+    @app.get("/api/settings/network/layout", dependencies=authed)
+    def settings_network_layout():
+        return agent("settings.network_layout")
+
+    @app.post("/api/settings/network/layout", dependencies=changing)
+    def settings_set_network_layout(body: NetLayoutBody):
+        return agent("settings.set_network_layout", body.model_dump())
+
+    @app.post("/api/settings/wol", dependencies=changing)
+    def settings_set_wol(body: WolBody):
+        return agent("settings.set_wol", body.model_dump())
+
     @app.post("/api/settings/network/confirm", dependencies=changing)
     def settings_confirm_network():
         return agent("settings.confirm_network")
@@ -1040,6 +1065,10 @@ def create_app(cfg: Config | None = None) -> FastAPI:
     @app.post("/api/remotes/{name}/remove", dependencies=changing)
     def remotes_remove(name: str, body: RemoveBody):
         return agent("remotes.remove", {"name": name, "force": body.force})
+
+    @app.post("/api/shares/{name}/empty-recycle", dependencies=changing)
+    def shares_empty_recycle(name: str):
+        return agent("shares.empty_recycle", {"name": name})
 
     @app.post("/api/shares/{name}/remove", dependencies=changing)
     def shares_remove(name: str):
