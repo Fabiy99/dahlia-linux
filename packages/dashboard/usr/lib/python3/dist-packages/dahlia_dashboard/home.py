@@ -15,9 +15,13 @@ import urllib.request
 from collections.abc import Callable
 from pathlib import Path
 
-WIDGETS = ("health", "weather", "system", "cpu", "memory", "disks", "storage", "network",
-           "apps", "jobs", "history")
-DEFAULT_WIDGETS = {w: True for w in WIDGETS}
+WIDGETS = ("weather", "apps", "storage", "system", "jobs", "network", "disks", "health",
+           "cpu", "memory", "history")
+# Start screen of the design: weather, apps, storage, system, recently done.
+WIDGETS_OFF = ("network", "disks", "health", "cpu", "memory", "history")
+DEFAULT_WIDGETS = {w: w not in WIDGETS_OFF for w in WIDGETS}
+# Files from before the layout of version 2 keep their places, widgets start from the defaults.
+LAYOUT = 2
 MAX_PLACES = 6
 NAME_MAX = 80
 
@@ -77,7 +81,8 @@ class HomeStore:
         except (OSError, ValueError):
             data = {}
         widgets = dict(DEFAULT_WIDGETS)
-        for k, v in (data.get("widgets") or {}).items():
+        stored = data.get("widgets") if data.get("layout") == LAYOUT else None
+        for k, v in (stored or {}).items():
             if k in widgets and isinstance(v, bool):
                 widgets[k] = v
         places = []
@@ -94,7 +99,7 @@ class HomeStore:
             raise ValueError("widgets")
         if len(places) > MAX_PLACES:
             raise ValueError("places")
-        data = {"widgets": {**DEFAULT_WIDGETS, **widgets},
+        data = {"layout": LAYOUT, "widgets": {**DEFAULT_WIDGETS, **widgets},
                 "places": [clean_place(p) for p in places]}
         with self.lock:
             tmp = self.path.with_name(self.path.name + ".tmp")
@@ -102,7 +107,7 @@ class HomeStore:
             with os.fdopen(fd, "w", encoding="utf-8") as f:
                 json.dump(data, f, ensure_ascii=False, indent=1)
             tmp.replace(self.path)
-        return data
+        return {"widgets": data["widgets"], "places": data["places"]}
 
 
 def search(query: str, lang: str, fetch: Fetch = http_fetch) -> list[dict]:

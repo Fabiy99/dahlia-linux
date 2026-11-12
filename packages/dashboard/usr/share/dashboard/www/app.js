@@ -318,18 +318,26 @@ const TITLES = {
 
 function show(view) {
   for (const s of document.querySelectorAll("main > section")) s.hidden = s.id !== `view-${view}`;
-  for (const b of document.querySelectorAll("#nav button")) {
+  for (const b of document.querySelectorAll("#nav button[data-view]")) {
     if (b.dataset.view === view) b.setAttribute("aria-current", "page");
     else b.removeAttribute("aria-current");
   }
   document.getElementById("page-title").textContent = t(TITLES[view]);
   document.body.classList.toggle("home", ["overview", "login", "setup"].includes(view));
-  document.getElementById("sidebar").classList.remove("open");
+  setMoreMenu(false);
+  document.getElementById("menu").classList.toggle("current",
+    Boolean(document.querySelector(`#more-menu [data-view="${view}"]`)));
   current = view;
   if (view === "overview") startStats();
   else stopStats();
   if (view !== "docker") stopDockerStats();
   if (view !== "account") clearTimeout(netTimer);
+}
+
+// "More" in the top bar: the views that do not fit next to Start, Apps, Disks, Files.
+function setMoreMenu(on) {
+  document.getElementById("more-menu").hidden = !on;
+  document.getElementById("menu").setAttribute("aria-expanded", String(on));
 }
 
 let userRole = null;
@@ -356,10 +364,9 @@ async function enterApp() {
 }
 
 function setLoggedIn(on) {
-  document.getElementById("sidebar").hidden = !on;
+  document.getElementById("topnav").hidden = !on;
   document.getElementById("logout").hidden = !on;
   document.getElementById("phone").hidden = !on;
-  document.getElementById("menu").hidden = !on;
   if (!on) stopStats();
 }
 
@@ -458,37 +465,60 @@ function usageRow(name, sub, used, size) {
   return row;
 }
 
+// Start screen: used space of the array (data disks and cache), one segment per disk.
+// Without an array the system disk stands in.
 function renderFilesystems(filesystems) {
-  const box = document.getElementById("fs-list");
-  box.replaceChildren();
-  const list = filesystems.map((f) => ({ ...f, label: fsLabel(f.mountpoint) }))
-    .sort((a, b) => a.label[1] - b.label[1] || a.mountpoint.localeCompare(b.mountpoint));
-  for (const f of list) {
-    box.append(usageRow(f.label[0], `${f.mountpoint} · ${f.fstype}`, f.used, f.size));
+  const sum = document.getElementById("storage-sum");
+  const bar = document.getElementById("storage-bar");
+  const rows = document.getElementById("storage-disks");
+  let list = filesystems.filter((f) => /^\/mnt\/(disk\d+|cache)$/.test(f.mountpoint));
+  if (!list.length) list = filesystems.filter((f) => f.mountpoint === "/");
+  list = list.map((f) => ({ ...f, label: fsLabel(f.mountpoint) })).sort((a, b) => a.label[1] - b.label[1]);
+  if (!list.length) {
+    sum.replaceChildren(el("p", "empty", t("overview.no_fs")));
+    bar.replaceChildren();
+    rows.replaceChildren();
+    return;
   }
-  if (!list.length) box.append(el("p", "empty", t("overview.no_fs")));
+  const used = list.reduce((n, f) => n + f.used, 0);
+  const size = list.reduce((n, f) => n + f.size, 0);
+  sum.replaceChildren(el("b", "", formatBytes(used)), el("span", "", t("home.of_size", { size: formatBytes(size) })));
+  bar.replaceChildren(...list.map((f, i) => {
+    const part = el("span", `seg-${i % 4} ${percent(f.used, f.size) >= 90 ? "warn" : ""}`);
+    part.style.width = `${size ? (f.used / size) * 100 : 0}%`;
+    part.title = f.label[0];
+    return part;
+  }));
+  rows.replaceChildren(...list.map((f) => {
+    const pct = percent(f.used, f.size);
+    const row = el("div", "row");
+    row.append(el("span", "", f.label[0]), el("span", `num ${pct >= 90 ? "warn" : ""}`, `${pct} %`));
+    return row;
+  }));
 }
 
 function renderNetwork(network, prev, seconds) {
   const box = document.getElementById("net-info");
-  box.replaceChildren();
-  for (const n of network) {
-    const before = prev && prev.find((p) => p.name === n.name);
-    const rx = before && seconds ? (n.rx_bytes - before.rx_bytes) / seconds : null;
-    const tx = before && seconds ? (n.tx_bytes - before.tx_bytes) / seconds : null;
-    const item = el("div", "net");
-    const head = el("div", "net-head");
-    head.append(el("b", "", n.name), el("small", "", n.addresses.join(", ") || t("overview.no_address")));
-    const rates = el("div", "net-rates");
-    rates.append(el("span", "rx", rx === null ? "…" : formatRate(Math.max(0, rx))),
-                 el("span", "tx", tx === null ? "…" : formatRate(Math.max(0, tx))));
-    const totals = el("small", "hint", t("overview.net_total", {
-      rx: formatBytes(n.rx_bytes), tx: formatBytes(n.tx_bytes),
-    }));
-    item.append(head, rates, totals);
-    box.append(item);
-  }
-  if (!network.length) box.append(el("p", "empty", t("overview.no_network")));
+  const n = network.find((x) => x.addresses.length) || network[0];
+  if (!n) { box.replaceChildren(el("p", "empty", t("overview.no_network"))); return; }
+  const before = prev && prev.find((p) => p.name === n.name);
+  const rate = (now, then) => (then !== null && seconds ? formatRate(Math.max(0, (now - then) / seconds)) : "…");
+  const figure = (value, key) => {
+    const f = el("div", "net-figure");
+    f.append(el("b", "", value), el("small", "", t(key)));
+    return f;
+  };
+  const figures = el("div", "net-figures");
+  figures.append(figure(rate(n.rx_bytes, before ? before.rx_bytes : null), "home.down"),
+                 figure(rate(n.tx_bytes, before ? before.tx_bytes : null), "home.up"));
+  const addr = n.addresses.length ? n.addresses[0].split("/")[0] : t("overview.no_address");
+  box.replaceChildren(figures, el("p", "tile-note", `${n.name} · ${addr}`));
+}
+
+function meter(id, pct) {
+  const bar = document.getElementById(id);
+  bar.style.width = `${pct}%`;
+  bar.className = level(pct);
 }
 
 function renderStats(s) {
@@ -503,6 +533,8 @@ function renderStats(s) {
     push(history.cpu, cpuPct);
   }
   renderGauge("cpu-gauge", cpuPct, t("overview.cpu_busy"));
+  meter("cpu-bar", cpuPct);
+  document.getElementById("cpu-pct").textContent = `${cpuPct} %`;
   renderSpark("cpu-history", history.cpu);
   const cpu = document.getElementById("cpu-info");
   cpu.replaceChildren();
@@ -515,6 +547,11 @@ function renderStats(s) {
   const memPct = percent(used, s.memory.total);
   push(history.mem, memPct);
   renderGauge("mem-gauge", memPct, t("overview.mem_used"));
+  meter("mem-bar", memPct);
+  document.getElementById("mem-amount").textContent = t("home.of_amount", { used: formatBytes(used), size: formatBytes(s.memory.total) });
+  document.getElementById("system-line").replaceChildren(
+    ...[cpuTemp !== null ? formatTemp(cpuTemp) : null, t("home.uptime", { time: formatUptime(s.uptime_seconds) })]
+      .filter(Boolean).map((x) => el("span", "", x)));
   renderSpark("mem-history", history.mem);
   const mem = document.getElementById("mem-info");
   mem.replaceChildren();
@@ -527,6 +564,7 @@ function renderStats(s) {
 
   renderNetwork(s.network, prev && prev.network, seconds);
   renderFilesystems(s.filesystems);
+  renderGreeting();
   lastStats = s;
 }
 
@@ -593,24 +631,31 @@ function primaryUrl(app) {
   return urls.mdns || `http://${location.hostname}:${app.public_port}`;
 }
 
+const APP_STATE_KIND = { running: "ok", busy: "warn", partial: "warn", restarting: "warn" };
+
 function renderOverviewApps(installed) {
   const box = document.getElementById("overview-apps");
-  box.replaceChildren();
-  for (const app of installed) {
-    const item = el("div", "app-mini");
-    const meta = el("div", "meta");
-    meta.append(el("b", "", app.name), el("small", "", tv("app_status", app.status)));
-    item.append(el("span", `dot ${DOT_KIND[STATUS_KIND[app.status] ?? ""]}`), avatar(app.id, app.name, app.icon), meta);
-    if (app.update) item.append(badge(t("apps.update_short"), "accent"));
+  const running = installed.filter((a) => a.status === "running").length;
+  document.getElementById("overview-apps-count").textContent = installed.length
+    ? t("home.apps_running", { n: running, total: installed.length }) : "";
+  box.replaceChildren(...installed.map((app) => {
     const url = primaryUrl(app);
+    let tile;
     if (url && app.status === "running") {
-      const a = link(url, "");
-      a.title = t("apps.open");
-      a.append(icon("external"));
-      item.append(a);
+      tile = link(url, "");
+      tile.title = t("apps.open");
+    } else {
+      tile = el("button", "");
+      tile.type = "button";
+      tile.addEventListener("click", () => open("apps"));
     }
-    box.append(item);
-  }
+    tile.classList.add("app-tile");
+    const state = app.update
+      ? el("small", "warn", t("apps.update_short"))
+      : el("small", APP_STATE_KIND[app.status] || "", tv("app_status", app.status));
+    tile.append(avatar(app.id, app.name, app.icon), el("span", "name", app.name), state);
+    return tile;
+  }));
   if (!installed.length) box.append(el("p", "empty", t("apps.none_installed")));
 }
 
@@ -623,14 +668,38 @@ function jobBadge(s) {
   return badge(t("jobs.never"), "");
 }
 
+// systemd timestamps ("Thu 2026-11-12 03:00:00 CET"): time today, "yesterday", or the date.
+function whenDone(stamp) {
+  const m = /(\d{4})-(\d\d)-(\d\d) (\d\d):(\d\d)/.exec(stamp || "");
+  if (!m) return null;
+  const day = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const days = Math.round((today - day) / 86400000);
+  if (days === 0) return `${m[4]}:${m[5]}`;
+  if (days === 1) return t("home.yesterday");
+  return day.toLocaleDateString(lang, { day: "numeric", month: "short" });
+}
+
 function renderOverviewJobs(jobs) {
   const box = document.getElementById("overview-jobs");
-  box.replaceChildren();
-  for (const [name, s] of Object.entries(jobs)) {
-    const item = el("div", "job-mini");
-    item.append(el("span", "", t(`job.${name}`)), jobBadge(s));
-    box.append(item);
-  }
+  box.replaceChildren(...Object.entries(jobs).map(([name, s]) => {
+    const row = el("div", "row");
+    let state;
+    if (s.active === "active" || s.active === "activating") state = el("span", "num info", tv("job_state", s.active));
+    else if (s.active === "failed" || (s.result && s.result !== "success")) state = el("span", "num crit", tv("job_result", s.result || "exit-code"));
+    else {
+      const when = whenDone(s.finished);
+      state = el("span", when ? "num ok" : "num", when || t("jobs.never"));
+    }
+    row.append(el("span", "", t(`job.${name}`)), state);
+    return row;
+  }));
+  const sync = jobs["snapraid-sync"];
+  const when = sync && sync.result === "success" ? whenDone(sync.finished) : null;
+  const parity = document.getElementById("storage-parity");
+  parity.hidden = !when;
+  parity.textContent = when ? t("home.parity_synced", { when }) : "";
 }
 
 function updateAppsBadge(installed) {
@@ -676,9 +745,14 @@ async function loadOverview() {
 
 // --- start screen: greeting, widgets, weather -----------------------------------
 
-const WIDGETS = ["health", "weather", "system", "cpu", "memory", "disks", "storage", "network",
-                 "apps", "jobs", "history"];
+const WIDGETS = ["weather", "apps", "storage", "system", "jobs", "network", "disks", "health",
+                 "cpu", "memory", "history"];
 let homeCfg = { widgets: {}, places: [] };
+
+// The server sends every widget with its default (home.py).
+function widgetOn(w) {
+  return homeCfg.widgets[w] !== false;
+}
 let weatherData = [];
 let activePlace = 0;
 try { activePlace = Number(localStorage.getItem("dahlia-place")) || 0; } catch (_) { /* storage blocked */ }
@@ -692,8 +766,8 @@ function greetingKey(hour) {
 
 function renderGreeting() {
   const now = new Date();
-  document.getElementById("hero-date").textContent = now.toLocaleDateString(lang,
-    { weekday: "long", day: "numeric", month: "long" });
+  document.getElementById("hero-date").textContent = `${now.toLocaleDateString(lang,
+    { weekday: "long", day: "numeric", month: "long" })} · ${now.toLocaleTimeString(lang, { hour: "2-digit", minute: "2-digit" })}`;
   document.getElementById("hero-greeting").textContent = t(greetingKey(now.getHours()), { name: shownName(userName) });
 }
 
@@ -711,7 +785,7 @@ function renderHeroStatus(data) {
 
 function applyWidgets() {
   for (const card of document.querySelectorAll("#view-overview [data-widget]")) {
-    card.hidden = homeCfg.widgets[card.dataset.widget] === false;
+    card.hidden = !widgetOn(card.dataset.widget);
   }
 }
 
@@ -731,7 +805,7 @@ function chip(text, pressed, onClick) {
 
 function renderHomePanel() {
   document.getElementById("home-widgets").replaceChildren(...WIDGETS.map((w) => {
-    const on = homeCfg.widgets[w] !== false;
+    const on = widgetOn(w);
     return chip(t(`home.widget_${w}`), on, async () => {
       homeCfg.widgets[w] = !on;
       await saveHome();
@@ -908,17 +982,14 @@ function renderHealth(data) {
 function renderOverviewDisks(hw) {
   cpuTemp = hw.cpu_temperature;
   const box = document.getElementById("overview-disks");
-  box.replaceChildren();
-  for (const d of hw.disks) {
-    const item = el("div", "disk-mini");
-    const meta = el("div", "meta");
-    meta.append(el("b", "", d.path.replace(/^\/dev\//, "")),
-                el("small", "", [d.model, formatBytes(d.size)].filter(Boolean).join(" · ")));
-    const temp = el("span", `temp ${tempKind(d.temperature, d.rotational)}`,
-                    d.temperature === null || d.temperature === undefined ? "–" : formatTemp(d.temperature));
-    item.append(meta, temp, healthBadge(d));
-    box.append(item);
-  }
+  box.replaceChildren(...hw.disks.map((d) => {
+    const row = el("div", "row");
+    const name = el("span", "", d.path.replace(/^\/dev\//, ""));
+    if (d.model) name.title = d.model;
+    const known = d.temperature !== null && d.temperature !== undefined;
+    row.append(name, el("span", `num temp ${tempKind(d.temperature, d.rotational)}`, known ? formatTemp(d.temperature) : "–"));
+    return row;
+  }));
   if (!hw.disks.length) box.append(el("p", "empty", t("storage.none")));
 }
 
@@ -4954,7 +5025,7 @@ function bindForms() {
 }
 
 function bindButtons() {
-  for (const b of document.querySelectorAll("#nav button")) {
+  for (const b of document.querySelectorAll("#nav button[data-view]")) {
     b.addEventListener("click", () => open(b.dataset.view));
   }
   const healthRefresh = document.getElementById("health-refresh");
@@ -4962,9 +5033,13 @@ function bindButtons() {
   for (const b of document.querySelectorAll("[data-goto]")) {
     b.addEventListener("click", () => open(b.dataset.goto));
   }
-  document.getElementById("menu").addEventListener("click", () => {
-    document.getElementById("sidebar").classList.toggle("open");
+  document.getElementById("menu").addEventListener("click", (e) => {
+    e.stopPropagation();
+    setMoreMenu(document.getElementById("more-menu").hidden);
   });
+  document.getElementById("more-menu").addEventListener("click", (e) => e.stopPropagation());
+  document.addEventListener("click", () => setMoreMenu(false));
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") setMoreMenu(false); });
   document.getElementById("terminal-form").addEventListener("submit", (e) => {
     e.preventDefault();
     guarded(e.submitter, async () => {

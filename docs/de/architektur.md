@@ -429,9 +429,11 @@ nur für das Web-UI, nicht für SSH oder die Konsole.
 | Schutz | ändernde Anfragen brauchen den Header `X-Dahlia-Request`; 5 Fehlversuche pro IP in 5 Minuten, dann Sperre |
 | root-Aktionen | nur über `agent`; `ui` ist Mitglied der Gruppe `agent` |
 
-Aufbau: Seitenleiste mit Servername und Version, Inhalt in Kacheln. Bestätigungen laufen
-über einen eigenen Dialog, Meldungen erscheinen unten rechts. Unter 48rem Breite (Handy)
-wird die Seitenleiste zum Menü, Tabellen werden zu Karten. Ein Web-App-Manifest erlaubt
+Aufbau: schwebende Leiste oben mit Servername, Start, Apps, Platten, Dateien, „Mehr“ (übrige
+Seiten, Sprache, Neustart, Ausschalten, Abmelden, Version) und Handy; Inhalt in Kacheln, Schrift
+Inter (`vendor/inter`, OFL). Bestätigungen laufen über einen eigenen Dialog, Meldungen
+erscheinen unten rechts. Unter 48rem Breite (Handy) rückt die Leiste in eine zweite Zeile,
+Tabellen werden zu Karten. Ein Web-App-Manifest erlaubt
 „Zum Home-Bildschirm“ auf Handy und Tablet.
 
 | Seite | Inhalt |
@@ -619,7 +621,9 @@ Gesundheitschecks, sonst „Alles in Ordnung“). Dahinter liegt eine animierte 
 und unscharf im Hintergrund. Gibt es eine Warnung, färbt sich ein Blütenblatt bernsteinfarben.
 `prefers-reduced-motion` schaltet alle Bewegungen ab.
 
-Welche Widgets sichtbar sind und welche Orte das Wetter zeigt, steht in
+Ohne Auswahl zeigt die Übersicht Wetter, Apps, Speicher, System und „Zuletzt erledigt“;
+Netzwerk, Plattentemperaturen, Gesundheitscheck, Prozessor, Arbeitsspeicher und Verlauf
+lassen sich unter „Anpassen“ zuschalten. Welche Widgets sichtbar sind und welche Orte das Wetter zeigt, steht in
 `/var/lib/dashboard/home.json` (gilt für alle Geräte, ändern nur `admin`). Das Wetter holt das
 Backend bei Open-Meteo (`api.open-meteo.com`, Ortssuche über `geocoding-api.open-meteo.com`,
 ohne API-Schlüssel), 15 Minuten Cache pro Ort. Der Browser spricht nie mit einem fremden Dienst.

@@ -77,13 +77,25 @@ def test_store_defaults_and_roundtrip(tmp_path):
 
 def test_store_ignores_broken_file(tmp_path):
     path = tmp_path / "home.json"
-    path.write_text(json.dumps({"widgets": {"cpu": "no", "bogus": False},
+    widgets = {"cpu": "no", "weather": False, "bogus": False}
+    path.write_text(json.dumps({"layout": home.LAYOUT, "widgets": widgets,
                                 "places": [{"name": "x"}, HAMBURG]}))
     data = home.HomeStore(path).get()
-    assert data["widgets"]["cpu"] is True and "bogus" not in data["widgets"]
+    assert data["widgets"]["cpu"] is False and data["widgets"]["weather"] is False
+    assert "bogus" not in data["widgets"]
     assert data["places"] == [HAMBURG]
     path.write_text("{not json")
     assert home.HomeStore(path).get()["places"] == []
+
+
+def test_store_resets_widgets_of_old_layout(tmp_path):
+    # Before layout 2 every widget was on; the new start screen shows the design's set.
+    path = tmp_path / "home.json"
+    path.write_text(json.dumps({"widgets": {w: True for w in home.WIDGETS}, "places": [HAMBURG]}))
+    data = home.HomeStore(path).get()
+    assert data["widgets"] == home.DEFAULT_WIDGETS and data["places"] == [HAMBURG]
+    shown = [w for w, on in data["widgets"].items() if on]
+    assert shown == ["weather", "apps", "storage", "system", "jobs"]
 
 
 def test_search_filters_and_builds_query():

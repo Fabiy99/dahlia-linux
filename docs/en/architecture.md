@@ -426,9 +426,10 @@ SSH or the console.
 | Protection | changing requests need the header `X-Dahlia-Request`; 5 failures per IP within 5 minutes, then blocked |
 | Root actions | only through `agent`; `ui` is a member of the group `agent` |
 
-Layout: sidebar with server name and version, content in tiles. Confirmations use an own
-dialog, messages appear at the bottom right. Below 48rem width (phones) the sidebar becomes
-a menu and tables turn into cards. A web app manifest allows "add to home screen" on phones
+Layout: floating bar at the top with server name, Home, Apps, Disks, Files, "More" (other
+pages, language, reboot, power off, log out, version) and Phone; content in tiles, font Inter
+(`vendor/inter`, OFL). Confirmations use an own dialog, messages appear at the bottom right.
+Below 48rem width (phones) the bar wraps to a second line and tables turn into cards. A web app manifest allows "add to home screen" on phones
 and tablets.
 
 | Page | Content |
@@ -605,7 +606,9 @@ health check, otherwise "Everything is fine"). Behind it is an animated dahlia a
 blurred in the background. With a warning one petal turns amber. `prefers-reduced-motion` turns
 all motion off.
 
-Which widgets are shown and which places the weather shows is stored in
+Without a choice the overview shows weather, apps, storage, system and "Recently done";
+network, disk temperatures, health check, processor, memory and history can be switched on
+under "Customize". Which widgets are shown and which places the weather shows is stored in
 `/var/lib/dashboard/home.json` (applies to all devices, only `admin` changes it). The backend
 fetches the weather from Open-Meteo (`api.open-meteo.com`, place search via
 `geocoding-api.open-meteo.com`, no API key), cached for 15 minutes per place. The browser never
