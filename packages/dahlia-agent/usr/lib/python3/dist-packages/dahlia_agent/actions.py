@@ -1113,6 +1113,7 @@ from . import (  # noqa: E402, F401
     diagnostics,
     disktest,
     hardware,
+    health,
     network,
     notify,
     remotes,

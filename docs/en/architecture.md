@@ -256,6 +256,7 @@ Protocol: one request per connection, one JSON line each way.
 | `system.info` | - | Hostname, version, kernel, uptime, load, memory |
 | `system.stats` | - | CPU counters, memory, swap, network, usage of `/` and `/mnt/*` |
 | `system.hardware` | - | mainboard (DMI), CPU temperature (hwmon), SMART per disk with `smartctl -n standby` (does not wake a sleeping disk), running and last self-test |
+| `system.health` | - | health check: findings (`critical`, `warning`, `info`) with parameters, passed and unchecked areas |
 | `disks.smart_test` | `device`, `kind` (`short`/`long`/`abort`) | `smartctl -t short\|long` or `smartctl -X` |
 | `disks.burnin_start` | `device`, `confirm` (disk name) | disk test as `dahlia-burnin@<name>.service`, blank disks only |
 | `disks.burnin_status`, `disks.burnin_stop`, `disks.burnin_clear` | for `stop`/`clear`: `device` | progress and result, abort, forget the result |
@@ -650,6 +651,18 @@ dahlia-domains show
 dahlia-domains set --mdns off     # port links only
 dahlia-domains apply              # check certificate and proxy, renew only when needed
 ```
+
+## Health check (from milestone 29)
+
+The overview shows the health check (`system.health`) at the top. On every call the agent
+checks: SMART state, self-test and temperature of each disk, CPU temperature (from 90 °C),
+usage of `/` and `/mnt/*` (from 90 %), missing array disks and the parity state from
+`dahlia-snapraid status --json` (no parity, bad blocks, never synced or not for 8 days, last
+sync failed), failed systemd units, NTP sync, pending restart, security updates turned off,
+backup (not set up, failed, older than 8 days), notifications and firewall. Each finding has
+an id and parameters; text and hint come from `locales/*.json` (`check.*`), and a button
+leads to the page where it is fixed. An area that cannot be checked is listed as such, not as
+an error. Sleeping disks are not woken up.
 
 ## Diagnostics bundle (from milestone 16)
 

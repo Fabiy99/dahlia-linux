@@ -654,6 +654,7 @@ def test_action_list_is_fixed():
         "storage.settings",
         "system.diagnostics",
         "system.hardware",
+        "system.health",
         "system.info",
         "system.log",
         "system.poweroff",

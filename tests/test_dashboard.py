@@ -549,6 +549,13 @@ def test_settings_endpoints(env):
     assert client.post("/api/settings/network", json={"mode": "dhcp"}).status_code == 403
 
 
+def test_health_endpoint(env):
+    client, agent, _ = logged_in(env)
+    agent.calls.clear()
+    client.get("/api/health")
+    assert agent.calls == [("system.health", {})]
+
+
 def test_shares_endpoints(env):
     client, agent, _ = logged_in(env)
     agent.calls.clear()

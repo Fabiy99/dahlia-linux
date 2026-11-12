@@ -259,6 +259,7 @@ Protokoll: eine Anfrage pro Verbindung, je eine JSON-Zeile hin und zurück.
 | `system.info` | - | Hostname, Version, Kernel, Uptime, Last, Speicher |
 | `system.stats` | - | CPU-Zähler, Speicher, Swap, Netzwerk, Belegung von `/` und `/mnt/*` |
 | `system.hardware` | - | Mainboard (DMI), CPU-Temperatur (hwmon), SMART je Platte mit `smartctl -n standby` (weckt keine schlafende Platte), laufender und letzter Selbsttest |
+| `system.health` | - | Gesundheitscheck: Befunde (`critical`, `warning`, `info`) mit Parametern, bestandene und nicht prüfbare Bereiche |
 | `disks.smart_test` | `device`, `kind` (`short`/`long`/`abort`) | `smartctl -t short\|long` bzw. `smartctl -X` |
 | `disks.burnin_start` | `device`, `confirm` (Plattenname) | Plattentest als `dahlia-burnin@<name>.service`, nur auf leeren Platten |
 | `disks.burnin_status`, `disks.burnin_stop`, `disks.burnin_clear` | bei `stop`/`clear`: `device` | Fortschritt und Ergebnis, abbrechen, Ergebnis löschen |
@@ -667,6 +668,19 @@ dahlia-domains show
 dahlia-domains set --mdns off     # nur noch Port-Links
 dahlia-domains apply              # Zertifikat und Proxy prüfen, nur bei Bedarf neu
 ```
+
+## Gesundheitscheck (ab Meilenstein 29)
+
+Die Übersicht zeigt oben den Gesundheitscheck (`system.health`). Der Agent prüft bei jedem
+Aufruf: SMART-Zustand, Selbsttest und Temperatur jeder Platte, CPU-Temperatur (ab 90 °C),
+Belegung von `/` und `/mnt/*` (ab 90 %), fehlende Array-Platten und den Parity-Zustand aus
+`dahlia-snapraid status --json` (keine Parity, defekte Blöcke, nie oder seit 8 Tagen nicht
+synchronisiert, letzter Sync fehlgeschlagen), fehlgeschlagene systemd-Units, NTP-Abgleich,
+nötigen Neustart, ausgeschaltete Sicherheitsupdates, Backup (nicht eingerichtet,
+fehlgeschlagen, älter als 8 Tage), Benachrichtigungen und Firewall. Jeder Befund hat eine
+Kennung und Parameter; Text und Hinweis kommen aus `locales/*.json` (`check.*`), ein Knopf
+führt zur Seite, auf der man es behebt. Ein Bereich, der sich nicht prüfen lässt, wird als
+„nicht prüfbar“ genannt, nicht als Fehler. Schlafende Platten werden nicht geweckt.
 
 ## Diagnosepaket (ab Meilenstein 16)
 
