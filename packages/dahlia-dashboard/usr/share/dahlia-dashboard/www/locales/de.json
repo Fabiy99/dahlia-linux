@@ -980,7 +980,7 @@
   "users.confirm_remove": "Konto {name} entfernen? Offene Sitzungen werden beendet.",
   "users.removed": "Konto {name} entfernt.",
   "users.role_saved": "Rolle von {name} gespeichert.",
-  "users.viewer_banner": "Nur-Lese-Konto: Sie können alles ansehen, aber nichts ändern.",
+  "users.viewer_banner": "Nur-Lese-Konto: Du kannst alles ansehen, aber nichts ändern.",
   "role_name.admin": "Administrator",
   "role_name.viewer": "Nur lesen"
 }
