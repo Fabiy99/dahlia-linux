@@ -116,6 +116,7 @@
   "account.submit": "Change password",
   "account.changed": "Password changed. Other sessions were logged out.",
   "error.network": "The server cannot be reached.",
+  "error.unexpected": "Something went wrong.",
   "error.reconnecting": "Lost the connection to the server. Waiting for it to answer again …",
   "error.request": "Invalid request.",
   "error.not_found": "Not found.",

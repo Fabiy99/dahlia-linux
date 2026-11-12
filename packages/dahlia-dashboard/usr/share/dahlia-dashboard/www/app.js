@@ -210,8 +210,10 @@ function say(text, kind) {
 
 function errorText(err) {
   if (err instanceof ApiError) return err.detail ? `${t(err.key)} (${err.detail})` : t(err.key);
+  // A bug in the dashboard's own code, not a network problem; do not blame
+  // the server for it.
   console.error(err);
-  return t("error.network");
+  return t("error.unexpected");
 }
 
 function sayError(err) {
