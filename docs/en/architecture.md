@@ -15,8 +15,15 @@ share. The installer is in English. Boot menu (BIOS and UEFI):
 | --- | --- |
 | Install Dahlia Linux | guided (default) |
 | Install Dahlia Linux (serial console) | guided, output on ttyS0 |
-| Automatic install (no questions, default password) | unattended |
+| Automatic install (password dahlia) | unattended |
 | Automatic install (serial console) | unattended on ttyS0 (CI test) |
+
+Look as in the dashboard: both boot menus show the dahlia on a dark background
+(`iso/art/boot.svg`, rendered by `iso/art/render.js`; BIOS `isolinux/splash.png`, UEFI
+GRUB theme under `/boot/grub/dahlia`). The installer dialogs get dark colours with pink via
+`/etc/newt/palette` in the initrd, the questions of `guided.sh` the title "Dahlia Linux". CI
+stores screenshots of boot menu and dialogs for every ISO PR (`iso/screenshots.py`, artifact
+`screens-bios`/`screens-uefi`).
 
 Guided (`iso/installer/dahlia-guided.cfg`, `guided.sh`): the Debian installer asks for the
 keyboard layout, the account name and its password (from milestone 36; before that the

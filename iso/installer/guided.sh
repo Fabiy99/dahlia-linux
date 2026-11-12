@@ -24,6 +24,8 @@ log() { logger -t dahlia-guided "$*"; }
 
 debconf-loadtemplate dahlia "$DIR/dahlia.templates"
 db_capb backup
+# Window title of the Dahlia questions instead of the installer step's name.
+db_settitle dahlia/title
 
 # Whole-disk device the installer booted from (never offered).
 boot_disk() {
