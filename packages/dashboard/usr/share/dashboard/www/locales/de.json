@@ -1278,5 +1278,8 @@
   "screen.open_hint": "QR-Code mit dem Handy scannen oder die Adresse eintippen.",
   "screen.of": "von {size}",
   "screen.apps_running": "{running} von {total}",
-  "screen.running": "laufen"
+  "screen.running": "laufen",
+  "domains.fingerprint_title": "Fingerabdruck für die Desktop-App",
+  "domains.fingerprint_hint": "Beim Koppeln zeigt die Desktop-App diesen Fingerabdruck. Nur verbinden, wenn beide gleich sind.",
+  "screen.fingerprint": "Fingerabdruck: {fp}"
 }

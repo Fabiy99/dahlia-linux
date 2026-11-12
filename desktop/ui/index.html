@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dahlia, I love you ♥</title>
+<link rel="stylesheet" href="style.css">
+<script src="pair.js" defer></script>
+</head>
+<body>
+<main class="pair">
+  <div class="brand">
+    <svg class="logo" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="2.6"/><path d="M12 3c2 2.2 2 4.6 0 6.4C10 7.6 10 5.2 12 3Zm0 18c-2-2.2-2-4.6 0-6.4 2 1.8 2 4.2 0 6.4ZM3 12c2.2-2 4.6-2 6.4 0-1.8 2-4.2 2-6.4 0Zm18 0c-2.2 2-4.6 2-6.4 0 1.8-2 4.2-2 6.4 0ZM5.6 5.6c3-.2 4.7 1.5 4.5 4.5-3 .2-4.7-1.5-4.5-4.5Zm12.8 12.8c-3 .2-4.7-1.5-4.5-4.5 3-.2 4.7 1.5 4.5 4.5Zm0-12.8c.2 3-1.5 4.7-4.5 4.5-.2-3 1.5-4.7 4.5-4.5ZM5.6 18.4c-.2-3 1.5-4.7 4.5-4.5.2 3-1.5 4.7-4.5 4.5Z"/></svg>
+    <span>Dahlia</span>
+  </div>
+
+  <section id="step-find" class="card">
+    <h1 data-i18n="pair.title"></h1>
+    <p class="hint" data-i18n="pair.intro"></p>
+    <div id="paired-box" class="paired" hidden>
+      <span data-i18n="pair.paired"></span> <b id="paired-host"></b>
+      <button type="button" id="reconnect" class="primary" data-i18n="pair.reconnect"></button>
+      <button type="button" id="forget" data-i18n="pair.forget"></button>
+    </div>
+    <div class="found-head"><h2 data-i18n="pair.found"></h2><button type="button" id="search" data-i18n="pair.search"></button></div>
+    <ul id="found" class="found"></ul>
+    <form id="manual">
+      <label><span data-i18n="pair.address"></span><input name="host" autocomplete="off" spellcheck="false" placeholder="dahlia.local"></label>
+      <button type="submit" class="primary" data-i18n="pair.continue"></button>
+    </form>
+  </section>
+
+  <section id="step-check" class="card" hidden>
+    <h1 data-i18n="pair.check_title"></h1>
+    <p class="hint" data-i18n="pair.check_intro"></p>
+    <p class="host" id="check-host"></p>
+    <code id="fingerprint" class="fingerprint"></code>
+    <p class="hint" data-i18n="pair.check_where"></p>
+    <div class="actions">
+      <button type="button" id="confirm" class="primary" data-i18n="pair.confirm"></button>
+      <button type="button" id="back" data-i18n="pair.back"></button>
+    </div>
+    <p class="hint" data-i18n="pair.trust_hint"></p>
+  </section>
+
+  <p id="message" class="message" role="status"></p>
+</main>
+</body>
+</html>

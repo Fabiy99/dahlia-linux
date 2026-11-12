@@ -100,6 +100,8 @@ class Config:
     clock: Callable[[], float] = time.time
     # Name of the account the installer created; tests set it.
     system_account: Callable[[], str | None] = field(default=lambda: installer_account())
+    # Public part of the local CA (domains); the desktop app pins its fingerprint.
+    ca_cert: Path = Path("/etc/dahlia/tls/ca.crt")
     # url -> JSON for the weather service; tests set it.
     weather_fetch: home.Fetch = home.http_fetch
 
@@ -122,6 +124,25 @@ def qr_svg(text: str) -> str | None:
     except (OSError, subprocess.TimeoutExpired):
         return None
     return proc.stdout if proc.returncode == 0 and proc.stdout.lstrip().startswith("<") else None
+
+
+def ca_fingerprint(path: Path) -> str | None:
+    """SHA-256 of the CA certificate (DER) as AB:CD:..., as the desktop app shows it."""
+    import base64
+    import hashlib
+
+    try:
+        pem = path.read_text(encoding="ascii")
+    except (OSError, UnicodeDecodeError):
+        return None
+    m = re.search(r"-----BEGIN CERTIFICATE-----(.*?)-----END CERTIFICATE-----", pem, re.S)
+    if not m:
+        return None
+    try:
+        der = base64.b64decode("".join(m.group(1).split()), validate=True)
+    except ValueError:
+        return None
+    return ":".join(f"{b:02X}" for b in hashlib.sha256(der).digest())
 
 
 FILE_CHUNK = 1024 * 1024
@@ -781,6 +802,10 @@ def create_app(cfg: Config | None = None) -> FastAPI:
         except ValueError as e:
             raise ApiError(400, "error.request", str(e)) from None
 
+    @app.get("/api/pairing", dependencies=authed)
+    def pairing():
+        return {"ca_fingerprint": ca_fingerprint(cfg.ca_cert)}
+
     @app.get("/api/weather", dependencies=readable)
     def weather_get():
         return {"places": weather.all(home_store.get()["places"])}
@@ -836,6 +861,7 @@ def create_app(cfg: Config | None = None) -> FastAPI:
             "url": url,
             "qr": cached(f"qr:{url}", 3600, lambda: qr_svg(url)) if url else None,
             "setup_code": setup_code,
+            "ca_fingerprint": ca_fingerprint(cfg.ca_cert),
             "health": cached("health", 60, lambda: agent("system.health")),
             "storage": {"used": storage["used"], "size": storage["size"]} if storage else None,
             "memory": {"used": mem["total"] - mem["available"], "size": mem["total"]}

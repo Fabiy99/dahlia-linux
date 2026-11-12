@@ -2308,6 +2308,9 @@ async function loadLog() {
 // --- domains --------------------------------------------------------------------
 
 async function loadDomains() {
+  api("GET", "pairing").then((p) => {
+    document.getElementById("ca-fingerprint").textContent = p.ca_fingerprint || "-";
+  }).catch(sayError);
   const d = await api("GET", "domains");
   const form = document.getElementById("domains-form");
   form.elements.mdns_aliases.checked = d.mdns_aliases;

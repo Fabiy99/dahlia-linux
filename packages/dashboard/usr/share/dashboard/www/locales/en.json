@@ -1278,5 +1278,8 @@
   "screen.open_hint": "Scan the QR code with a phone or type the address.",
   "screen.of": "of {size}",
   "screen.apps_running": "{running} of {total}",
-  "screen.running": "running"
+  "screen.running": "running",
+  "domains.fingerprint_title": "Fingerprint for the desktop app",
+  "domains.fingerprint_hint": "When pairing, the desktop app shows this fingerprint. Connect only if both match.",
+  "screen.fingerprint": "Fingerprint: {fp}"
 }
