@@ -316,6 +316,7 @@ class ShareBody(BaseModel):
     time_machine: bool = False
     time_machine_size: int = 0
     nfs: bool = False
+    recycle_days: int = 0
 
 
 class RemoteBody(BaseModel):
@@ -1223,6 +1224,10 @@ def create_app(cfg: Config | None = None) -> FastAPI:
     @app.post("/api/remotes/{name}/remove", dependencies=changing)
     def remotes_remove(name: str, body: RemoveBody):
         return agent("remotes.remove", {"name": name, "force": body.force})
+
+    @app.post("/api/shares/{name}/empty-recycle", dependencies=changing)
+    def shares_empty_recycle(name: str):
+        return agent("shares.empty_recycle", {"name": name})
 
     @app.post("/api/shares/{name}/remove", dependencies=changing)
     def shares_remove(name: str):
