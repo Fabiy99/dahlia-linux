@@ -10,11 +10,14 @@ use serde_json::Value;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
-use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::webview::NewWindowResponse;
 use tauri::{AppHandle, Manager, Url, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
 
 const MAIN: &str = "main";
+const TITLE: &str = "Dahlia, I love you \u{2665}";
+/// The dashboard links here ("other server") when it runs inside the app;
+/// the main window catches it and shows the pairing page instead.
+const CHOOSE_URL: &str = "https://dahlia-desktop.invalid/choose";
 static WINDOWS: AtomicUsize = AtomicUsize::new(0);
 
 fn strings() -> Value {
@@ -23,6 +26,7 @@ fn strings() -> Value {
     serde_json::from_str(text).unwrap_or(Value::Null)
 }
 
+#[cfg(target_os = "macos")]
 fn t(strings: &Value, key: &str) -> String {
     strings.get(key).and_then(Value::as_str).unwrap_or(key).to_string()
 }
@@ -157,7 +161,13 @@ fn ui_strings() -> Value {
     strings()
 }
 
-fn build_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
+/// macOS only: the menu sits in the system menu bar and carries copy and
+/// paste. Windows and Linux get no menu bar; "other server" is a link in the
+/// dashboard there (CHOOSE_URL) and the pairing page appears when the server
+/// cannot be reached.
+#[cfg(target_os = "macos")]
+fn build_menu(app: &AppHandle) -> tauri::Result<tauri::menu::Menu<tauri::Wry>> {
+    use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
     let s = strings();
     let server = MenuItem::with_id(app, "server", t(&s, "menu.server"), true, None::<&str>)?;
     let reload = MenuItem::with_id(app, "reload", t(&s, "menu.reload"), true, Some("CmdOrCtrl+R"))?;
@@ -185,9 +195,21 @@ pub fn run() {
         .setup(|app| {
             let handle = app.handle().clone();
             let opener = handle.clone();
+            let chooser = handle.clone();
             // The pairing page connects to a paired server by itself (pair.js).
             WebviewWindowBuilder::new(app, MAIN, WebviewUrl::App("index.html".into()))
-                .title("Dahlia")
+                .title(TITLE)
+                // Lets the dashboard show desktop-only actions; it gets no Tauri API.
+                .initialization_script("window.__DAHLIA_DESKTOP__ = true;")
+                .on_navigation(move |url| {
+                    if url.as_str() != CHOOSE_URL {
+                        return true;
+                    }
+                    if let Ok(w) = main_window(&chooser) {
+                        let _ = w.navigate(local_url());
+                    }
+                    false
+                })
                 .inner_size(1360.0, 900.0)
                 .min_inner_size(420.0, 600.0)
                 .on_new_window(move |url, _features| {
@@ -195,6 +217,7 @@ pub fn run() {
                     NewWindowResponse::Deny
                 })
                 .build()?;
+            #[cfg(target_os = "macos")]
             app.set_menu(build_menu(&handle)?)?;
             app.on_menu_event(|app, event| {
                 let Ok(window) = main_window(app) else { return };

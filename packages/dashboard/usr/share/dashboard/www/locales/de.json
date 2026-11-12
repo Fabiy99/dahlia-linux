@@ -1292,5 +1292,6 @@
   "phone.code_new": "Kopplungscode erzeugen",
   "phone.code_valid": "noch {min}:{sec} gültig",
   "phone.code_expired": "abgelaufen",
-  "error.pairing_code": "Kein gültiger Kopplungscode. Erzeuge im Dashboard einen neuen."
+  "error.pairing_code": "Kein gültiger Kopplungscode. Erzeuge im Dashboard einen neuen.",
+  "phone.other_server": "Desktop-App mit anderem Server verbinden"
 }

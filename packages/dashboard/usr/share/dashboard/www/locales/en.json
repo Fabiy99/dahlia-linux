@@ -1292,5 +1292,6 @@
   "phone.code_new": "Create pairing code",
   "phone.code_valid": "valid for {min}:{sec}",
   "phone.code_expired": "expired",
-  "error.pairing_code": "No valid pairing code. Create a new one in the dashboard."
+  "error.pairing_code": "No valid pairing code. Create a new one in the dashboard.",
+  "phone.other_server": "Connect the desktop app to another server"
 }

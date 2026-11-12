@@ -630,7 +630,8 @@ same dashboard as the browser, in its own window.
 | Find | mDNS service `_dahlia._tcp` (port 443), published by avahi from `/etc/avahi/services/dahlia.service`; otherwise type the address |
 | Pair | The app downloads `/dahlia-ca.crt` once without verification and shows the SHA-256 fingerprint. The same one is on the server's monitor and in the dashboard under Addresses (`GET /api/pairing`). Only after confirmation the app adds the CA: Windows `certutil -user -addstore Root`, macOS keychain (`security add-trusted-cert`), Linux via `pkexec` (`update-ca-certificates` or `trust anchor`) |
 | Show | The main window loads `https://<server>/`; links with `target=_blank` (app UIs) open a window of their own instead of the browser |
-| Switch | Menu "Dahlia → Other server …" goes back to the pairing page |
+| Switch | In the dashboard under the phone icon, "Connect the desktop app to another server" (shown only in the app): the link goes to `https://dahlia-desktop.invalid/choose`, the main window catches it and shows the pairing page. On macOS also menu "Dahlia → Other server …" |
+| Window | Title "Dahlia, I love you ♥"; no menu bar on Windows and Linux, system menu on macOS (copy, paste, reload) |
 | Start | The app opens the pairing page first. It checks that the paired server answers with the stored CA and only then loads the dashboard. Otherwise it says whether the server is unreachable or shows another certificate (e.g. after a reinstall) |
 
 Only the bundled pairing page may call Tauri commands; the dashboard in the window has no access

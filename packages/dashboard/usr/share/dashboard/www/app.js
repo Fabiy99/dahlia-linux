@@ -2323,6 +2323,8 @@ async function openPhone() {
   if (p.qr) qr.src = `data:image/svg+xml;base64,${btoa(p.qr)}`;
   document.getElementById("phone-url").textContent = p.url || location.origin;
   clearPairingCode();
+  // Set by the desktop app (desktop/src-tauri/src/lib.rs); a browser never has it.
+  document.getElementById("phone-other-box").hidden = !window.__DAHLIA_DESKTOP__;
   document.getElementById("phone-dialog").showModal();
 }
 
@@ -2347,6 +2349,10 @@ function bindPhone() {
   document.getElementById("phone").addEventListener("click", (e) => guarded(e.currentTarget, openPhone));
   document.getElementById("phone-code-new").addEventListener("click", (e) => guarded(e.currentTarget, newPairingCode));
   document.getElementById("phone-dialog").addEventListener("close", clearPairingCode);
+  // The desktop app catches this address and shows its pairing page.
+  document.getElementById("phone-other-server").addEventListener("click", () => {
+    location.href = "https://dahlia-desktop.invalid/choose";
+  });
 }
 
 // --- domains --------------------------------------------------------------------
