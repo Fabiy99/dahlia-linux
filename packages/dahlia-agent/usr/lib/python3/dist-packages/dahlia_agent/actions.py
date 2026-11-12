@@ -1047,6 +1047,35 @@ def apps_stop(ctx: Context, id: str):
     return dahlia_apps(ctx, "stop", id)
 
 
+APPS_ALL_UNIT = "dahlia-apps-all.service"
+
+
+@action("apps.all", mutating=True, params={"op": Param(str, choices=("start", "stop"))})
+def apps_all(ctx: Context, op: str):
+    """In the background: start every app that starts at boot, or stop every app.
+
+    Stopping keeps the start-at-boot setting, so "start" brings back exactly
+    the apps that ran before (maintenance, disk swap)."""
+    if is_running(ctx, APPS_ALL_UNIT):
+        raise AgentError(BUSY, "apps are being started or stopped")
+    ctx.runner.run(["systemctl", "reset-failed", APPS_ALL_UNIT], check=False)
+    ctx.runner.run([
+        "systemd-run", f"--unit={APPS_ALL_UNIT}", f"--description=Dahlia apps: {op} all",
+        "--property=After=docker.service", "--",
+        "/usr/sbin/dahlia-apps", "start-enabled" if op == "start" else "stop-all",
+    ])
+    return {"op": op, "started": True}
+
+
+@action("apps.all_job", mutating=False)
+def apps_all_job(ctx: Context):
+    """State of the last start or stop of all apps, with the last error."""
+    state = unit_state(ctx, APPS_ALL_UNIT)
+    if state["result"] not in ("success", "") and not is_active(state):
+        state["error"] = job_error(ctx, APPS_ALL_UNIT)
+    return state
+
+
 @action(
     "apps.remove",
     mutating=True,
@@ -1113,10 +1142,12 @@ from . import (  # noqa: E402, F401
     diagnostics,
     disktest,
     hardware,
+    health,
     history,
     network,
     notify,
     power,
+    remotelog,
     remotes,
     settings,
     smb,

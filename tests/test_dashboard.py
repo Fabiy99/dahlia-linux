@@ -582,6 +582,36 @@ def test_power_and_devices_endpoints(env):
     assert client.post("/api/settings/power", json={"governor": "performance"}).status_code == 403
 
 
+def test_health_endpoint(env):
+    client, agent, _ = logged_in(env)
+    agent.calls.clear()
+    client.get("/api/health")
+    assert agent.calls == [("system.health", {})]
+
+
+def test_ops_endpoints(env):
+    client, agent, _ = logged_in(env)
+    agent.calls.clear()
+    client.get("/api/settings/syslog")
+    client.post("/api/settings/syslog", json={"enabled": True, "host": "nas.local"},
+                headers=CSRF)
+    client.post("/api/disks/locate", json={"device": "/dev/sda"}, headers=CSRF)
+    client.post("/api/disks/locate/stop", headers=CSRF)
+    client.get("/api/apps-all")
+    client.post("/api/apps-all/stop", headers=CSRF)
+    assert client.post("/api/apps-all/restart", headers=CSRF).status_code == 404
+    assert client.post("/api/apps-all/start").status_code == 403
+    assert agent.calls == [
+        ("settings.syslog", {}),
+        ("settings.set_syslog", {"enabled": True, "host": "nas.local", "port": 514,
+                                 "protocol": "udp", "severity": "info"}),
+        ("disks.locate", {"device": "/dev/sda"}),
+        ("disks.locate_stop", {}),
+        ("apps.all_job", {}),
+        ("apps.all", {"op": "stop"}),
+    ]
+
+
 def test_shares_endpoints(env):
     client, agent, _ = logged_in(env)
     agent.calls.clear()

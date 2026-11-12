@@ -275,7 +275,9 @@ Protocol: one request per connection, one JSON line each way.
 | `history.influx` | – | InfluxDB target without token/password, result of the last export |
 | `history.set_influx` | `enabled`, `url`, `version` (1/2), `org`, `bucket`, `token` or `database`, `username`, `password` (left out = keep) | test write, then `/etc/dahlia/history.json` (0600) |
 | `system.hardware` | - | mainboard (DMI), CPU temperature (hwmon), SMART per disk with `smartctl -n standby` (does not wake a sleeping disk), running and last self-test |
+| `system.health` | - | health check: findings (`critical`, `warning`, `info`) with parameters, passed and unchecked areas |
 | `disks.smart_test` | `device`, `kind` (`short`/`long`/`abort`) | `smartctl -t short\|long` or `smartctl -X` |
+| `disks.locate`, `disks.locate_stop` | `device` | activity LED blinks for 2 minutes: `dahlia-locate` reads briefly at random places (`dd iflag=direct`), as `dahlia-locate.service` |
 | `disks.burnin_start` | `device`, `confirm` (disk name) | disk test as `dahlia-burnin@<name>.service`, blank disks only |
 | `disks.burnin_status`, `disks.burnin_stop`, `disks.burnin_clear` | for `stop`/`clear`: `device` | progress and result, abort, forget the result |
 | `system.log` | `lines`, `priority`, `unit` (optional) | `journalctl -n … -p …` |
@@ -286,6 +288,8 @@ Protocol: one request per connection, one JSON line each way.
 | `settings.spindown` / `settings.set_spindown` | `default`, `disks` (serial → minutes) | `/etc/dahlia/spindown.json`, `hdparm -S` |
 | `power.get` / `power.set_governor` | `governor` (one the kernel offers) | cpufreq in `/sys`, kept over reboots with `/etc/tmpfiles.d/dahlia-cpu-governor.conf` |
 | `system.devices` | - | PCI (`lspci -vmm -nn -k`: class, IDs, driver, IOMMU group) and USB (`lsusb`) |
+
+| `settings.syslog` / `settings.set_syslog` | `enabled`, `host`, `port`, `protocol` (`udp`/`tcp`), `severity` | `/etc/dahlia/syslog.json`, `/etc/rsyslog.d/90-dahlia-remote.conf`, journald `ForwardToSyslog=yes` |
 | `vpn.status` | - | WireGuard (settings, devices with last handshake and traffic) and Tailscale (installed, state, login link, addresses) |
 | `vpn.wireguard_set` | `enabled`, `port`, `endpoint`, `route` (`lan`/`all`), `dns`, `subnet` | writes the configuration, loads firewall and interface |
 | `vpn.wireguard_add_peer`, `vpn.wireguard_remove_peer` | `name` | new device (configuration and QR code once) or remove it |
@@ -335,6 +339,7 @@ Protocol: one request per connection, one JSON line each way.
 | `apps.custom_install`, `apps.custom_update` | `id`, `spec` (form, see Apps), for `install` `location` | custom container; the agent writes `spec` to `/run/dahlia/apps-custom/<id>.json`, `dahlia-apps` checks every field |
 | `apps.job` | `id` | state of the last install or update |
 | `apps.start`, `apps.stop` | `id` | start or stop, also for the next boot |
+| `apps.all`, `apps.all_job` | `op` (`start`/`stop`) | in the background (`dahlia-apps-all.service`): start all apps that start at boot (`dahlia-apps start-enabled`) or stop all (`stop-all`, start at boot stays) |
 | `apps.remove` | `id`, `delete_data` (optional) | remove the container, data only on request |
 | `remotes.list` | – | mounted shares of other devices with state (`mounted`, `idle`, `error`, `off`), never the password |
 | `remotes.set` | `name`, `type` (`smb`/`nfs`), `host`, `share`, `username`, `password` (left out = keep), `readonly` | test mount, then `/etc/dahlia/remotes.json`, credentials `/etc/dahlia/remotes/<name>.cred` (0600), `.mount` and `.automount` unit |
@@ -710,6 +715,35 @@ in most VMs, the card only shows a note.
 Settings > Devices lists PCI and USB devices (`pciutils`, `usbutils`) with driver and IOMMU
 group. The group matters for passing devices to VMs from version 2; without an active IOMMU
 (VT-d/AMD-Vi in the UEFI) there are no groups.
+
+## Health check (from milestone 29)
+
+The overview shows the health check (`system.health`) at the top. On every call the agent
+checks: SMART state, self-test and temperature of each disk, CPU temperature (from 90 °C),
+usage of `/` and `/mnt/*` (from 90 %), missing array disks and the parity state from
+`dahlia-snapraid status --json` (no parity, bad blocks, never synced or not for 8 days, last
+sync failed), failed systemd units, NTP sync, pending restart, security updates turned off,
+backup (not set up, failed, older than 8 days), notifications and firewall. Each finding has
+an id and parameters; text and hint come from `locales/*.json` (`check.*`), and a button
+leads to the page where it is fixed. An area that cannot be checked is listed as such, not as
+an error. Sleeping disks are not woken up.
+
+## Operations: remote syslog, find a disk, parity history, all apps (from milestone 30)
+
+- Remote syslog (Settings): journald keeps the local log. When on, journald passes every
+  message to rsyslog (`/etc/systemd/journald.conf.d/dahlia-remote-syslog.conf`), rsyslog sends
+  it with `omfwd` (UDP or TCP) and then drops it (`stop`), so no second copy lands in
+  `/var/log`. When off, rsyslog is stopped and disabled; the postinst turns it off as long as
+  nothing is set up.
+- Find a disk (Storage, "Blink LED" per disk): `dahlia-locate` reads 16 MiB at random places
+  twice a second for two minutes, bypassing the page cache (`iflag=direct`), at low I/O
+  priority. Read-only; a sleeping disk wakes up.
+- Parity history: `dahlia-snapraid` appends every run (sync, scrub, repair) to `history` in
+  `/var/lib/dahlia/snapraid.json`, keeping the last 100. The Parity page shows them with
+  duration, result and details.
+- All apps (Apps page): "Stop all" stops every app without changing start at boot; "Start
+  all" then starts exactly the apps that start at boot. Meant for maintenance, e.g. before
+  swapping a disk.
 
 ## Diagnostics bundle (from milestone 16)
 
