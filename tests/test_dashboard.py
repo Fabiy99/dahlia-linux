@@ -587,6 +587,23 @@ def test_shares_endpoints(env):
     assert client.post("/api/shares/media/remove").status_code == 403
 
 
+def test_history_endpoints(env):
+    client, agent, _ = logged_in(env)
+    agent.calls.clear()
+    client.get("/api/history?range=week")
+    client.get("/api/history/influx")
+    client.post("/api/history/influx", json={"enabled": True, "url": "http://nas:8086",
+                                             "org": "home", "bucket": "dahlia"}, headers=CSRF)
+    assert agent.calls == [
+        ("history.get", {"range": "week"}),
+        ("history.influx", {}),
+        ("history.set_influx", {"enabled": True, "url": "http://nas:8086", "version": 2,
+                                "org": "home", "bucket": "dahlia", "database": "",
+                                "username": ""}),
+    ]
+    assert client.post("/api/history/influx", json={"enabled": False}).status_code == 403
+
+
 def test_remotes_endpoints(env):
     client, agent, _ = logged_in(env)
     agent.calls.clear()

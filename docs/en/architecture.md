@@ -255,6 +255,9 @@ Protocol: one request per connection, one JSON line each way.
 | --- | --- | --- |
 | `system.info` | - | Hostname, version, kernel, uptime, load, memory |
 | `system.stats` | - | CPU counters, memory, swap, network, usage of `/` and `/mnt/*` |
+| `history.get` | `range` (`hour`/`day`/`week`/`month`/`year`) | history from `/var/lib/dahlia/history.db`, averaged per step (1 min to 1 day) |
+| `history.influx` | – | InfluxDB target without token/password, result of the last export |
+| `history.set_influx` | `enabled`, `url`, `version` (1/2), `org`, `bucket`, `token` or `database`, `username`, `password` (left out = keep) | test write, then `/etc/dahlia/history.json` (0600) |
 | `system.hardware` | - | mainboard (DMI), CPU temperature (hwmon), SMART per disk with `smartctl -n standby` (does not wake a sleeping disk), running and last self-test |
 | `disks.smart_test` | `device`, `kind` (`short`/`long`/`abort`) | `smartctl -t short\|long` or `smartctl -X` |
 | `disks.burnin_start` | `device`, `confirm` (disk name) | disk test as `dahlia-burnin@<name>.service`, blank disks only |
@@ -453,6 +456,22 @@ Shares of other devices (M24):
   `soft,timeo=300,retrans=4`, owners come from the other device.
 - Optionally read-only (`ro`). A share can only be removed once no app uses a folder on it,
   or explicitly anyway. Files on the other device are never touched.
+
+History and InfluxDB (M25):
+
+- `dahlia-history.service` (`/usr/sbin/dahlia-history run`) samples CPU usage, used memory,
+  load, CPU temperature (hwmon, usually none in VMs) and the data rate of each physical network
+  interface every full minute. No disk temperatures, so sleeping disks stay asleep.
+- Storage: SQLite in `/var/lib/dahlia/history.db`. Minute values for two days, 15-minute
+  averages for 35 days, hourly averages for 400 days; the averages are updated with every
+  sample. The file stays at a few MB.
+- The overview shows the history for hour, day, week, month and year as plain SVG lines,
+  without a chart library.
+- Optionally the service writes every sample to an InfluxDB using line protocol (1.x with a
+  database, 2.x with organization, bucket and token), measurements `dahlia` and `dahlia_net`
+  (tag `interface`), both tagged `host`. A test value is sent before saving; the result of the
+  last export is in `/var/lib/dahlia/history-influx.json` and in the settings.
+- The service runs with `ProtectSystem=strict` and may only write to `/var/lib/dahlia`.
 
 Settings (M9b):
 

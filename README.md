@@ -16,14 +16,37 @@ Kein Abo, keine Lizenzschlüssel. Lizenz: GPLv3.
 
 ### Stand
 
-Frühe Entwicklung. Ab Meilenstein 2 gibt es eine installierbare ISO mit dem Basissystem,
-noch ohne Web-UI und Storage-Funktionen.
+Aktuelle Version: 1.1.0. Die ISO hängt am jeweiligen
+[GitHub-Release](https://github.com/Fabiy99/dahlia-linux/releases). Installierte Server holen
+Updates über das apt-Repo, im Dashboard unter "Updates".
+
+### Funktionen
+
+- **Platten und Array:** Datenplatten einzeln unter `/mnt/diskN`, Pool über mergerfs, Cache-SSD
+  (Btrfs, RAID1 bei zwei SSDs) mit Mover, SnapRAID-Parity mit Sync, Scrub und Wiederherstellen.
+  Platten mit Daten werden ohne Formatieren übernommen, leere lassen sich im Dashboard
+  formatieren. Spindown, SMART-Werte, geplante SMART-Selbsttests und ein Plattentest
+  (badblocks) vor dem Einsatz.
+- **Freigaben:** SMB mit öffentlichen, geschützten und privaten Freigaben, eigene SMB-Benutzer,
+  Time Machine, NFSv4. Freigaben anderer Geräte (NAS, PC) lassen sich unter `/mnt/remotes`
+  einbinden und von Apps nutzen.
+- **Apps:** Katalog mit über 100 Vorlagen ([dahlia-apps](https://github.com/Fabiy99/dahlia-apps)),
+  Stacks mit Datenbank, Update-Anzeige, Ordnerwahl über einen Ordnerbaum, Grafikkarte für
+  Transcoding, eigene Container ohne Katalog. Apps liegen auf dem Array oder auf der System-SSD.
+- **Netzwerk:** Port-Links und mDNS-Namen (`<app>.local`), lokale CA für HTTPS, nftables-Firewall
+  nur für lokale Netze, Fernzugriff per WireGuard oder Tailscale.
+- **System:** Btrfs-Root mit snapper, Rollback im Dashboard, automatische Sicherheitsupdates,
+  Backup von Appdaten und Konfiguration (lokal oder per SFTP), Benachrichtigungen (E-Mail, ntfy,
+  Gotify), USV über NUT, Terminal im Browser, System-Log, Diagnosepaket.
+- **Anmeldung:** eigenes Dashboard-Konto aus dem Einrichtungs-Assistenten, optional mit
+  Zwei-Faktor-Login (TOTP).
 
 ### In einer VM testen
 
-1. ISO bauen (auf Debian/Ubuntu oder in WSL2): `tools/build-packages.sh && iso/build-iso.sh`.
-   Ergebnis: `build/dahlia-linux-<version>-amd64.iso`. Getaggte Versionen hängen die ISO
-   zusätzlich an ein GitHub-Release.
+1. ISO vom [neuesten Release](https://github.com/Fabiy99/dahlia-linux/releases/latest)
+   herunterladen oder selbst bauen (auf Debian/Ubuntu oder in WSL2):
+   `tools/build-packages.sh && iso/build-iso.sh`, Ergebnis:
+   `build/dahlia-linux-<version>-amd64.iso`.
 2. VM anlegen: 2 GB RAM, eine Platte ab 20 GB, Netzwerk gebridged. Hyper-V: Generation 2,
    Secure Boot mit der Vorlage "Microsoft UEFI Certificate Authority", fester Arbeitsspeicher
    (kein dynamischer).
@@ -36,7 +59,7 @@ noch ohne Web-UI und Storage-Funktionen.
 4. Anmelden als `dahlia-admin`, per SSH: `ssh dahlia-admin@<servername>.local`.
 5. Dashboard: `https://dahlia.local/` im Browser öffnen, die Zertifikatswarnung bestätigen
    und den Einrichtungscode eingeben, der auf dem Bildschirm des Servers und beim SSH-Login steht.
-   Damit die Warnung verschwindet: unter "Domains" die lokale CA herunterladen und importieren
+   Damit die Warnung verschwindet: unter "Adressen" die lokale CA herunterladen und importieren
    (siehe [Netzwerk und Namen](docs/de/architektur.md#netzwerk-und-namen-ab-meilenstein-7)).
 6. Updates: im Dashboard unter "Updates" oder `sudo apt update && sudo apt upgrade`
    (siehe [docs/de/apt-repo.md](docs/de/apt-repo.md)).
@@ -72,6 +95,8 @@ Details: [docs/de/architektur.md](docs/de/architektur.md)
 | `dahlia-archive-keyring` | Signaturschlüssel des apt-Repos |
 
 ### Meilensteine
+
+Erledigt: 1 bis 24. Offen: 25 bis 36.
 
 1. Repo-Gerüst, Lizenz, CI-Linting
 2. Pakete und apt-Repo, ISO mit Preseed installiert sich in QEMU
@@ -113,6 +138,8 @@ Nach 1.0 (1.x):
 33. Mehrere und nur-lesende Dashboard-Konten
 34. Dateimanager
 35. Verschlüsselung (LUKS)
+36. Eigener Kontoname im Installer statt `dahlia-admin`; Dashboard-Konto und Terminal-Benutzer
+    heißen gleich, angezeigt wird nur der Name
 
 Später: USB-Creator für Windows, Installationsanleitung.
 
@@ -140,14 +167,34 @@ No subscription, no license keys. License: GPLv3.
 
 ### Status
 
-Early development. From milestone 2 on there is an installable ISO with the base system,
-without web UI or storage features yet.
+Current version: 1.1.0. The ISO is attached to each
+[GitHub release](https://github.com/Fabiy99/dahlia-linux/releases). Installed servers get
+updates from the apt repository, in the dashboard under "Updates".
+
+### Features
+
+- **Disks and array:** data disks individually under `/mnt/diskN`, pool via mergerfs, cache SSD
+  (Btrfs, RAID1 with two SSDs) with a mover, SnapRAID parity with sync, scrub and restore.
+  Disks with data are added without formatting, blank ones can be formatted in the dashboard.
+  Spindown, SMART values, scheduled SMART self-tests and a disk test (badblocks) before use.
+- **Shares:** SMB with public, secure and private shares, separate SMB users, Time Machine,
+  NFSv4. Shares of other devices (NAS, PC) can be mounted under `/mnt/remotes` and used by apps.
+- **Apps:** catalog with over 100 templates ([dahlia-apps](https://github.com/Fabiy99/dahlia-apps)),
+  stacks with a database, update notices, folders chosen from a folder tree, GPU for
+  transcoding, custom containers without the catalog. Apps live on the array or the system SSD.
+- **Network:** port links and mDNS names (`<app>.local`), local CA for HTTPS, nftables firewall
+  for local networks only, remote access via WireGuard or Tailscale.
+- **System:** Btrfs root with snapper, rollback in the dashboard, automatic security updates,
+  backup of app data and configuration (local or via SFTP), notifications (email, ntfy,
+  Gotify), UPS via NUT, terminal in the browser, system log, diagnostics bundle.
+- **Login:** own dashboard account from the setup wizard, optionally with two-factor login (TOTP).
 
 ### Testing in a VM
 
-1. Build the ISO (on Debian/Ubuntu or in WSL2): `tools/build-packages.sh && iso/build-iso.sh`.
-   Output: `build/dahlia-linux-<version>-amd64.iso`. Tagged versions also attach the ISO to
-   a GitHub release.
+1. Download the ISO from the [latest release](https://github.com/Fabiy99/dahlia-linux/releases/latest)
+   or build it yourself (on Debian/Ubuntu or in WSL2):
+   `tools/build-packages.sh && iso/build-iso.sh`, output:
+   `build/dahlia-linux-<version>-amd64.iso`.
 2. Create a VM: 2 GB RAM, one disk of 20 GB or more, bridged network. Hyper-V: generation 2,
    Secure Boot with the "Microsoft UEFI Certificate Authority" template, static memory
    (not dynamic).
@@ -159,7 +206,7 @@ without web UI or storage features yet.
 4. Log in as `dahlia-admin`, via SSH: `ssh dahlia-admin@<server name>.local`.
 5. Dashboard: open `https://dahlia.local/` in a browser, accept the certificate warning and
    enter the setup code shown on the server's screen and on SSH login.
-   To get rid of the warning: download and import the local CA under "Domains"
+   To get rid of the warning: download and import the local CA under "Addresses"
    (see [Network and names](docs/en/architecture.md#network-and-names-from-milestone-7)).
 6. Updates: in the dashboard under "Updates" or `sudo apt update && sudo apt upgrade`
    (see [docs/en/apt-repo.md](docs/en/apt-repo.md)).
@@ -194,6 +241,8 @@ Details: [docs/en/architecture.md](docs/en/architecture.md)
 | `dahlia-archive-keyring` | apt repository signing key |
 
 ### Milestones
+
+Done: 1 to 24. Open: 25 to 36.
 
 1. Repository skeleton, license, CI linting
 2. Packages and apt repository, preseeded ISO installs in QEMU
@@ -235,6 +284,8 @@ After 1.0 (1.x):
 33. Multiple and read-only dashboard accounts
 34. File manager
 35. Encryption (LUKS)
+36. Own account name in the installer instead of `dahlia-admin`; dashboard account and terminal
+    user share the name, only the name is shown
 
 Later: USB creator for Windows, installation guide.
 
