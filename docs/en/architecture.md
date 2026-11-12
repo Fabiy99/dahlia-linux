@@ -278,6 +278,8 @@ Protocol: one request per connection, one JSON line each way.
 | `settings.network` / `settings.set_network` | `mode` (`dhcp`/`static`), `address` (CIDR), `gateway`, `dns` | `/etc/network/interfaces`, applied by `dahlia-network` with rollback |
 | `settings.confirm_network` | – | confirms the new network settings |
 | `settings.spindown` / `settings.set_spindown` | `default`, `disks` (serial → minutes) | `/etc/dahlia/spindown.json`, `hdparm -S` |
+| `power.get` / `power.set_governor` | `governor` (one the kernel offers) | cpufreq in `/sys`, kept over reboots with `/etc/tmpfiles.d/dahlia-cpu-governor.conf` |
+| `system.devices` | - | PCI (`lspci -vmm -nn -k`: class, IDs, driver, IOMMU group) and USB (`lsusb`) |
 | `vpn.status` | - | WireGuard (settings, devices with last handshake and traffic) and Tailscale (installed, state, login link, addresses) |
 | `vpn.wireguard_set` | `enabled`, `port`, `endpoint`, `route` (`lan`/`all`), `dns`, `subnet` | writes the configuration, loads firewall and interface |
 | `vpn.wireguard_add_peer`, `vpn.wireguard_remove_peer` | `name` | new device (configuration and QR code once) or remove it |
@@ -689,6 +691,19 @@ dahlia-domains show
 dahlia-domains set --mdns off     # port links only
 dahlia-domains apply              # check certificate and proxy, renew only when needed
 ```
+
+## Power saving and devices (from milestone 28)
+
+Settings > Power saving sets the CPU governor on all cpufreq policies
+(`/sys/devices/system/cpu/cpufreq/policy*/scaling_governor`). To keep it after a reboot the
+agent writes a `w` line to `/etc/tmpfiles.d/dahlia-cpu-governor.conf`; systemd-tmpfiles sets
+the value at boot. Only governors the kernel lists in `scaling_available_governors` can be
+chosen (with `intel_pstate` usually just `powersave` and `performance`). Without cpufreq, as
+in most VMs, the card only shows a note.
+
+Settings > Devices lists PCI and USB devices (`pciutils`, `usbutils`) with driver and IOMMU
+group. The group matters for passing devices to VMs from version 2; without an active IOMMU
+(VT-d/AMD-Vi in the UEFI) there are no groups.
 
 ## Health check (from milestone 29)
 

@@ -552,6 +552,20 @@ def test_settings_endpoints(env):
     assert client.post("/api/settings/network", json={"mode": "dhcp"}).status_code == 403
 
 
+def test_power_and_devices_endpoints(env):
+    client, agent, _ = logged_in(env)
+    agent.calls.clear()
+    client.get("/api/settings/power")
+    client.post("/api/settings/power", json={"governor": "powersave"}, headers=CSRF)
+    client.get("/api/devices")
+    assert agent.calls == [
+        ("power.get", {}),
+        ("power.set_governor", {"governor": "powersave"}),
+        ("system.devices", {}),
+    ]
+    assert client.post("/api/settings/power", json={"governor": "performance"}).status_code == 403
+
+
 def test_health_endpoint(env):
     client, agent, _ = logged_in(env)
     agent.calls.clear()
