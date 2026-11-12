@@ -74,11 +74,8 @@ def test_preseed_runs_dahlia_late_command():
 
 
 def grub_entries():
-    """(title, kernel line) with $dahlia_vt expanded as GRUB does."""
     grub = (ROOT / "iso" / "grub.cfg").read_text(encoding="utf-8")
-    vt = re.search(r'^set dahlia_vt="([^"]+)"$', grub, re.M).group(1)
-    return [(title, line.replace("$dahlia_vt", vt)) for title, line in
-            re.findall(r'menuentry "([^"]+)" \{\n\s*linux ([^\n]+)', grub)]
+    return re.findall(r'menuentry "([^"]+)" \{\n\s*linux ([^\n]+)', grub)
 
 
 def isolinux_labels():
@@ -105,14 +102,11 @@ def test_boot_menus_offer_both_modes():
         assert "dahlia.mode" not in line.split("---", 1)[1]
 
 
-def test_installer_console_colours():
-    # 16 colours per channel on every entry, only for the installer (before "---").
+def test_installer_dark_theme():
+    # d-i's dark dialogs on every entry, only for the installer (before "---").
     for _, line in grub_entries():
         installer, target = line.split("---", 1)
-        assert "vt.default" not in target
-        for channel in ("red", "grn", "blu"):
-            values = re.search(rf"vt\.default_{channel}=(\S+)", installer).group(1).split(",")
-            assert len(values) == 16 and all(0 <= int(v) <= 255 for v in values)
+        assert "theme=dark" in installer and "theme=" not in target
 
 
 def test_default_boot_entries_do_not_use_serial_console():
