@@ -64,11 +64,7 @@ chmod u+w "$WORK/initrd.gz" "$WORK/md5sum.txt"
 gunzip -c "$WORK/initrd.gz" > "$WORK/initrd.cpio"
 cp "$ROOT/iso/preseed.cfg" "$WORK/initrd-add/preseed.cfg"
 cp "$ROOT/iso/installer/dahlia-auto.cfg" "$ROOT/iso/installer/dahlia-guided.cfg" "$WORK/initrd-add/"
-# Colours of the installer dialogs (newt reads /etc/newt/palette).
-mkdir -p "$WORK/initrd-add/etc/newt"
-cp "$ROOT/iso/installer/newt-palette" "$WORK/initrd-add/etc/newt/palette"
 (cd "$WORK/initrd-add" && printf '%s\n' preseed.cfg dahlia-auto.cfg dahlia-guided.cfg \
-    etc etc/newt etc/newt/palette \
     | cpio --quiet -H newc -R 0:0 -o -A -F "$WORK/initrd.cpio")
 gzip -9 -c "$WORK/initrd.cpio" > "$WORK/initrd-dahlia.gz"
 

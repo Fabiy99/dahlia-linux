@@ -20,9 +20,10 @@ haben. Der Installer ist englisch. Boot-Menü (BIOS und UEFI):
 
 Aussehen wie das Dashboard: Beide Boot-Menüs zeigen die Dahlie auf dunklem Grund
 (`iso/art/boot.svg`, gerendert von `iso/art/render.js`; BIOS `isolinux/splash.png`, UEFI
-GRUB-Theme unter `/boot/grub/dahlia`). Die Dialoge des Installers bekommen über
-`/etc/newt/palette` im initrd dunkle Farben mit Pink, die Fragen von `guided.sh` den Titel
-„Dahlia Linux“. Die CI legt bei jedem ISO-PR Bildschirmfotos von Boot-Menü und Dialogen ab
+GRUB-Theme unter `/boot/grub/dahlia`). Die Dialoge des Installers werden dunkel mit Pink:
+Die Kernel-Parameter `vt.default_red/grn/blu` (vor `---`, also nur im Installer) definieren
+die 16 Konsolenfarben um, denn eine eigene newt-Palette überschreibt der Debian-Installer.
+Die Fragen von `guided.sh` tragen den Titel „Dahlia Linux“. Die CI legt bei jedem ISO-PR Bildschirmfotos von Boot-Menü und Dialogen ab
 (`iso/screenshots.py`, Artefakt `screens-bios`/`screens-uefi`).
 
 Geführt (`iso/installer/dahlia-guided.cfg`, `guided.sh`): Der Debian-Installer fragt nach

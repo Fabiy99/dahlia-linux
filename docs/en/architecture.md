@@ -20,8 +20,10 @@ share. The installer is in English. Boot menu (BIOS and UEFI):
 
 Look as in the dashboard: both boot menus show the dahlia on a dark background
 (`iso/art/boot.svg`, rendered by `iso/art/render.js`; BIOS `isolinux/splash.png`, UEFI
-GRUB theme under `/boot/grub/dahlia`). The installer dialogs get dark colours with pink via
-`/etc/newt/palette` in the initrd, the questions of `guided.sh` the title "Dahlia Linux". CI
+GRUB theme under `/boot/grub/dahlia`). The installer dialogs are dark with pink: the kernel
+parameters `vt.default_red/grn/blu` (before `---`, so installer only) redefine the 16 console
+colours, because d-i overrides its own newt palette. The questions of `guided.sh` carry the
+title "Dahlia Linux". CI
 stores screenshots of boot menu and dialogs for every ISO PR (`iso/screenshots.py`, artifact
 `screens-bios`/`screens-uefi`).
 
