@@ -1582,7 +1582,7 @@ async function showFolder(root, path) {
   // App data folders belong to their apps and are not offered.
   const dirs = data.dirs.filter((d) => path || d !== "appdata");
   if (!data.exists) list.append(el("li", "hint", t("folder.missing")));
-  else if (!dirs.length) list.append(el("li", "hint", t("folder.empty")));
+  else if (!dirs.length && !data.files.length) list.append(el("li", "hint", t("folder.empty")));
   for (const name of dirs) {
     const li = el("li");
     const b = el("button", "folder", name);
@@ -1590,6 +1590,12 @@ async function showFolder(root, path) {
     b.prepend(icon("folder"));
     b.addEventListener("click", () => showFolder(root, joinPath(path, name)).catch(sayError));
     li.append(b);
+    list.append(li);
+  }
+  // Files only for orientation: a folder is picked, not a file.
+  for (const name of data.files) {
+    const li = el("li", "file");
+    li.append(icon("file"), el("span", "", name));
     list.append(li);
   }
   document.getElementById("folder-new").disabled = !data.mounted || (root === REMOTES && !path);
@@ -3897,7 +3903,8 @@ async function loadUps() {
 
 // --- file manager ---------------------------------------------------------------
 
-const fm = { root: ARRAY, path: "", entries: [], selected: new Set(), writable: false, nameAction: null };
+const fm = { root: ARRAY, path: "", entries: [], selected: new Set(), writable: false, nameAction: null,
+             search: null };
 let fmTimer = null;
 
 function fmQuery(params) {
@@ -3918,8 +3925,10 @@ async function fmShow(root, path) {
     if (!path) throw err;
     return fmShow(root, "");
   }
-  Object.assign(fm, { root, path, entries: data.entries, writable: !!data.writable });
+  Object.assign(fm, { root, path, entries: data.entries, writable: !!data.writable, search: null });
   fm.selected.clear();
+  document.getElementById("fm-path").value = fullPath(root, path);
+  document.getElementById("fm-search-info").hidden = true;
   const available = {};
   for (const loc of data.locations) available[loc.path] = loc.available;
   const roots = [["array", ARRAY], ["system", SYSTEM]];
@@ -3953,6 +3962,10 @@ async function fmShow(root, path) {
 }
 
 function fmRender() {
+  if (fm.search) {
+    fmRenderSearch();
+    return;
+  }
   const tbody = document.getElementById("fm-list");
   tbody.replaceChildren();
   if (!fm.entries.length) {
@@ -3990,8 +4003,80 @@ function fmRender() {
   fmSelection();
 }
 
+// Hits of a search: folders open, files open their folder with the file selected.
+function fmRenderSearch() {
+  const tbody = document.getElementById("fm-list");
+  tbody.replaceChildren();
+  const { entries } = fm.search;
+  if (!entries.length) {
+    const tr = el("tr");
+    cell(tr, el("span", "hint", t("fm.no_hits"))).colSpan = 4;
+    tbody.append(tr);
+  }
+  for (const e of entries) {
+    const tr = el("tr");
+    cell(tr, "").className = "pick";
+    const parent = e.path.includes("/") ? e.path.slice(0, e.path.lastIndexOf("/")) : "";
+    const name = el("button", "link-btn folder", e.name);
+    name.type = "button";
+    if (e.kind === "dir") {
+      name.prepend(icon("folder"));
+      name.addEventListener("click", () => fmShow(fm.root, e.path).catch(sayError));
+    } else {
+      name.addEventListener("click", () => fmShow(fm.root, parent).then(() => {
+        if (!fm.entries.some((x) => x.name === e.name)) return;
+        fm.selected.add(e.name);
+        fmRender();
+      }).catch(sayError));
+    }
+    const td = cell(tr, name);
+    if (e.kind === "link") td.append(" ", badge(t("fm.link"), ""));
+    td.append(el("span", "where", fullPath(fm.root, parent)));
+    cell(tr, e.size === null ? "" : formatBytes(e.size)).className = "num";
+    cell(tr, new Date(e.mtime * 1000).toLocaleString(lang));
+    tbody.append(tr);
+  }
+  fmSelection();
+}
+
+async function fmSearch(query) {
+  const where = fullPath(fm.root, fm.path);
+  const info = document.getElementById("fm-search-info");
+  const text = document.getElementById("fm-search-text");
+  const before = text.textContent;
+  text.textContent = t("fm.searching", { query });
+  info.hidden = false;
+  let data;
+  try {
+    data = await api("GET", `files/search?${fmQuery({ root: fm.root, path: fm.path, query })}`);
+  } catch (err) {
+    text.textContent = before;
+    info.hidden = !fm.search;
+    throw err;
+  }
+  fm.search = { query, entries: data.entries };
+  fm.selected.clear();
+  let msg = t("fm.search_hits", { n: data.entries.length, query, path: where });
+  if (data.truncated) msg += ` ${t("fm.search_truncated", { n: data.entries.length })}`;
+  text.textContent = msg;
+  fmRender();
+}
+
+async function fmCopyPath() {
+  const input = document.getElementById("fm-path");
+  try {
+    await navigator.clipboard.writeText(input.value);
+  } catch (_) {
+    // No clipboard API without HTTPS: select the text and copy the old way.
+    input.focus();
+    input.select();
+    if (!document.execCommand("copy")) throw new ApiError(0, "fm.copy_failed");
+  }
+  say(t("fm.path_copied"), "ok");
+}
+
 function fmSelection() {
-  const names = [...fm.selected];
+  const names = fm.search ? [] : [...fm.selected];
   const one = names.length === 1 ? fm.entries.find((e) => e.name === names[0]) : null;
   document.getElementById("fm-actions").hidden = !names.length;
   document.getElementById("fm-selected").textContent = t("fm.selected", { n: names.length });
@@ -4000,6 +4085,7 @@ function fmSelection() {
   document.getElementById("fm-move").disabled = !fm.writable;
   document.getElementById("fm-delete").disabled = !fm.writable;
   const all = document.getElementById("fm-all");
+  all.disabled = !!fm.search;
   all.checked = names.length > 0 && names.length === fm.entries.length;
   all.indeterminate = names.length > 0 && names.length < fm.entries.length;
 }
@@ -4102,6 +4188,20 @@ async function fmUpload(fileList) {
 
 function bindFiles() {
   document.getElementById("fm-refresh").addEventListener("click", (e) => guarded(e.currentTarget, loadFiles));
+  const copyPath = document.getElementById("fm-copy-path");
+  copyPath.addEventListener("click", () => guarded(copyPath, fmCopyPath));
+  document.getElementById("fm-path").addEventListener("focus", (e) => e.target.select());
+  const search = document.getElementById("fm-search");
+  search.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const query = search.elements.query.value.trim();
+    if (!query) return;
+    guarded(e.submitter || search.querySelector("button"), () => fmSearch(query));
+  });
+  document.getElementById("fm-search-end").addEventListener("click", (e) => guarded(e.currentTarget, async () => {
+    search.elements.query.value = "";
+    await fmShow(fm.root, fm.path);
+  }));
   document.getElementById("fm-all").addEventListener("change", (e) => {
     fm.selected = new Set(e.target.checked ? fm.entries.map((x) => x.name) : []);
     fmRender();

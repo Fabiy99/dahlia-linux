@@ -1027,28 +1027,39 @@ def locations(ctx: Context) -> list[dict]:
     "root": Param(str, required=False, default=ARRAY_ROOT, choices=ROOTS),
     "path": Param(str, required=False, default="", pattern=BROWSE_RE)})
 def files_browse(ctx: Context, root: str, path: str):
-    """Folders directly below <root>/<path>, for the folder picker. No files.
+    """Folders and files directly below <root>/<path>, for the folder picker.
+
+    Files are only shown so the folder is recognisable; they cannot be picked.
 
     root is /mnt/user (array), /srv (system SSD) or /mnt/remotes (shares of
     other devices); locations lists them with whether they can be used.
     """
     base, ok = location_root(ctx, root)
     out = {"root": root, "path": path, "locations": locations(ctx),
-           "mounted": ok, "exists": False, "dirs": []}
+           "mounted": ok, "exists": False, "dirs": [], "files": []}
     if not ok:
         return out
     d = root_dir(base, path)
     if not d.is_dir():
         return out
-    dirs = []
+    dirs, names = [], []
     with os.scandir(d) as it:
         for e in it:
-            if e.name.startswith(".") or not FOLDER_RE.match(e.name):
+            if e.name.startswith("."):
                 continue
             if e.is_dir(follow_symlinks=False):
-                dirs.append(e.name)
+                if FOLDER_RE.match(e.name):
+                    dirs.append(e.name)
+            elif e.is_file(follow_symlinks=False):
+                try:
+                    e.name.encode()
+                except UnicodeEncodeError:
+                    continue  # not UTF-8, cannot go into JSON
+                names.append(e.name)
     dirs.sort(key=str.lower)
-    return {**out, "exists": True, "dirs": dirs[:BROWSE_MAX], "truncated": len(dirs) > BROWSE_MAX}
+    names.sort(key=str.lower)
+    return {**out, "exists": True, "dirs": dirs[:BROWSE_MAX], "files": names[:BROWSE_MAX],
+            "truncated": len(dirs) > BROWSE_MAX or len(names) > BROWSE_MAX}
 
 
 @action("files.mkdir", mutating=True, params={

@@ -994,6 +994,10 @@ def create_app(cfg: Config | None = None) -> FastAPI:
     def files_list(root: str = "/mnt/user", path: str = ""):
         return agent("files.list", {"root": root, "path": path})
 
+    @app.get("/api/files/search", dependencies=admin)
+    def files_search(root: str, query: str, path: str = ""):
+        return agent("files.search", {"root": root, "path": path, "query": query})
+
     @app.get("/api/files/download", dependencies=admin)
     def files_download(root: str, path: str):
         info, fd = agent_open("files.open", {"root": root, "path": path})

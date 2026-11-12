@@ -650,6 +650,7 @@ def test_action_list_is_fixed():
         "files.mkdir",
         "files.open",
         "files.rename",
+        "files.search",
         "files.start",
         "files.upload",
         "files.upload_abort",
@@ -897,6 +898,8 @@ def test_files_browse_and_mkdir(ctx, tmp_path, monkeypatch):
     monkeypatch.setattr(actions.os.path, "ismount", lambda p: True)
     got = run(ctx, "files.browse")["result"]
     assert got["dirs"] == ["appdata", "Filme"] and got["exists"]
+    # Files are listed for orientation; symlinks and hidden entries are not.
+    assert got["files"] == ["file.txt"]
     assert run(ctx, "files.browse", {"path": "Filme"})["result"]["dirs"] == ["Kino"]
     assert run(ctx, "files.browse", {"path": "nope"})["result"]["exists"] is False
     for bad in ("../etc", "/etc", "Filme/../.."):

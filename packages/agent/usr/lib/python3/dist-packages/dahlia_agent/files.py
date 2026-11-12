@@ -1,4 +1,4 @@
-"""File manager: list, download, upload, rename, delete, copy and move.
+"""File manager: list, search, download, upload, rename, delete, copy and move.
 
 Works below the same roots as the folder picker: /mnt/user (array), /srv
 (system SSD) and /mnt/remotes (shares of other devices). Paths are walked one
@@ -28,6 +28,7 @@ import stat
 import sys
 import time
 import unicodedata
+from collections import deque
 from pathlib import Path
 
 from .actions import (
@@ -56,6 +57,9 @@ PROTECTED_TOP = "appdata"
 OPS = ("copy", "move", "delete")
 PROGRESS_EVERY = 0.5
 CHUNK = 1024 * 1024
+SEARCH_MAX = 500
+SEARCH_SECONDS = 15.0
+QUERY_RE = re.compile(r"^[^\x00-\x1f\x7f/]{1,255}$")
 
 
 # --- paths --------------------------------------------------------------------
@@ -176,6 +180,64 @@ def files_list(ctx: Context, root: str, path: str):
     writable = len(parts) >= 1 and not (root != "/mnt/remotes" and parts[0] == PROTECTED_TOP)
     return {**out, "entries": entries[:LIST_MAX], "truncated": len(entries) > LIST_MAX,
             "skipped": skipped, "writable": writable}
+
+
+@action("files.search", mutating=False, params={
+    "root": Param(str, choices=ROOTS),
+    "path": Param(str, required=False, default="", pattern=REL_RE),
+    "query": Param(str, pattern=QUERY_RE)})
+def files_search(ctx: Context, root: str, path: str, query: str):
+    """Entries below <root>/<path> whose name contains query (case and accents ignored).
+
+    Breadth first, so near hits come first. Symlinks are reported but not
+    followed. Stops after SEARCH_MAX hits or SEARCH_SECONDS; "truncated" says so.
+    """
+    parts = split_rel(path)
+    needle = sort_key(query.strip())
+    if not needle:
+        raise AgentError(INVALID_PARAMS, "empty search")
+    os.close(open_dir(ctx, root, parts))  # a wrong path fails here, not as "no hits"
+    deadline = time.monotonic() + SEARCH_SECONDS
+    hits, skipped, truncated = [], 0, False
+    # Folders are queued by name, not as open descriptors: a wide tree would
+    # otherwise run out of descriptors.
+    queue = deque([parts])
+    while queue and not truncated:
+        here = queue.popleft()
+        try:
+            fd = open_dir(ctx, root, here)
+        except (AgentError, OSError):
+            skipped += 1  # gone or replaced since it was queued
+            continue
+        try:
+            with os.scandir(fd) as it:
+                for e in it:
+                    if time.monotonic() > deadline:
+                        truncated = True
+                        break
+                    try:
+                        e.name.encode()
+                        st = e.stat(follow_symlinks=False)
+                    except (UnicodeEncodeError, OSError):
+                        skipped += 1
+                        continue
+                    kind = entry_kind(st.st_mode)
+                    if kind == "dir":
+                        queue.append([*here, e.name])
+                    if needle not in sort_key(e.name):
+                        continue
+                    if len(hits) == SEARCH_MAX:
+                        truncated = True
+                        break
+                    hits.append({"path": "/".join([*here, e.name]), "name": e.name, "kind": kind,
+                                 "size": st.st_size if kind == "file" else None,
+                                 "mtime": int(st.st_mtime)})
+        except OSError:
+            skipped += 1
+        finally:
+            os.close(fd)
+    return {"root": root, "path": path, "query": query, "entries": hits,
+            "truncated": truncated, "skipped": skipped}
 
 
 @action("files.open", mutating=False, params={

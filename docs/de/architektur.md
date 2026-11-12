@@ -375,7 +375,7 @@ Protokoll: eine Anfrage pro Verbindung, je eine JSON-Zeile hin und zurück.
 | `remotes.list` | – | eingebundene Freigaben anderer Geräte mit Zustand (`mounted`, `idle`, `error`, `off`), ohne Passwort |
 | `remotes.set` | `name`, `type` (`smb`/`nfs`), `host`, `share`, `username`, `password` (weggelassen = bisheriges), `readonly` | Probe-Einhängen, dann `/etc/dahlia/remotes.json`, Zugangsdaten `/etc/dahlia/remotes/<Name>.cred` (0600), `.mount`- und `.automount`-Unit |
 | `remotes.remove` | `name`, `force` | Units und Zugangsdaten löschen; ohne `force` nicht, solange eine App einen Ordner darauf nutzt |
-| `files.browse` | `root` (`/mnt/user`, `/srv` oder `/mnt/remotes`), `path` (relativ dazu) | Unterordner für die Ordnerauswahl, ohne versteckte Ordner und Symlinks, höchstens 500; dazu, welche Speicherorte nutzbar sind |
+| `files.browse` | `root` (`/mnt/user`, `/srv` oder `/mnt/remotes`), `path` (relativ dazu) | Unterordner und Dateien für die Ordnerauswahl (Dateien nur zur Orientierung, nicht wählbar), ohne versteckte Einträge und Symlinks, je höchstens 500; dazu, welche Speicherorte nutzbar sind |
 | `files.mkdir` | `root`, `path` | neuen Ordner anlegen (Gruppe `dahlia`, 2775), nicht unter `appdata` |
 | `domains.get` | - | mDNS-Aliase, Namen in den Zertifikaten, Zertifikate |
 | `domains.set` | `mdns_aliases` | `domains set`, App-Zertifikat und Proxy neu |
@@ -609,6 +609,8 @@ Freigaben zeigt). Orte wie beim Ordnerwähler: `/mnt/user`, `/srv` und `/mnt/rem
 | Aktion | Umsetzung |
 | --- | --- |
 | Liste | `files.list`: Ordner zuerst, Groß-/Kleinschreibung und Akzente egal, höchstens 5000 Einträge; Namen, die kein UTF-8 sind, werden ausgelassen |
+| Suche | `files.search`: Namen unterhalb des aktuellen Ordners, die den Suchbegriff enthalten (Groß-/Kleinschreibung und Akzente egal); Breitensuche, Symlinks werden nicht verfolgt; höchstens 500 Treffer oder 15 s, danach `truncated`. Ein Klick auf einen Treffer öffnet den Ordner bzw. den Ordner der Datei mit der Datei ausgewählt |
+| Pfad | Der volle Pfad des Ordners steht über der Liste und lässt sich kopieren (Zwischenablage; ohne HTTPS markieren und kopieren) |
 | Herunterladen | `files.open` öffnet die Datei und gibt den Dateideskriptor über den Socket weiter (SCM_RIGHTS); das Backend streamt ihn, nginx puffert nicht |
 | Hochladen | `files.upload` legt `.dahlia-upload-<zufall>` an (Besitzer und Gruppe wie der Ordner, 0664) und gibt den Deskriptor weiter; das Backend schreibt den Request-Body hinein, `files.upload_finish` benennt um, bei Fehlern löscht `files.upload_abort`. Keine Größengrenze (`client_max_body_size 0` nur für diesen Pfad) |
 | Neuer Ordner, Umbenennen | `files.create_dir`, `files.rename`, sofort |
@@ -622,7 +624,7 @@ Besitzer, Rechte und Zeiten bleiben, Symlinks werden als Symlinks kopiert. Versc
 anderes Dateisystem kopiert und löscht danach. Löschen ist endgültig, der Papierkorb der
 Freigabe (M32) gilt nur für Samba.
 
-Endpunkte: `GET /api/files/list`, `GET /api/files/download`, `POST /api/files/upload`
+Endpunkte: `GET /api/files/list`, `GET /api/files/search` (`root`, `path`, `query`), `GET /api/files/download`, `POST /api/files/upload`
 (Body = Dateiinhalt, `root`, `path`, `name`, `overwrite` als Query), `POST /api/files/dir`,
 `POST /api/files/rename`, `POST /api/files/start`, `GET /api/files/job`, `POST /api/files/cancel`.
 

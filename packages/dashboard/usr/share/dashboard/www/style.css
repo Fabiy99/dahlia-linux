@@ -402,6 +402,9 @@ button.folder { display: flex; align-items: center; gap: .55rem; width: 100%; bo
                 background: none; text-align: left; padding: .55rem .8rem; }
 button.folder:hover { background: var(--track); }
 button.folder svg { width: 1.1rem; height: 1.1rem; flex: none; }
+ul.folder-list li.file { display: flex; align-items: center; gap: .55rem; padding: .55rem .8rem; color: var(--muted);
+                         overflow-wrap: anywhere; }
+ul.folder-list li.file svg { width: 1.1rem; height: 1.1rem; flex: none; }
 .folder-new { display: flex; gap: .5rem; }
 .folder-new input { flex: 1; min-width: 0; }
 
@@ -553,6 +556,15 @@ body.viewer #nav [data-view="files"] { display: none; }
 #view-files .section-head .row-ops { margin-left: auto; }
 #view-files .section-head .row-ops button { margin-left: 0; }
 #view-files .places { grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr)); }
+.fm-bar { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: .5rem; margin: 0 0 .8rem; }
+.fm-path, .fm-search { display: flex; gap: .35rem; min-width: 0; }
+.fm-path input, .fm-search input { flex: 1; min-width: 0; }
+.fm-path input { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .88rem; }
+.fm-search { max-width: none; }
+.fm-search-info { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; margin: 0 0 .8rem; }
+.fm-search-info .hint { margin: 0; }
+table.files .where { display: block; color: var(--muted); font-size: .82rem; overflow-wrap: anywhere; }
+@media (max-width: 40rem) { .fm-bar { grid-template-columns: 1fr; } }
 table.files { width: 100%; }
 table.files .pick { width: 2rem; }
 table.files .num { text-align: right; white-space: nowrap; }
