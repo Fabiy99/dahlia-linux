@@ -654,6 +654,21 @@
               <button type="submit" class="danger" data-i18n="totp.disable"></button>
             </form>
           </article>
+          <article class="card" id="tokens-card">
+            <h2 data-i18n="tokens.title"></h2>
+            <p class="hint" data-i18n="tokens.hint"></p>
+            <ul id="tokens" class="token-list"></ul>
+            <div id="token-new" class="notice" hidden>
+              <p data-i18n="tokens.new_hint"></p>
+              <code id="token-value" class="pubkey"></code>
+              <pre id="token-example"></pre>
+              <button type="button" id="token-copy" data-i18n="tokens.copy"></button>
+            </div>
+            <form id="token-form" class="inline-form">
+              <label><span data-i18n="tokens.name"></span><input name="name" autocomplete="off" required maxlength="64" data-i18n-placeholder="tokens.name_placeholder"></label>
+              <button type="submit" class="primary" data-i18n="tokens.create"></button>
+            </form>
+          </article>
           <article class="card">
             <h2 data-i18n="account.server_title"></h2>
             <form id="hostname-form">

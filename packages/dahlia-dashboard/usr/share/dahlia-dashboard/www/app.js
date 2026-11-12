@@ -2760,7 +2760,7 @@ async function loadAccount() {
   document.querySelector("#hostname-form [name=hostname]").value = info.hostname;
   // Each card loads on its own; one failing part does not hide the others.
   await Promise.all([loadTime(), loadNetwork(), loadSpindown(), loadFirewall(), loadSchedules(),
-               loadNotify(), loadUps(), loadVpn(), loadTotp()]
+               loadNotify(), loadUps(), loadVpn(), loadTotp(), loadTokens()]
     .map((p) => p.catch(sayError)));
 }
 
@@ -3257,6 +3257,50 @@ async function loadUps() {
   if (s.load !== null) fact(dl, "ups.load", `${s.load} %`);
 }
 
+// --- API tokens -------------------------------------------------------------------
+
+async function loadTokens() {
+  const data = await api("GET", "tokens");
+  const list = document.getElementById("tokens");
+  list.replaceChildren();
+  if (!data.tokens.length) list.append(el("li", "hint", t("tokens.none")));
+  const when = (sec) => (sec ? new Date(sec * 1000).toLocaleString(lang) : t("tokens.never"));
+  for (const tok of data.tokens) {
+    const li = el("li", "token");
+    const meta = el("div", "cname");
+    meta.append(el("b", "", tok.name),
+                el("small", "muted", t("tokens.meta", { created: when(tok.created), used: when(tok.last_used) })));
+    li.append(meta, button("tokens.remove", async () => {
+      if (!await ask(t("tokens.confirm_remove", { name: tok.name }), "tokens.remove", true)) return;
+      await api("POST", `tokens/${encodeURIComponent(tok.id)}/remove`);
+      document.getElementById("token-new").hidden = true;
+      await loadTokens();
+    }, "danger"));
+    list.append(li);
+  }
+}
+
+function bindTokens() {
+  const form = document.getElementById("token-form");
+  form.addEventListener("submit", (e) => {
+    e.preventDefault();
+    guarded(e.submitter, async () => {
+      const res = await api("POST", "tokens", { name: form.elements.name.value.trim() });
+      form.reset();
+      document.getElementById("token-value").textContent = res.token;
+      document.getElementById("token-example").textContent =
+        `curl -H "Authorization: Bearer ${res.token}" ${location.origin}/api/stats`;
+      document.getElementById("token-new").hidden = false;
+      await loadTokens();
+    });
+  });
+  const copy = document.getElementById("token-copy");
+  copy.addEventListener("click", () => guarded(copy, async () => {
+    await navigator.clipboard.writeText(document.getElementById("token-value").textContent);
+    say(t("tokens.copied"), "ok");
+  }));
+}
+
 function bindNotifyUps() {
   for (const form of document.querySelectorAll("form[data-channel]")) {
     form.addEventListener("submit", (e) => {
@@ -3554,6 +3598,7 @@ async function start() {
   bindImport();
   bindFolderPicker();
   bindNotifyUps();
+  bindTokens();
   bindAutoUpdates();
   bindRootSnapshots();
   bindParity();
