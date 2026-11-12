@@ -3,7 +3,9 @@
 # and generate a flat apt repository index in build/repo/.
 #
 # Usage: tools/build-packages.sh
-# Needs: dpkg-deb, apt-ftparchive (apt-utils)
+# Needs: dpkg-deb, apt-ftparchive (apt-utils), python3-yaml, network access for
+# the app catalog (APPS_CATALOG, default: the URL in agent's etc/dahlia/apps.json;
+# a checkout of dahlia-apps works as file:///path/to/dahlia-apps/).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -11,6 +13,8 @@ VERSION="$(tr -d '[:space:]' < "$ROOT/VERSION")"
 BUILD="$ROOT/build"
 POOL="$BUILD/pool"
 REPO="$BUILD/repo"
+APPS_CATALOG="${APPS_CATALOG:-$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))["catalog"])' \
+    "$ROOT/packages/agent/etc/dahlia/apps.json")}"
 
 rm -rf "$BUILD/pkgroot" "$POOL" "$REPO"
 mkdir -p "$BUILD/pkgroot" "$POOL" "$REPO"
@@ -21,6 +25,13 @@ for src in "$ROOT"/packages/*/; do
     cp -a "$src" "$stage"
     # Bytecode from local test runs must not end up in the package.
     find "$stage" -name __pycache__ -type d -prune -exec rm -rf {} +
+
+    # The app catalog ships with agent: a new server offers apps before its
+    # first download (postinst: apps catalog --seed).
+    if [ "$name" = agent ]; then
+        python3 -B "$ROOT/tools/fetch-catalog.py" "$APPS_CATALOG" \
+            "$stage/usr/share/agent/apps-catalog"
+    fi
 
     # Substitute the version in every text file that carries the marker.
     grep -rlI '@VERSION@' "$stage" | while read -r f; do

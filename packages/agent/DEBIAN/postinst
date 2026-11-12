@@ -27,6 +27,9 @@ case "$1" in
         /usr/lib/dahlia/system-data.sh || echo "agent: /srv setup failed" >&2
         chmod 0755 /var/lib/dahlia
         chmod 0700 /var/lib/dahlia/apps
+        # Catalog shipped with the package: apps to offer before the first
+        # download; also replaces an older downloaded one after an upgrade.
+        apps catalog --seed --quiet >/dev/null || echo "agent: app catalog seed failed" >&2
         systemctl enable firewall.service >/dev/null 2>&1 || true
         # Weekly short SMART self-test: on once for new and upgraded systems,
         # after that the schedule in the dashboard decides (settings.set_schedule).

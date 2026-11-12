@@ -26,6 +26,7 @@ FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
 USER_AGENT = "Dahlia Linux"
 TIMEOUT = 8
 CACHE_SECONDS = 15 * 60
+RETRY_SECONDS = 2 * 60
 
 # Fetch: url -> parsed JSON. Tests replace it.
 Fetch = Callable[[str], dict]
@@ -172,6 +173,9 @@ class Weather:
         self.fetch = fetch
         self.clock = clock
         self.cache: dict[tuple[float, float], tuple[float, dict]] = {}
+        # A failed fetch is not repeated for a while: without internet every
+        # page load would otherwise wait TIMEOUT seconds per place.
+        self.failed: dict[tuple[float, float], tuple[float, str]] = {}
         self.lock = threading.Lock()
 
     def one(self, place: dict) -> dict:
@@ -179,17 +183,27 @@ class Weather:
         now = self.clock()
         with self.lock:
             hit = self.cache.get(key)
+            failed = self.failed.get(key)
         if hit and now - hit[0] < CACHE_SECONDS:
             return {**hit[1], **place}
+        if failed and now - failed[0] < RETRY_SECONDS:
+            raise WeatherError(failed[1])
         params = {
             "latitude": place["latitude"], "longitude": place["longitude"],
             "current": "temperature_2m,relative_humidity_2m,wind_speed_10m,weather_code,is_day",
             "daily": "weather_code,temperature_2m_max,temperature_2m_min",
             "timezone": "auto", "forecast_days": 4,
         }
-        data = parse_forecast(place, self.fetch(f"{FORECAST_URL}?{urllib.parse.urlencode(params)}"))
+        try:
+            data = parse_forecast(place,
+                                  self.fetch(f"{FORECAST_URL}?{urllib.parse.urlencode(params)}"))
+        except WeatherError as e:
+            with self.lock:
+                self.failed[key] = (now, str(e))
+            raise
         with self.lock:
             self.cache[key] = (now, data)
+            self.failed.pop(key, None)
         return data
 
     def all(self, places: list[dict]) -> list[dict]:

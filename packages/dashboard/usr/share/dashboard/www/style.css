@@ -733,6 +733,17 @@ body.screen { overflow: hidden; cursor: none; }
 .screen-open-text b { font-size: 1.1rem; }
 .screen-open-text small { color: var(--muted); }
 body.screen .bloom { left: 22%; width: min(60rem, 90vh); }
+/* The local screen is rendered in software on the server's CPU; smooth motion
+   repaints the monitor 60 times a second and keeps a core busy. Here the
+   backdrop moves in steps, twice a second (clouds: bloom.js). */
+body.screen .bloom .breathe { animation-timing-function: steps(9); }
+body.screen .bloom .r1 { animation-timing-function: steps(600); }
+body.screen .bloom .r2 { animation-timing-function: steps(440); }
+body.screen .bloom .r3 { animation-timing-function: steps(320); }
+body.screen .bloom .r4 { animation-timing-function: steps(240); }
+body.screen .weather-fx .sun { animation-timing-function: steps(12); }
+body.screen .weather-fx .star { animation-timing-function: steps(6); }
+body.screen .weather-fx .flash { animation-timing-function: steps(1); }
 @media (max-width: 60rem) {
   .screen-main { justify-content: center; }
   .screen-info { width: 100%; }

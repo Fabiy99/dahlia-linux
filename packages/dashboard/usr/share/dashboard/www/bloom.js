@@ -9,8 +9,15 @@ function span(cls) {
   return s;
 }
 
+// The local screen (body.screen) is drawn in software on the server's CPU:
+// any continuous motion repaints the whole monitor 60 times a second and keeps
+// a core busy. There everything moves in steps, twice a second, and falling
+// rain and snow are left out (style.css has the rest).
+const STEPS_PER_SECOND = 2;
+
 // The backdrop follows the weather of the selected place.
 function setMood(p) {
+  const local = document.body.classList.contains("screen");
   const body = document.body;
   for (const k of [...WX_KINDS, "night"]) body.classList.remove(`wx-${k}`);
   const fx = document.getElementById("weather-fx");
@@ -28,14 +35,15 @@ function setMood(p) {
   if (p.kind === "clear" && p.is_day) fx.append(span("sun"));
   if (["partly", "cloudy", "fog", "rain", "storm"].includes(p.kind)) {
     spans(p.kind === "partly" ? 2 : 4, "cloud", (i) =>
-      `top:${6 + i * 18}%;animation-duration:${70 + i * 22}s;animation-delay:-${i * 25}s`);
+      `top:${6 + i * 18}%;animation-duration:${70 + i * 22}s;animation-delay:-${i * 25}s`
+      + (local ? `;animation-timing-function:steps(${(70 + i * 22) * STEPS_PER_SECOND})` : ""));
   }
-  if (p.kind === "rain" || p.kind === "storm") {
+  if (!local && (p.kind === "rain" || p.kind === "storm")) {
     spans(70, "drop", (i) => `left:${(i * 37) % 100}%;height:${3 + (i % 4)}rem;`
       + `animation-duration:${(0.7 + (i % 5) * 0.13).toFixed(2)}s;animation-delay:-${((i * 0.29) % 1.4).toFixed(2)}s`);
   }
   if (p.kind === "storm") fx.append(span("flash"));
-  if (p.kind === "snow") {
+  if (!local && p.kind === "snow") {
     spans(55, "flake", (i) => `left:${(i * 41) % 100}%;width:${0.2 + (i % 4) * 0.1}rem;height:${0.2 + (i % 4) * 0.1}rem;`
       + `animation-duration:${(9 + (i % 6) * 1.7).toFixed(1)}s;animation-delay:-${((i * 1.3) % 14).toFixed(1)}s`);
   }

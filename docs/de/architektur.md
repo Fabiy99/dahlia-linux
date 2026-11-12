@@ -629,6 +629,7 @@ Dashboard-Konto existiert, steht dort auch der Einrichtungscode.
 | Teil | Umsetzung |
 | --- | --- |
 | Anzeige | `cage` (Wayland-Kiosk) mit `cog` (WPE WebKit), Software-Rendering, Benutzer `screen` ohne Rechte |
+| Bewegung | Software-Rendering läuft auf der CPU des Servers. Fließende Animationen zeichnen den ganzen Bildschirm 60-mal pro Sekunde neu und belegen einen Kern; hier bewegen sich Dahlie, Wolken, Sonne und Sterne in Schritten, zweimal pro Sekunde, Regen und Schnee fallen weg (`body.screen` in `style.css`, `bloom.js`). Gemessen: rund 0,1 statt 1 Kern |
 | Seite | `screen.html`/`screen.js` von nginx auf `127.0.0.1:8090`, nur Loopback, nur HTTP |
 | Daten | `GET /api/screen` ohne Anmeldung; nginx liefert den Pfad nur auf `127.0.0.1:8090` aus, die Netzwerkseite antwortet mit 404, das Backend lehnt Anfragen mit `X-Forwarded-For` oder von anderen Adressen ab |
 | Konsole | tty2 bleibt Textkonsole (Strg+Alt+F2). Startet `screen.service` dreimal in einer Minute nicht, bekommt tty1 wieder seinen Login (`OnFailure=getty@tty1.service`) |
@@ -760,6 +761,8 @@ Vorlage unter `login` nennt.
 | Container | `no-new-privileges`, Log-Treiber `local` mit 3 x 10 MB; Hauptdienst `dahlia-<id>`, Hilfsdienste `dahlia-<id>-<dienst>` |
 | Stack | eigenes Docker-Netz je App, Dienste erreichen sich über den Dienstnamen; Hilfsdienste veröffentlichen keine Ports |
 | Katalog | `catalog.json` (alle Vorlagen in einer Datei), sonst `index.json` und `apps/<id>.yaml`; Vorlagen mit neuerem Schema werden übersprungen |
+| Mitgeliefert | `tools/build-packages.sh` legt den Katalog beim Bauen nach `/usr/share/agent/apps-catalog` ins Paket `agent` (`tools/fetch-catalog.py`, Quelle `APPS_CATALOG`). Der postinst übernimmt ihn mit `apps catalog --seed`, wenn noch keiner da ist oder der vorhandene älter ist und von derselben Adresse stammt: ein neuer Server bietet Apps ohne ersten Download an |
+| Aktualisieren | Logos werden parallel geladen (8 gleichzeitig). Installationen warten nur auf das Umschalten des Katalogordners, nicht auf den Download |
 | Logos | `catalog.json` nennt unter `icons` je App `icons/<id>.svg` oder `.png` mit SHA-256. Der Agent lädt nur geänderte Logos, prüft Hash, Größe (64 KB) und Dateityp und legt sie in `/var/lib/dahlia/apps-catalog/icons/`; nginx liefert sie als `/app-icons/` mit `sandbox`-CSP aus. Ohne Logo zeigt das Dashboard den Anfangsbuchstaben |
 | Updates | `apps-catalog.timer` lädt den Katalog alle 6 Stunden; weicht die Vorlage einer installierten App ab, zeigt das Dashboard "Update auf <Version>" und "Alle aktualisieren". Alte Images werden danach gelöscht |
 
