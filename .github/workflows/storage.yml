@@ -24,7 +24,8 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             apt-utils mergerfs fuse3 xfsprogs btrfs-progs e2fsprogs attr jq snapraid rsync exfatprogs \
-            cryptsetup-bin systemd-cryptsetup
+            cryptsetup-bin
+          # Ubuntu 24.04 ships systemd-cryptsetup inside systemd (Debian 13 splits it out).
           # Created by dahlia-base on a real system; imported files get this group.
           sudo groupadd -f dahlia
 
