@@ -513,6 +513,15 @@ abgemeldet. Bei der Anmeldung fragt das Formular nach dem Code erst, wenn das Pa
 stimmt. Falsche Codes zählen zu den Fehlversuchen. Ausschalten braucht Passwort und Code.
 Handy und Wiederherstellungscodes weg: `sudo dahlia-dashboard --disable-totp <Konto>`.
 
+API-Tokens (M26): für Home Assistant, Homepage oder Skripte, unter Einstellungen erstellt und
+widerrufen (höchstens 20). Ein Token (`dahlia_` + 43 Zeichen) wird nur beim Erstellen
+angezeigt; `tokens.json` im Zustandsverzeichnis (0600) hält SHA-256-Hashes, Name, Erstellzeit
+und letzte Nutzung. Gesendet als `Authorization: Bearer <Token>`, gilt es nur für lesende
+Endpunkte mit Werten: `/api/system`, `/api/stats`, `/api/storage`, `/api/hardware`,
+`/api/parity`, `/api/jobs`, `/api/apps` (ohne App-Passwörter und eigene Container-Einstellungen),
+`/api/docker`, `/api/docker/stats`, `/api/history`. Keine Einstellungen, keine Änderungen, kein Terminal.
+Beispiel: `curl -H "Authorization: Bearer dahlia_…" https://dahlia.local/api/stats`.
+
 ### Terminal (ab Meilenstein 12)
 
 Die Seite Terminal im Dashboard ist eine Shell im Browser (xterm.js, MIT, unter
