@@ -200,8 +200,17 @@ jeder Änderung.
 - Weitergeleitet (`forward`): Ports, die Docker per DNAT an Container gibt, nur für lokale
   Quellen.
 
-Einstellungen in `/etc/dahlia/firewall.json` (`enabled`, `networks`), im Dashboard unter
-Einstellungen. Das geladene Regelwerk liegt in `/run/dahlia/firewall.nft`.
+Einstellungen in `/etc/dahlia/firewall.json` (`enabled`, `networks`, `rules`), im Dashboard
+unter Einstellungen. Das geladene Regelwerk liegt in `/run/dahlia/firewall.nft`.
+
+Eigene Regeln (M27, höchstens 50) stehen in der Kette `input` direkt nach `established`/`lo`
+und vor allen erzeugten Regeln, in ihrer Reihenfolge. Jede Regel: `action` (`accept`/`drop`),
+`protocol` (`tcp`/`udp`/`all`), `ports` (`8080` oder `8000-8100`, nur bei tcp/udp), `source`
+(`local` = die lokalen Netze, `any` = jede Adresse, oder ein Netz/eine Adresse) und `comment`
+(steht als nft-Kommentar im Regelwerk). Abgelehnt werden: `drop` für `local` oder `any` (würde
+auch Dashboard und SSH sperren), `accept` für alles von überall (das ist Firewall aus) und
+Kommentare mit Anführungszeichen. Ein `accept` mit `any` öffnet den Port für jede Adresse; aus
+dem Internet erreichbar ist er erst mit einer Weiterleitung im Router.
 
 ```
 dahlia-firewall status     # Einstellungen, lokale Netze, offene Ports (JSON)
@@ -276,6 +285,7 @@ Protokoll: eine Anfrage pro Verbindung, je eine JSON-Zeile hin und zurück.
 | `vpn.wireguard_add_peer`, `vpn.wireguard_remove_peer` | `name` | neues Gerät (Konfiguration und QR-Code einmal) bzw. entfernen |
 | `vpn.tailscale_install`, `vpn.tailscale_up`, `vpn.tailscale_logout` | bei `up`: `routes`, `exit_node` | Tailscale installieren, verbinden, abmelden |
 | `settings.firewall` / `settings.set_firewall` | `enabled`, `networks` (CIDR-Liste, höchstens 20) | `/etc/dahlia/firewall.json`, `nft -c -f` und `nft -f` mit `/run/dahlia/firewall.nft` |
+| `settings.set_firewall_rules` | `rules` (Liste, höchstens 50) | eigene Regeln prüfen, speichern, Regelwerk neu laden |
 | `settings.schedules` / `settings.set_schedule` | `job`, `frequency`, `time`, `weekday`, `monthday` | Drop-in `OnCalendar=` für die Timer |
 | `shares.list` | – | Freigaben, SMB-Benutzer, ob `/mnt/user` eingehängt ist, ob `smbd` und `nfs-server` laufen |
 | `shares.set` / `shares.remove` | `name`, `comment`, `security` (`public`/`secure`/`private`), `users` (Name → `rw`/`ro`), `time_machine`, `time_machine_size` (GB, 0 = ohne Grenze), `nfs`, `recycle_days` (0 = kein Papierkorb, bis 365) | erzeugt `/etc/samba/smb.conf`, prüft mit `testparm`, startet `smbd`; bei `nfs` `/etc/exports.d/dahlia.exports`, `exportfs -ra`, `nfs-server` |

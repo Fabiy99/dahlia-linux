@@ -483,6 +483,10 @@ code.pubkey { display: block; font-size: .78rem; overflow-wrap: anywhere; backgr
 @media (max-width: 40rem) { .custom-grid { grid-template-columns: 1fr; } }
 #custom-form > button[type="button"] { width: auto; justify-self: start; }
 
+/* own firewall rules */
+.fw-rule-form { display: grid; gap: .6rem 1rem; grid-template-columns: repeat(auto-fill, minmax(10rem, 1fr)); align-items: end; margin-top: 1rem; }
+.fw-rules { margin-top: .5rem; }
+
 /* API tokens */
 .token-list { list-style: none; padding: 0; margin: 0 0 1rem; display: grid; gap: .5rem; }
 .token-list .token { display: flex; justify-content: space-between; align-items: center; gap: 1rem; }

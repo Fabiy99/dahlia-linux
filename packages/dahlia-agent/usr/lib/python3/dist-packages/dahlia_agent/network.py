@@ -319,3 +319,22 @@ def settings_set_firewall(ctx: Context, enabled: bool, networks: list):
 
     smb.apply_nfs(ctx, smb.load_shares(ctx))
     return status
+
+
+@action(
+    "settings.set_firewall_rules",
+    mutating=True,
+    params={"rules": Param(list)},
+)
+def settings_set_firewall_rules(ctx: Context, rules: list):
+    """Own rules before the generated ones: action, protocol, ports, source, comment."""
+    from .firewall import FirewallError, check_rules
+
+    try:
+        rules = check_rules(rules)
+    except FirewallError as e:
+        raise AgentError(INVALID_PARAMS, str(e)) from None
+    try:
+        return firewall_of(ctx).set_rules(rules)
+    except FirewallError as e:
+        raise AgentError(FAILED, str(e)) from None

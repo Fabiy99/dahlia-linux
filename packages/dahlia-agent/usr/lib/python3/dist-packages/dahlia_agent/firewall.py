@@ -12,6 +12,11 @@ WireGuard (vpn.py): while the tunnel is on, its UDP port is open from
 anywhere, and the tunnel subnet is masqueraded on the way into the LAN.
 The NAT stays loaded with the firewall turned off.
 
+Own rules (firewall.json "rules", at most 50) come before the generated
+ones, in their order: accept or drop by protocol, port or port range and
+source (local networks, any address, or one network). They open ports for
+services Dahlia does not know about, or block single devices.
+
 Docker keeps its own tables; the ruleset never flushes anything but
 inet dahlia, so it can be loaded at any time. Settings live in
 /etc/dahlia/firewall.json; dahlia-firewall.service loads the table at boot,
@@ -21,6 +26,7 @@ and every change of apps, shares or settings loads it again.
 import argparse
 import ipaddress
 import json
+import re
 import subprocess
 import sys
 from collections.abc import Callable
@@ -31,6 +37,12 @@ CONFIG = Path("/etc/dahlia/firewall.json")
 RULES = Path("/run/dahlia/firewall.nft")
 TABLE = "dahlia"
 MAX_NETWORKS = 20
+MAX_RULES = 50
+RULE_ACTIONS = ("accept", "drop")
+RULE_PROTOCOLS = ("tcp", "udp", "all")
+PORTS_RE = re.compile(r"^([0-9]{1,5})(?:-([0-9]{1,5}))?$")
+# Shown in nft list ruleset; no quotes or backslashes.
+COMMENT_RE = re.compile(r"^[^\x00-\x1f\x7f\"\\]{0,64}$")
 
 PRIVATE4 = ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "100.64.0.0/10",
             "169.254.0.0/16")
@@ -79,6 +91,55 @@ def check_networks(networks) -> list[str]:
     return out
 
 
+def check_rule(rule) -> dict:
+    """One own rule, normalized; FirewallError if invalid."""
+    if not isinstance(rule, dict):
+        raise FirewallError("a rule is an object")
+    action = rule.get("action")
+    protocol = rule.get("protocol")
+    ports = str(rule.get("ports") or "").replace(" ", "")
+    source = str(rule.get("source") or "local").strip()
+    comment = str(rule.get("comment") or "").strip()
+    if action not in RULE_ACTIONS:
+        raise FirewallError("action: accept or drop")
+    if protocol not in RULE_PROTOCOLS:
+        raise FirewallError("protocol: tcp, udp or all")
+    if protocol == "all":
+        if ports:
+            raise FirewallError("ports need tcp or udp")
+    else:
+        m = PORTS_RE.match(ports)
+        if not m:
+            raise FirewallError(f"{ports!r} is not a port like 8080 or 8000-8100")
+        lo, hi = int(m.group(1)), int(m.group(2) or m.group(1))
+        if not 1 <= lo <= hi <= 65535:
+            raise FirewallError(f"{ports!r}: ports are 1 to 65535, the lower one first")
+        ports = str(lo) if lo == hi else f"{lo}-{hi}"
+    if source not in ("local", "any"):
+        try:
+            net = ipaddress.ip_network(source, strict=False)
+        except ValueError:
+            raise FirewallError(f"{source!r} is not local, any or a network like "
+                                "192.168.1.20/32") from None
+        source = "any" if net.prefixlen == 0 else str(net)
+    if action == "accept" and source == "any" and protocol == "all":
+        raise FirewallError("accepting everything from anywhere turns the firewall off; "
+                            "disable it instead")
+    if action == "drop" and source in ("local", "any"):
+        # Would lock out the dashboard and SSH too.
+        raise FirewallError("drop rules need a single device or network as source")
+    if not COMMENT_RE.match(comment):
+        raise FirewallError("comment: at most 64 characters, no quotes")
+    return {"action": action, "protocol": protocol, "ports": ports, "source": source,
+            "comment": comment}
+
+
+def check_rules(rules) -> list[dict]:
+    if not isinstance(rules, list) or len(rules) > MAX_RULES:
+        raise FirewallError(f"rules: a list of at most {MAX_RULES} rules")
+    return [check_rule(r) for r in rules]
+
+
 def load_settings(path: Path = CONFIG) -> dict:
     try:
         data = json.loads(path.read_text())
@@ -90,7 +151,12 @@ def load_settings(path: Path = CONFIG) -> dict:
         networks = check_networks(data.get("networks", []))
     except FirewallError:
         networks = []
-    return {"enabled": data.get("enabled", True) is not False, "networks": networks}
+    try:
+        rules = check_rules(data.get("rules", []))
+    except FirewallError:
+        rules = []
+    return {"enabled": data.get("enabled", True) is not False, "networks": networks,
+            "rules": rules}
 
 
 def save_settings(settings: dict, path: Path = CONFIG) -> None:
@@ -209,7 +275,21 @@ def nat_chain(vpn: dict | None) -> list[str]:
     ]
 
 
-def ruleset(ports: list[Port], networks: list[str], vpn: dict | None = None) -> str:
+def rule_lines(rule: dict) -> list[str]:
+    match = "" if rule["protocol"] == "all" else f"{rule['protocol']} dport {rule['ports']} "
+    tail = f"{match}{rule['action']}"
+    if rule["comment"]:
+        tail += f' comment "{rule["comment"]}"'
+    src = rule["source"]
+    if src == "any":  # always with a port, see check_rule
+        return [f"        {tail}"]
+    if src == "local":
+        return [f"        ip saddr @local4 {tail}", f"        ip6 saddr @local6 {tail}"]
+    return [f"        {'ip6' if ':' in src else 'ip'} saddr {src} {tail}"]
+
+
+def ruleset(ports: list[Port], networks: list[str], vpn: dict | None = None,
+            rules: list[dict] | None = None) -> str:
     """The table inet dahlia, replacing an existing one in one transaction."""
     v4 = list(PRIVATE4) + [n for n in networks if ":" not in n]
     v6 = list(PRIVATE6) + [n for n in networks if ":" in n]
@@ -240,6 +320,9 @@ def ruleset(ports: list[Port], networks: list[str], vpn: dict | None = None) -> 
         "        udp sport 67 udp dport 68 accept",
         "        ip6 saddr fe80::/10 udp sport 547 udp dport 546 accept",
     ]
+    # Own rules first, so a drop also covers the ports Dahlia opens.
+    for rule in rules or []:
+        lines += rule_lines(rule)
     if vpn:
         # Clients connect from the internet; WireGuard drops what is not signed.
         lines.append(f"        udp dport {vpn['port']} accept")
@@ -308,7 +391,8 @@ class Firewall:
         status = self.status()
         if status["enabled"]:
             text = ruleset([Port(**p) for p in status["ports"]],
-                           status["subnets"] + status["networks"], status["wireguard"])
+                           status["subnets"] + status["networks"], status["wireguard"],
+                           status["rules"])
         else:
             text = disabled_ruleset(status["wireguard"])
         self.run_dir.mkdir(parents=True, exist_ok=True)
@@ -320,7 +404,14 @@ class Firewall:
         return status
 
     def set(self, enabled: bool, networks) -> dict:
-        settings = {"enabled": bool(enabled), "networks": check_networks(networks)}
+        settings = {**load_settings(self.config), "enabled": bool(enabled),
+                    "networks": check_networks(networks)}
+        return self._save_and_apply(settings)
+
+    def set_rules(self, rules) -> dict:
+        return self._save_and_apply({**load_settings(self.config), "rules": check_rules(rules)})
+
+    def _save_and_apply(self, settings: dict) -> dict:
         old = self.config.read_text() if self.config.exists() else None
         save_settings(settings, self.config)
         try:
@@ -365,7 +456,7 @@ def main(argv: list[str] | None = None) -> int:
         elif args.command == "show":
             st = fw.status()
             print(ruleset([Port(**x) for x in st["ports"]], st["subnets"] + st["networks"],
-                          st["wireguard"]), end="")
+                          st["wireguard"], st["rules"]), end="")
         else:
             fw.set(args.command == "enable", load_settings(fw.config)["networks"])
             print(f"dahlia-firewall: {'enabled' if args.command == 'enable' else 'disabled'}")
