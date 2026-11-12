@@ -598,6 +598,22 @@ def test_ops_endpoints(env):
     ]
 
 
+def test_network_layout_endpoints(env):
+    client, agent, _ = logged_in(env)
+    agent.calls.clear()
+    client.get("/api/settings/network/layout")
+    client.post("/api/settings/network/layout", json={"nics": ["eno1"], "bridge": True},
+                headers=CSRF)
+    client.post("/api/settings/wol", json={"port": "eno1", "enabled": True}, headers=CSRF)
+    assert agent.calls == [
+        ("settings.network_layout", {}),
+        ("settings.set_network_layout", {"nics": ["eno1"], "bond_mode": "", "bridge": True,
+                                         "vlans": []}),
+        ("settings.set_wol", {"port": "eno1", "enabled": True}),
+    ]
+    assert client.post("/api/settings/network/layout", json={"nics": ["eno1"]}).status_code == 403
+
+
 def test_shares_endpoints(env):
     client, agent, _ = logged_in(env)
     agent.calls.clear()

@@ -1,0 +1,13 @@
+[Unit]
+Description=Dahlia: Wake-on-LAN for %i
+# Drivers reset Wake-on-LAN at boot; set it again once the port exists.
+BindsTo=sys-subsystem-net-devices-%i.device
+After=sys-subsystem-net-devices-%i.device
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/sbin/ethtool -s %i wol g
+
+[Install]
+WantedBy=multi-user.target
