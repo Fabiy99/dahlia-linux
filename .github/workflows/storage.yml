@@ -42,7 +42,8 @@ jobs:
       - name: Build and install dahlia-storage
         run: |
           tools/build-packages.sh
-          sudo dpkg -i build/pool/dahlia-storage_*_all.deb
+          # Debian 13 needs systemd-cryptsetup; on Ubuntu 24.04 systemd itself provides it.
+          sudo dpkg -i --ignore-depends=systemd-cryptsetup build/pool/dahlia-storage_*_all.deb
 
       - name: Integration test (loop devices)
         run: sudo tests/integration/storage-loop.sh
