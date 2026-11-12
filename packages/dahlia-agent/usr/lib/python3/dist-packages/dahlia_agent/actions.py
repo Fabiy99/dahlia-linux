@@ -1145,6 +1145,7 @@ from . import (  # noqa: E402, F401
     history,
     network,
     notify,
+    power,
     remotelog,
     remotes,
     settings,
