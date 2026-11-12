@@ -410,6 +410,10 @@ def storage_add(ctx: Context, uuid: str, role: str):
     return {"uuid": uuid, "role": role}
 
 
+# Same rules as dahlia_storage.crypt.check_passphrase.
+PASSPHRASE_RE = re.compile(r"^[^\x00-\x1f\x7f]{8,512}$")
+
+
 @action(
     "storage.format",
     mutating=True,
@@ -417,18 +421,67 @@ def storage_add(ctx: Context, uuid: str, role: str):
         "device": Param(str, pattern=DEVICE_RE),
         "filesystem": Param(str, choices=FORMAT_FILESYSTEMS),
         "confirm": Param(str),
+        "encrypt": Param(bool, required=False, default=False),
+        "passphrase": Param(str, required=False, default=None, pattern=PASSPHRASE_RE),
     },
 )
-def storage_format(ctx: Context, device: str, filesystem: str, confirm: str):
-    """Partition and format a blank or imported disk. confirm repeats the disk name."""
+def storage_format(ctx: Context, device: str, filesystem: str, confirm: str, encrypt: bool,
+                   passphrase: str | None):
+    """Partition and format a blank or imported disk. confirm repeats the disk name.
+
+    encrypt puts the filesystem into a LUKS2 container with the array passphrase.
+    """
     if confirm != device.removeprefix("/dev/"):
         raise AgentError(INVALID_PARAMS, f"confirm must be '{device.removeprefix('/dev/')}'")
+    if encrypt and passphrase is None:
+        raise AgentError(INVALID_PARAMS, "encrypt needs 'passphrase'")
     from .disktest import burnin_running
 
     if burnin_running(ctx, device):
         raise AgentError(FAILED, f"the disk test of {device} is still running")
-    out = dahlia_disk(ctx, "format", device, "--fs", filesystem, "--json", timeout=900)
+    cmd = ["dahlia-disk", "format", device, "--fs", filesystem, "--json"]
+    if encrypt:
+        cmd.append("--encrypt")
+    out = ctx.runner.run(cmd, timeout=900, input=f"{passphrase}\n" if encrypt else None).stdout
     return json.loads(out)
+
+
+@action("storage.encryption", mutating=False)
+def storage_encryption(ctx: Context):
+    """Encrypted disks (locked or open) and whether the key file unlocks them at boot."""
+    return json.loads(dahlia_disk(ctx, "crypt-status"))
+
+
+@action("storage.unlock", mutating=True,
+        params={"passphrase": Param(str, pattern=PASSPHRASE_RE)})
+def storage_unlock(ctx: Context, passphrase: str):
+    """Open the encrypted disks with the passphrase and mount them."""
+    out = ctx.runner.run(["dahlia-disk", "unlock", "--json"], timeout=600,
+                         input=f"{passphrase}\n").stdout
+    return json.loads(out)
+
+
+@action("storage.auto_unlock", mutating=True, params={
+    "enabled": Param(bool),
+    "passphrase": Param(str, required=False, default=None, pattern=PASSPHRASE_RE)})
+def storage_auto_unlock(ctx: Context, enabled: bool, passphrase: str | None):
+    """Key file on the system SSD that unlocks the disks at boot (on needs the passphrase)."""
+    if enabled and passphrase is None:
+        raise AgentError(INVALID_PARAMS, "turning it on needs 'passphrase'")
+    if enabled:
+        ctx.runner.run(["dahlia-disk", "auto-unlock", "on"], timeout=300, input=f"{passphrase}\n")
+    else:
+        dahlia_disk(ctx, "auto-unlock", "off")
+    return {"auto_unlock": enabled}
+
+
+@action("storage.change_passphrase", mutating=True, params={
+    "old": Param(str, pattern=PASSPHRASE_RE),
+    "new": Param(str, pattern=PASSPHRASE_RE)})
+def storage_change_passphrase(ctx: Context, old: str, new: str):
+    """New array passphrase on every connected encrypted disk."""
+    out = ctx.runner.run(["dahlia-disk", "passphrase"], timeout=300, input=f"{old}\n{new}\n")
+    return {"message": out.stdout.strip()}
 
 
 @action(

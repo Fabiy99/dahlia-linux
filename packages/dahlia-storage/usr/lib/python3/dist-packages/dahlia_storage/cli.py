@@ -8,8 +8,15 @@
     dahlia-disk settings
     dahlia-disk set-minfreespace SIZE
     dahlia-disk set-option NAME VALUE
-    dahlia-disk format DEVICE --fs xfs|ext4|btrfs [--label LABEL] [--json]
+    dahlia-disk format DEVICE --fs xfs|ext4|btrfs [--label LABEL] [--encrypt] [--json]
     dahlia-disk import UUID --to NAME [--check]
+    dahlia-disk unlock [--key-file FILE] [--json]
+    dahlia-disk auto-unlock on|off
+    dahlia-disk passphrase
+    dahlia-disk crypt-status
+
+Passphrases come on stdin, one per line (format --encrypt, unlock, auto-unlock
+on: the passphrase; passphrase: old, then new); see crypt.py.
 
 add mounts a disk with the filesystem it has. Only format writes a new
 filesystem: on a whole disk without filesystems, or one whose filesystems
@@ -28,7 +35,7 @@ import sys
 import time
 from dataclasses import asdict
 
-from . import disks, importer, snapraid, state, units
+from . import crypt, disks, importer, snapraid, state, units
 
 CONTROL_FILE = ".mergerfs"
 BRANCHES_XATTR = "user.mergerfs.branches"
@@ -121,6 +128,8 @@ def write_units(st: state.State) -> list[str]:
                 stderr=subprocess.DEVNULL,
             )
             os.unlink(path)
+    # Boot unlocking with the key file; the generator turns it into units.
+    crypt.sync_crypttab([d.luks for d in st.disks if d.luks])
     systemctl("daemon-reload")
     return list(rendered)
 
@@ -180,6 +189,7 @@ def cmd_list(args) -> int:
         disks.run_lsblk(),
         registered_uuids={d.uuid for d in st.disks},
         allow_loop=disks.allow_loop_from_env(),
+        registered_luks={d.luks for d in st.disks if d.luks},
     )
     done = importer.imported_uuids()
     for d in found:
@@ -207,6 +217,7 @@ def cmd_add(args) -> int:
             disks.run_lsblk(),
             registered_uuids={d.uuid for d in st.disks},
             allow_loop=disks.allow_loop_from_env(),
+            registered_luks={d.luks for d in st.disks if d.luks},
         )
         dev = next((d for d in found if d.uuid == args.uuid), None)
         if dev is None:
@@ -235,6 +246,7 @@ def cmd_add(args) -> int:
             serial=dev.serial,
             model=dev.model,
             size=dev.size,
+            luks=dev.luks or "",
         )
         st.disks.append(disk)
         prepare_mountpoint(disk.mountpoint)
@@ -270,15 +282,28 @@ def wait_for(path: str, seconds: float = 10.0) -> None:
         time.sleep(0.2)
 
 
+def check_array_key(st: state.State, key: str) -> None:
+    """New encrypted disks get the passphrase the others have."""
+    for d in st.disks:
+        if d.luks and crypt.is_present(d.luks):
+            if not crypt.key_matches(crypt.device_path(d.luks), key):
+                raise DiskError("the passphrase differs from the one of the encrypted disks")
+            return
+
+
 def cmd_format(args) -> int:
     if not LABEL_RE.match(args.label):
         raise DiskError("label: 1 to 12 letters, digits, '-' or '_'")
+    key = crypt.read_keys(sys.stdin.buffer, 1)[0] if args.encrypt else None
     with state.locked():
         st = state.load()
+        if key is not None:
+            check_array_key(st, key)
         found = disks.classify(
             disks.run_lsblk(),
             registered_uuids={d.uuid for d in st.disks},
             allow_loop=disks.allow_loop_from_env(),
+            registered_luks={d.luks for d in st.disks if d.luks},
         )
         entries = disks.formattable(found, args.device, importer.imported_uuids())
         # Old signatures first, partitions before the disk, then one GPT
@@ -292,19 +317,29 @@ def cmd_format(args) -> int:
         subprocess.run(["udevadm", "settle"], check=False)
         part = disks.partition_path(args.device)
         wait_for(part)
-        subprocess.run([*MKFS[args.fs], args.label, part], check=True)
+        luks = ""
+        target = part
+        if key is not None:
+            luks = crypt.luks_format(part, key)
+            if not crypt.open_with_key(part, luks, key):
+                raise DiskError(f"{part}: opening the new LUKS container failed")
+            if os.path.exists(crypt.KEY_FILE):
+                crypt.add_key_file(part, key)
+            target = crypt.mapper_path(luks)
+        subprocess.run([*MKFS[args.fs], args.label, target], check=True)
         # Let udev pick up the new UUID so /dev/disk/by-uuid/ exists for add.
-        subprocess.run(["udevadm", "trigger", "--action=change", part], check=False)
+        subprocess.run(["udevadm", "trigger", "--action=change", target], check=False)
         subprocess.run(["udevadm", "settle"], check=False)
-        uuid = disks.blkid_probe(part).get("UUID", "")
+        uuid = disks.blkid_probe(target).get("UUID", "")
         if not uuid:
-            raise DiskError(f"{part} has no filesystem UUID after mkfs")
+            raise DiskError(f"{target} has no filesystem UUID after mkfs")
         importer.forget({e.uuid for e in entries if e.uuid})
     if args.json:
         print(json.dumps({"device": args.device, "partition": part, "fstype": args.fs,
-                          "uuid": uuid}))
+                          "uuid": uuid, "luks": luks}))
     else:
-        print(f"{args.device}: {args.fs} on {part}, UUID {uuid}")
+        inside = f" (LUKS {luks})" if luks else ""
+        print(f"{args.device}: {args.fs} on {part}{inside}, UUID {uuid}")
     return 0
 
 
@@ -315,6 +350,7 @@ def cmd_import(args) -> int:
             disks.run_lsblk(),
             registered_uuids={d.uuid for d in st.disks},
             allow_loop=disks.allow_loop_from_env(),
+            registered_luks={d.luks for d in st.disks if d.luks},
         )
         dev = importer.check_source(found, args.uuid)
         target = importer.check_target(args.to)
@@ -349,6 +385,8 @@ def cmd_remove(args) -> int:
         write_units(st)
         systemctl("stop", unit)
         release_mountpoint(disk.mountpoint)
+        if disk.luks:
+            crypt.close(disk.luks)
         print(f"{disk.mountpoint} unmounted and removed; data on the disk is untouched")
     return 0
 
@@ -362,6 +400,8 @@ def cmd_apply(args) -> int:
         missing = []
         for d in st.disks:
             systemctl("enable", "--now", units.unit_name(d.mountpoint))
+            if d.luks and not crypt.is_open(d.luks):
+                continue  # locked: mounts after dahlia-disk unlock
             if not is_mounted(d.mountpoint):
                 missing.append(d.mountpoint)
             elif d.role == "cache":
@@ -432,6 +472,123 @@ def cmd_set_option(args) -> int:
     return 0
 
 
+def refresh_branch(st: state.State, disk: state.Disk) -> None:
+    """A pool that came up while the disk was locked: give it the branch anew."""
+    branch = units.CACHE_SHARES if disk.role == "cache" else disk.mountpoint
+    for pool in units.wanted_pools(st):
+        if not is_mounted(pool) or branch not in units.pool_branches(st, pool):
+            continue
+        if branch in pool_branches_live(pool):
+            pool_remove_branch(pool, branch)
+        pool_add_branch(pool, branch, first=branch == units.CACHE_SHARES)
+
+
+def cmd_unlock(args) -> int:
+    key = None if args.key_file else crypt.read_keys(sys.stdin.buffer, 1)[0]
+    with state.locked():
+        st = state.load()
+        result = {"opened": [], "already": [], "missing": [], "failed": []}
+        for d in st.disks:
+            if not d.luks:
+                continue
+            if crypt.is_open(d.luks):
+                result["already"].append(d.mountpoint)
+            elif not crypt.is_present(d.luks):
+                result["missing"].append(d.mountpoint)
+            else:
+                device = crypt.device_path(d.luks)
+                ok = (crypt.open_with_file(device, d.luks, args.key_file) if args.key_file
+                      else crypt.open_with_key(device, d.luks, key))
+                result["opened" if ok else "failed"].append(d.mountpoint)
+        if result["failed"] and not result["opened"] and not result["already"]:
+            raise DiskError("wrong passphrase")
+        if result["opened"]:
+            subprocess.run(["udevadm", "settle"], check=False)
+            for d in st.disks:
+                if d.mountpoint not in result["opened"]:
+                    continue
+                prepare_mountpoint(d.mountpoint)
+                systemctl("start", units.unit_name(d.mountpoint))
+                if not is_mounted(d.mountpoint):
+                    raise DiskError(f"{d.mountpoint} did not mount after unlocking")
+                if d.role == "cache":
+                    prepare_cache_shares()
+            sync_pools(st)
+            for d in st.disks:
+                if d.mountpoint in result["opened"] and d.role in ("data", "cache"):
+                    refresh_branch(st, d)
+    if args.json:
+        print(json.dumps(result))
+    else:
+        for k, v in result.items():
+            if v:
+                print(f"{k}: {', '.join(v)}")
+    return 0
+
+
+def encrypted_present(st: state.State) -> list[state.Disk]:
+    return [d for d in st.disks if d.luks and crypt.is_present(d.luks)]
+
+
+def cmd_auto_unlock(args) -> int:
+    with state.locked():
+        st = state.load()
+        present = encrypted_present(st)
+        missing = [d.mountpoint for d in st.disks if d.luks and d not in present]
+        if args.mode == "on":
+            key = crypt.read_keys(sys.stdin.buffer, 1)[0]
+            if not present:
+                raise DiskError("no encrypted disk is connected")
+            for d in present:
+                if not crypt.key_matches(crypt.device_path(d.luks), key):
+                    raise DiskError("wrong passphrase")
+            crypt.ensure_key_file()
+            for d in present:
+                crypt.add_key_file(crypt.device_path(d.luks), key)
+        elif os.path.exists(crypt.KEY_FILE):
+            for d in present:
+                crypt.remove_key_file(crypt.device_path(d.luks))
+            crypt.drop_key_file()
+        write_units(st)
+    if missing:
+        print(f"not connected, unchanged: {', '.join(missing)}")
+    print(f"automatic unlocking {args.mode}")
+    return 0
+
+
+def cmd_passphrase(args) -> int:
+    old, new = crypt.read_keys(sys.stdin.buffer, 2)
+    with state.locked():
+        st = state.load()
+        present = encrypted_present(st)
+        if not present:
+            raise DiskError("no encrypted disk is connected")
+        # Check first, so a wrong old passphrase changes nothing.
+        for d in present:
+            if not crypt.key_matches(crypt.device_path(d.luks), old):
+                raise DiskError("wrong passphrase")
+        for d in present:
+            crypt.change_key(crypt.device_path(d.luks), old, new)
+        missing = [d.mountpoint for d in st.disks if d.luks and d not in present]
+    if missing:
+        print(f"not connected, still the old passphrase: {', '.join(missing)}")
+    print(f"passphrase changed on {len(present)} disk(s)")
+    return 0
+
+
+def cmd_crypt_status(args) -> int:
+    st = state.load()
+    out = {"auto_unlock": os.path.exists(crypt.KEY_FILE), "disks": []}
+    for d in st.disks:
+        if d.luks:
+            out["disks"].append({"uuid": d.uuid, "luks": d.luks, "role": d.role,
+                                 "mountpoint": d.mountpoint, "present": crypt.is_present(d.luks),
+                                 "open": crypt.is_open(d.luks),
+                                 "mounted": is_mounted(d.mountpoint)})
+    print(json.dumps(out))
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="dahlia-disk", description="Manage Dahlia storage.")
     sub = p.add_subparsers(dest="command", required=True)
@@ -449,6 +606,7 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("device")
     s.add_argument("--fs", choices=disks.FORMAT_FILESYSTEMS, required=True)
     s.add_argument("--label", default="dahlia")
+    s.add_argument("--encrypt", action="store_true", help="LUKS2, passphrase on stdin")
     s.add_argument("--json", action="store_true")
     s.set_defaults(func=cmd_format)
 
@@ -476,6 +634,21 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("size")
     s.set_defaults(func=cmd_set_minfreespace)
 
+    s = sub.add_parser("unlock", help="open the encrypted disks and mount them")
+    s.add_argument("--key-file", help="key file instead of the passphrase on stdin")
+    s.add_argument("--json", action="store_true")
+    s.set_defaults(func=cmd_unlock)
+
+    s = sub.add_parser("auto-unlock", help="key file on the system SSD for unlocking at boot")
+    s.add_argument("mode", choices=("on", "off"))
+    s.set_defaults(func=cmd_auto_unlock)
+
+    s = sub.add_parser("passphrase", help="change the passphrase (old and new on stdin)")
+    s.set_defaults(func=cmd_passphrase)
+
+    s = sub.add_parser("crypt-status", help="encrypted disks and their state as JSON")
+    s.set_defaults(func=cmd_crypt_status)
+
     s = sub.add_parser("set-option", help="mover and SnapRAID settings")
     s.add_argument("name", choices=INT_OPTIONS)
     s.add_argument("value")
@@ -487,7 +660,8 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
         return args.func(args)
-    except (DiskError, importer.ImportError_, snapraid.SnapraidError, ValueError) as e:
+    except (DiskError, crypt.CryptError, importer.ImportError_, snapraid.SnapraidError,
+            ValueError) as e:
         print(f"dahlia-disk: {e}", file=sys.stderr)
         return 1
     except subprocess.CalledProcessError as e:

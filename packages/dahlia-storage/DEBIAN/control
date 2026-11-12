@@ -4,7 +4,7 @@ Architecture: all
 Maintainer: Dahlia Linux <https://github.com/Fabiy99/dahlia-linux>
 Section: admin
 Priority: optional
-Depends: python3 (>= 3.11), util-linux, fdisk, e2fsprogs, xfsprogs, btrfs-progs, mergerfs, fuse3, rsync, exfatprogs
+Depends: python3 (>= 3.11), util-linux, fdisk, e2fsprogs, xfsprogs, btrfs-progs, mergerfs, fuse3, rsync, exfatprogs, cryptsetup-bin, systemd-cryptsetup
 Recommends: snapraid, smartmontools, hdparm
 Description: Dahlia Linux storage management
  dahlia-disk detects existing disks and mounts them without formatting,

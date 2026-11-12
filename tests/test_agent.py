@@ -147,6 +147,37 @@ def test_storage_format_runs_dahlia_disk(ctx):
                                        "confirm": "nvme0n1"})["ok"]
 
 
+def test_storage_encryption_actions_pass_keys_on_stdin(ctx):
+    out = json.dumps({"device": "/dev/sdb", "partition": "/dev/sdb1", "fstype": "xfs",
+                      "uuid": "u", "luks": "L"})
+    ctx.runner.answers[("dahlia-disk", "format")] = (0, out, "")
+    base = {"device": "/dev/sdb", "filesystem": "xfs", "confirm": "sdb", "encrypt": True}
+    assert err_code(run(ctx, "storage.format", base)) == protocol.INVALID_PARAMS
+    assert err_code(run(ctx, "storage.format", {**base, "passphrase": "kurz"})) \
+        == protocol.INVALID_PARAMS
+    assert err_code(run(ctx, "storage.format", {**base, "passphrase": "zeile\nzwei-drei"})) \
+        == protocol.INVALID_PARAMS
+    reply = run(ctx, "storage.format", {**base, "passphrase": "Grüne Wiese 42"})
+    assert reply["result"]["luks"] == "L"
+    assert ctx.runner.calls[-1][-1] == "--encrypt"
+    assert ctx.runner.inputs[-1] == "Grüne Wiese 42\n"
+    assert "Grüne Wiese 42" not in " ".join(ctx.runner.calls[-1])
+    ctx.runner.answers[("dahlia-disk", "unlock")] = (0, '{"opened": ["/mnt/disk1"]}', "")
+    assert run(ctx, "storage.unlock", {"passphrase": "Grüne Wiese 42"})["result"]["opened"] \
+        == ["/mnt/disk1"]
+    assert ctx.runner.inputs[-1] == "Grüne Wiese 42\n"
+    assert err_code(run(ctx, "storage.auto_unlock", {"enabled": True})) == protocol.INVALID_PARAMS
+    run(ctx, "storage.auto_unlock", {"enabled": True, "passphrase": "Grüne Wiese 42"})
+    assert ctx.runner.calls[-1] == ["dahlia-disk", "auto-unlock", "on"]
+    run(ctx, "storage.auto_unlock", {"enabled": False})
+    assert ctx.runner.calls[-1] == ["dahlia-disk", "auto-unlock", "off"]
+    run(ctx, "storage.change_passphrase", {"old": "Grüne Wiese 42", "new": "Blaue Wiese 43"})
+    assert ctx.runner.inputs[-1] == "Grüne Wiese 42\nBlaue Wiese 43\n"
+    status = '{"auto_unlock": false, "disks": []}'
+    ctx.runner.answers[("dahlia-disk", "crypt-status")] = (0, status, "")
+    assert run(ctx, "storage.encryption")["result"] == {"auto_unlock": False, "disks": []}
+
+
 def test_storage_import_starts_background_job(ctx):
     for bad in [{"uuid": "1234-ABCD", "target": "../etc"}, {"uuid": "x;y", "target": "old"},
                 {"uuid": "1234-ABCD", "target": "-rf"}]:
@@ -670,6 +701,9 @@ def test_action_list_is_fixed():
         "snapshots.list",
         "snapshots.rollback",
         "storage.add",
+        "storage.auto_unlock",
+        "storage.change_passphrase",
+        "storage.encryption",
         "storage.format",
         "storage.import",
         "storage.import_status",
@@ -678,6 +712,7 @@ def test_action_list_is_fixed():
         "storage.set_minfreespace",
         "storage.set_option",
         "storage.settings",
+        "storage.unlock",
         "system.devices",
         "system.diagnostics",
         "system.hardware",

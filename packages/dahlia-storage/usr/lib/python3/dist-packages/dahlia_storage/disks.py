@@ -3,6 +3,10 @@
 Reads `lsblk --json` and decides for every filesystem whether Dahlia may use
 it. The rules are conservative: anything that belongs to the running system,
 is already mounted, or is part of RAID/LVM/LUKS/ZFS is never offered.
+
+The one exception are LUKS containers Dahlia formatted itself: once unlocked
+they are open as /dev/mapper/luks-<LUKS UUID>, and the filesystem inside is
+classified like any other (with `luks` set). Locked, they show as "locked".
 """
 
 from __future__ import annotations
@@ -30,6 +34,10 @@ FOREIGN_SIGNATURES = {
     "iso9660",
     "udf",
 }
+LUKS = "crypto_LUKS"
+# Dahlia opens its containers under this name (the systemd-cryptsetup convention).
+MAPPER_PREFIX = "luks-"
+
 # Mount points that mark a device tree as the system disk.
 SYSTEM_MOUNTPOINTS = {"/", "/boot", "/boot/efi", "/usr", "/var", "[SWAP]"}
 
@@ -47,10 +55,12 @@ class Device:
     serial: str | None
     removable: bool
     disk: str  # whole-disk path this filesystem lives on
-    # candidate, external-only, empty, system, mounted, foreign, unsupported, registered
+    # candidate, external-only, empty, system, mounted, foreign, unsupported, registered,
+    # locked
     status: str
     reason: str
     imported: bool = False  # data copied to /mnt/user by dahlia-disk import
+    luks: str | None = None  # UUID of the LUKS container around the filesystem
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -121,7 +131,23 @@ def _tree_mountpoints(node: dict) -> set[str]:
     return found
 
 
+def dahlia_crypt(node: dict) -> dict | None:
+    """The open Dahlia mapping of a LUKS node, or None."""
+    name = MAPPER_PREFIX + (node.get("uuid") or "")
+    for child in node.get("children") or []:
+        if child.get("type") == "crypt" and child.get("name") == name:
+            return child
+    return None
+
+
 def _tree_has_foreign(node: dict) -> bool:
+    if node.get("fstype") == LUKS:
+        # A locked container or one Dahlia opened is judged by what is
+        # inside; one opened under another name stays foreign.
+        inner = dahlia_crypt(node)
+        if inner is not None:
+            return _tree_has_foreign(inner)
+        return bool(node.get("children"))
     if node.get("fstype") in FOREIGN_SIGNATURES:
         return True
     return any(_tree_has_foreign(c) for c in node.get("children") or [])
@@ -131,9 +157,11 @@ def classify(
     lsblk: dict,
     registered_uuids: set[str] | None = None,
     allow_loop: bool = False,
+    registered_luks: set[str] | None = None,
 ) -> list[Device]:
     """Return one Device per usable-or-rejected filesystem/disk, with a status."""
     registered_uuids = registered_uuids or set()
+    registered_luks = registered_luks or set()
     result: list[Device] = []
 
     for top in lsblk.get("blockdevices") or []:
@@ -166,6 +194,10 @@ def classify(
         # Filesystem directly on the disk, or one entry per partition.
         nodes = [top] if not children else [c for c in children if c.get("type") == "part"]
         for node in nodes:
+            if node.get("fstype") == LUKS and not is_system:
+                result.append(_luks_device(node, top, has_foreign, registered_uuids,
+                                           registered_luks))
+                continue
             status, reason = _decide(node, is_system, has_foreign, registered_uuids)
             result.append(_device(node, top, status, reason))
 
@@ -195,7 +227,26 @@ def _decide(node: dict, is_system: bool, has_foreign: bool, registered: set[str]
     return "unsupported", f"filesystem {fstype} not supported"
 
 
-def _device(node: dict, disk: dict, status: str, reason: str) -> Device:
+def _luks_device(node: dict, top: dict, has_foreign: bool, registered: set[str],
+                 registered_luks: set[str]) -> Device:
+    luks = node.get("uuid") or ""
+    inner = dahlia_crypt(node)
+    if inner is None:
+        if node.get("children"):
+            return _device(node, top, "foreign", "LUKS container opened outside Dahlia")
+        if luks in registered_luks:
+            return _device(node, top, "registered", "encrypted, locked", luks=luks)
+        return _device(node, top, "locked", "encrypted, locked", luks=luks)
+    status, reason = _decide(inner, False, has_foreign, registered)
+    dev = _device(inner, top, status, reason, luks=luks)
+    # The partition, not the mapping, is what lives on the disk.
+    dev.path = node.get("path") or f"/dev/{node.get('name')}"
+    dev.name = node.get("name") or ""
+    dev.kind = node.get("type") or ""
+    return dev
+
+
+def _device(node: dict, disk: dict, status: str, reason: str, luks: str | None = None) -> Device:
     return Device(
         path=node.get("path") or f"/dev/{node.get('name')}",
         name=node.get("name") or "",
@@ -210,6 +261,7 @@ def _device(node: dict, disk: dict, status: str, reason: str) -> Device:
         disk=disk.get("path") or f"/dev/{disk.get('name')}",
         status=status,
         reason=reason,
+        luks=luks,
     )
 
 
@@ -226,7 +278,7 @@ def formattable(found: list[Device], device: str,
             raise ValueError(f"{device} is a partition; only whole disks are formatted")
         raise ValueError(f"{device} is not a disk Dahlia can use")
     for d in entries:
-        if d.status in ("system", "registered", "mounted", "foreign"):
+        if d.status in ("system", "registered", "mounted", "foreign", "locked"):
             raise ValueError(f"{device} cannot be formatted: {d.reason}")
         if d.status != "empty" and d.uuid not in imported:
             raise ValueError(f"{d.path} holds data ({d.fstype}); import it before formatting")

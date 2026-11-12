@@ -104,10 +104,39 @@ def test_ambivalent_signatures_are_foreign(monkeypatch):
         disks.formattable(found, "/dev/sdy")
 
 
-def test_raid_and_luks_are_foreign():
+def test_raid_and_luks_are_not_offered():
     found = by_path(disks.classify(LSBLK))
     assert found["/dev/sdd1"].status == "foreign"
-    assert found["/dev/sde"].status == "foreign"
+    # A locked container could be anyone's: neither usable nor formattable.
+    assert found["/dev/sde"].status == "locked"
+    assert found["/dev/sde"].luks == "luks-uuid"
+
+
+def crypt(name, fstype="xfs", uuid="fs-uuid", mounts=None):
+    return dev(name, type_="crypt", fstype=fstype, uuid=uuid, mounts=mounts)
+
+
+def test_open_dahlia_luks_is_classified_by_its_filesystem():
+    lsblk = {"blockdevices": [
+        dev("sdi", children=[part("sdi1", "crypto_LUKS", "L1",
+                                  children=[crypt("luks-L1")])]),
+        # opened by hand under another name: left alone
+        dev("sdj", children=[part("sdj1", "crypto_LUKS", "L2",
+                                  children=[crypt("backup", uuid="fs2")])]),
+        dev("sdk", children=[part("sdk1", "crypto_LUKS", "L3")]),
+    ]}
+    found = by_path(disks.classify(lsblk, registered_luks={"L3"}))
+    d = found["/dev/sdi1"]
+    assert (d.status, d.uuid, d.fstype, d.luks, d.disk) == ("candidate", "fs-uuid", "xfs", "L1",
+                                                             "/dev/sdi")
+    assert found["/dev/sdj1"].status == "foreign"
+    assert (found["/dev/sdk1"].status, found["/dev/sdk1"].reason) == ("registered",
+                                                                      "encrypted, locked")
+    found = by_path(disks.classify(lsblk, registered_uuids={"fs-uuid"}))
+    assert found["/dev/sdi1"].status == "registered"
+    assert found["/dev/sdk1"].status == "locked"
+    with pytest.raises(ValueError):
+        disks.formattable(disks.classify(lsblk), "/dev/sdi")
 
 
 def test_ntfs_is_external_only():
@@ -168,7 +197,7 @@ def test_only_blank_or_imported_whole_disks_are_formattable():
     assert [d.path for d in disks.formattable(found, "/dev/sdc")] == ["/dev/sdc"]
     for device, why in [("/dev/nvme0n1", "running system"), ("/dev/nvme0n1p2", "partition"),
                         ("/dev/sda", "holds data"), ("/dev/sda1", "partition"),
-                        ("/dev/sdb", "holds data"), ("/dev/sde", "member of"),
+                        ("/dev/sdb", "holds data"), ("/dev/sde", "encrypted"),
                         ("/dev/sdg", "mounted outside"), ("/dev/sdz", "not a disk")]:
         with pytest.raises(ValueError, match=why):
             disks.formattable(found, device)

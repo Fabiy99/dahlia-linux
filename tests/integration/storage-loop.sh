@@ -296,6 +296,75 @@ dahlia-disk format "$imp" --fs ext4 --json > "$WORK/format-imp.json"
 [ "$(blkid -p -s TYPE -o value "${imp}p1")" = "ext4" ] || fail "imported disk not formatted"
 check_data imp /mnt/user/import-test
 
+step "encryption: LUKS format, add, lock, unlock with passphrase and key file"
+truncate -s 512M "$WORK/enc.img"
+enc="$(losetup --find --show --partscan "$WORK/enc.img")"; LOOPS+=("$enc")
+PASS="Dahlia Test-Passwort 1"
+if printf 'kurz\n' | dahlia-disk format "$enc" --fs xfs --encrypt 2>/dev/null; then
+    fail "accepted a short passphrase"
+fi
+printf '%s\n' "$PASS" | dahlia-disk format "$enc" --fs xfs --label enc --encrypt --json > "$WORK/format-enc.json"
+enc_uuid="$(jq -r .uuid "$WORK/format-enc.json")"
+enc_luks="$(jq -r .luks "$WORK/format-enc.json")"
+[ "$(blkid -p -s TYPE -o value "${enc}p1")" = "crypto_LUKS" ] || fail "no LUKS on ${enc}p1"
+[ -e "/dev/mapper/luks-$enc_luks" ] || fail "new container not open"
+status="$(dahlia-disk list --json | jq -r --arg u "$enc_uuid" '.[] | select(.uuid == $u) | .status')"
+[ "$status" = "candidate" ] || fail "open encrypted disk has status '$status', expected candidate"
+dahlia-disk add "$enc_uuid" --role data
+enc_idx="$(jq -r --arg u "$enc_uuid" '.disks[] | select(.uuid == $u) | .index' /etc/dahlia/storage.json)"
+enc_mnt="/mnt/disk$enc_idx"
+enc_unit="$(systemd-escape --path "$enc_mnt").mount"
+[ "$(jq -r --arg u "$enc_uuid" '.disks[] | select(.uuid == $u) | .luks' /etc/dahlia/storage.json)" = "$enc_luks" ] \
+    || fail "storage.json does not record the LUKS UUID"
+grep -qx "ConditionPathExists=/dev/mapper/luks-$enc_luks" "/etc/systemd/system/$enc_unit" \
+    || fail "mount unit does not wait for the unlocked container"
+mountpoint -q "$enc_mnt" || fail "encrypted disk not mounted"
+echo "geheim" > "$enc_mnt/enc-marker"
+
+# As after a reboot without key file: locked, apply does not count it as missing.
+systemctl stop "$enc_unit"; cryptsetup close "luks-$enc_luks"
+dahlia-disk apply > /dev/null || fail "apply failed with a locked disk"
+mountpoint -q "$enc_mnt" && fail "locked disk got mounted"
+[ "$(dahlia-disk crypt-status | jq -r '.disks[0].open')" = "false" ] || fail "crypt-status says open"
+if printf 'falsches Passwort\n' | dahlia-disk unlock 2>/dev/null; then fail "unlocked with a wrong passphrase"; fi
+printf '%s\n' "$PASS" | dahlia-disk unlock --json | jq -e '.opened | length == 1' > /dev/null \
+    || fail "unlock did not open the disk"
+mountpoint -q "$enc_mnt" || fail "unlocked disk not mounted"
+[ "$(cat /mnt/storage/enc-marker)" = "geheim" ] || fail "unlocked disk not back in /mnt/storage"
+
+# A second encrypted disk must use the same passphrase.
+truncate -s 512M "$WORK/enc2.img"
+enc2="$(losetup --find --show --partscan "$WORK/enc2.img")"; LOOPS+=("$enc2")
+if printf 'anderes Passwort\n' | dahlia-disk format "$enc2" --fs xfs --encrypt 2>/dev/null; then
+    fail "second encrypted disk with another passphrase"
+fi
+
+# Key file on the system SSD: /etc/crypttab, opened by systemd-cryptsetup as at boot.
+printf '%s\n' "$PASS" | dahlia-disk auto-unlock on
+[ "$(stat -c %a /etc/dahlia/luks/array.key)" = "400" ] || fail "key file missing or readable"
+grep -qx "luks-$enc_luks UUID=$enc_luks /etc/dahlia/luks/array.key luks,nofail" /etc/crypttab \
+    || fail "no crypttab entry"
+systemctl stop "$enc_unit"; cryptsetup close "luks-$enc_luks"
+systemctl daemon-reload
+systemctl start "systemd-cryptsetup@$(systemd-escape "luks-$enc_luks").service"
+systemctl start "$enc_unit"
+mountpoint -q "$enc_mnt" || fail "crypttab entry did not unlock the disk"
+
+# New passphrase; the key file keeps working, the old passphrase does not.
+printf '%s\n%s\n' "$PASS" "Neues Passwort 2" | dahlia-disk passphrase
+printf '%s' "$PASS" | cryptsetup open --test-passphrase --key-file=- "${enc}p1" 2>/dev/null \
+    && fail "old passphrase still works"
+printf '%s' "Neues Passwort 2" | cryptsetup open --test-passphrase --key-file=- "${enc}p1" \
+    || fail "new passphrase does not work"
+dahlia-disk auto-unlock off
+[ -e /etc/dahlia/luks/array.key ] && fail "key file still there"
+grep -q "luks-$enc_luks" /etc/crypttab && fail "crypttab entry still there"
+cryptsetup open --test-passphrase --key-file /dev/null "${enc}p1" 2>/dev/null && fail "empty key accepted"
+[ "$(cryptsetup luksDump "${enc}p1" | grep -c '^  [0-9]*: luks2')" = "1" ] || fail "key file slot left behind"
+
+dahlia-disk remove "$enc_uuid"
+[ -e "/dev/mapper/luks-$enc_luks" ] && fail "container still open after remove"
+
 step "existing data never touched"
 check_data d2 /mnt/storage
 

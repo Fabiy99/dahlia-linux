@@ -120,6 +120,10 @@
 
       <p id="viewer-banner" class="notice" data-i18n="users.viewer_banner" hidden></p>
       <section id="view-overview" hidden>
+        <p id="crypt-locked-notice" class="notice" hidden>
+          <span data-i18n="crypt.locked_notice"></span>
+          <button type="button" class="link-btn" data-goto="storage" data-i18n="crypt.to_storage"></button>
+        </p>
         <div class="tiles">
           <article class="card tile wide" id="health-card">
             <header><svg><use href="#i-parity"/></svg><h2 data-i18n="check.title"></h2>
@@ -246,6 +250,32 @@
         <div id="pool-summary" class="tiles pools"></div>
         <p class="hint" data-i18n="storage.hint"></p>
         <div id="import-status" class="notice" hidden></div>
+        <article class="card" id="crypt-card" hidden>
+          <h2 data-i18n="crypt.title"></h2>
+          <ul id="crypt-disks" class="crypt-list"></ul>
+          <form id="crypt-unlock" class="inline-form" hidden>
+            <label><span data-i18n="crypt.passphrase"></span><input name="passphrase" type="password" autocomplete="current-password" required minlength="8" maxlength="512"></label>
+            <div class="actions"><button type="submit" class="primary" data-i18n="crypt.unlock"></button></div>
+          </form>
+          <label class="check"><input type="checkbox" id="crypt-auto"><span data-i18n="crypt.auto"></span></label>
+          <p class="hint" data-i18n="crypt.auto_hint"></p>
+          <form id="crypt-auto-form" class="inline-form" hidden>
+            <label><span data-i18n="crypt.passphrase"></span><input name="passphrase" type="password" autocomplete="current-password" required minlength="8" maxlength="512"></label>
+            <div class="actions">
+              <button type="submit" class="primary" data-i18n="crypt.auto_on"></button>
+              <button type="button" id="crypt-auto-cancel" data-i18n="common.cancel"></button>
+            </div>
+          </form>
+          <details>
+            <summary data-i18n="crypt.change"></summary>
+            <form id="crypt-change" class="inline-form">
+              <label><span data-i18n="crypt.old"></span><input name="old" type="password" autocomplete="current-password" required minlength="8" maxlength="512"></label>
+              <label><span data-i18n="crypt.new"></span><input name="new" type="password" autocomplete="new-password" required minlength="8" maxlength="512"></label>
+              <label><span data-i18n="crypt.repeat"></span><input name="repeat" type="password" autocomplete="new-password" required minlength="8" maxlength="512"></label>
+              <div class="actions"><button type="submit" class="primary" data-i18n="crypt.change_now"></button></div>
+            </form>
+          </details>
+        </article>
         <div id="disks" class="disk-list"></div>
         <div class="actions"><button id="storage-refresh" data-i18n="common.refresh"></button></div>
         <article class="card">
@@ -1100,6 +1130,12 @@
         <option value="btrfs" data-i18n="storage.fs_btrfs"></option>
       </select>
     </label>
+    <label class="check"><input type="checkbox" name="encrypt"><span data-i18n="crypt.format_encrypt"></span></label>
+    <div id="format-crypt" hidden>
+      <p class="hint" id="format-crypt-hint"></p>
+      <label><span data-i18n="crypt.passphrase"></span><input name="passphrase" type="password" autocomplete="new-password" minlength="8" maxlength="512"></label>
+      <label id="format-repeat"><span data-i18n="crypt.repeat"></span><input name="repeat" type="password" autocomplete="new-password" minlength="8" maxlength="512"></label>
+    </div>
     <label><span id="format-confirm-label"></span><input name="confirm" autocomplete="off" required></label>
     <div class="dialog-actions">
       <button value="cancel" formnovalidate data-i18n="common.cancel"></button>

@@ -23,7 +23,9 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            apt-utils mergerfs fuse3 xfsprogs btrfs-progs e2fsprogs attr jq snapraid rsync exfatprogs
+            apt-utils mergerfs fuse3 xfsprogs btrfs-progs e2fsprogs attr jq snapraid rsync exfatprogs \
+            cryptsetup-bin
+          # Ubuntu 24.04 ships systemd-cryptsetup inside systemd (Debian 13 splits it out).
           # Created by dahlia-base on a real system; imported files get this group.
           sudo groupadd -f dahlia
 
@@ -40,7 +42,8 @@ jobs:
       - name: Build and install dahlia-storage
         run: |
           tools/build-packages.sh
-          sudo dpkg -i build/pool/dahlia-storage_*_all.deb
+          # Debian 13 needs systemd-cryptsetup; on Ubuntu 24.04 systemd itself provides it.
+          sudo dpkg -i --ignore-depends=systemd-cryptsetup build/pool/dahlia-storage_*_all.deb
 
       - name: Integration test (loop devices)
         run: sudo tests/integration/storage-loop.sh
