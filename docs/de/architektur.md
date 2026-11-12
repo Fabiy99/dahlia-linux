@@ -273,6 +273,7 @@ Protokoll: eine Anfrage pro Verbindung, je eine JSON-Zeile hin und zurück.
 | `system.hardware` | - | Mainboard (DMI), CPU-Temperatur (hwmon), SMART je Platte mit `smartctl -n standby` (weckt keine schlafende Platte), laufender und letzter Selbsttest |
 | `system.health` | - | Gesundheitscheck: Befunde (`critical`, `warning`, `info`) mit Parametern, bestandene und nicht prüfbare Bereiche |
 | `disks.smart_test` | `device`, `kind` (`short`/`long`/`abort`) | `smartctl -t short\|long` bzw. `smartctl -X` |
+| `disks.locate`, `disks.locate_stop` | `device` | Aktivitäts-LED blinkt 2 Minuten: `dahlia-locate` liest kurz an zufälligen Stellen (`dd iflag=direct`), als `dahlia-locate.service` |
 | `disks.burnin_start` | `device`, `confirm` (Plattenname) | Plattentest als `dahlia-burnin@<name>.service`, nur auf leeren Platten |
 | `disks.burnin_status`, `disks.burnin_stop`, `disks.burnin_clear` | bei `stop`/`clear`: `device` | Fortschritt und Ergebnis, abbrechen, Ergebnis löschen |
 | `system.log` | `lines`, `priority`, `unit` (optional) | `journalctl -n … -p …` |
@@ -283,6 +284,8 @@ Protokoll: eine Anfrage pro Verbindung, je eine JSON-Zeile hin und zurück.
 | `settings.spindown` / `settings.set_spindown` | `default`, `disks` (Seriennummer → Minuten) | `/etc/dahlia/spindown.json`, `hdparm -S` |
 | `power.get` / `power.set_governor` | `governor` (einer der vom Kernel angebotenen) | cpufreq in `/sys`, dauerhaft über `/etc/tmpfiles.d/dahlia-cpu-governor.conf` |
 | `system.devices` | - | PCI (`lspci -vmm -nn -k`: Klasse, IDs, Treiber, IOMMU-Gruppe) und USB (`lsusb`) |
+
+| `settings.syslog` / `settings.set_syslog` | `enabled`, `host`, `port`, `protocol` (`udp`/`tcp`), `severity` | `/etc/dahlia/syslog.json`, `/etc/rsyslog.d/90-dahlia-remote.conf`, journald `ForwardToSyslog=yes` |
 | `vpn.status` | - | WireGuard (Einstellungen, Geräte mit letztem Handshake und Daten) und Tailscale (installiert, Zustand, Anmelde-Link, Adressen) |
 | `vpn.wireguard_set` | `enabled`, `port`, `endpoint`, `route` (`lan`/`all`), `dns`, `subnet` | schreibt die Konfiguration, lädt Firewall und Interface |
 | `vpn.wireguard_add_peer`, `vpn.wireguard_remove_peer` | `name` | neues Gerät (Konfiguration und QR-Code einmal) bzw. entfernen |
@@ -332,6 +335,7 @@ Protokoll: eine Anfrage pro Verbindung, je eine JSON-Zeile hin und zurück.
 | `apps.custom_install`, `apps.custom_update` | `id`, `spec` (Formular, siehe Apps), bei `install` `location` | eigener Container; der Agent legt `spec` unter `/run/dahlia/apps-custom/<id>.json` ab, `dahlia-apps` prüft jedes Feld |
 | `apps.job` | `id` | Zustand der letzten Installation bzw. Aktualisierung |
 | `apps.start`, `apps.stop` | `id` | starten bzw. stoppen, gilt auch für den nächsten Boot |
+| `apps.all`, `apps.all_job` | `op` (`start`/`stop`) | im Hintergrund (`dahlia-apps-all.service`): alle Apps mit Autostart starten (`dahlia-apps start-enabled`) bzw. alle stoppen (`stop-all`, Autostart bleibt) |
 | `apps.remove` | `id`, `delete_data` (optional) | Container entfernen, Daten nur auf Wunsch |
 | `remotes.list` | – | eingebundene Freigaben anderer Geräte mit Zustand (`mounted`, `idle`, `error`, `off`), ohne Passwort |
 | `remotes.set` | `name`, `type` (`smb`/`nfs`), `host`, `share`, `username`, `password` (weggelassen = bisheriges), `readonly` | Probe-Einhängen, dann `/etc/dahlia/remotes.json`, Zugangsdaten `/etc/dahlia/remotes/<Name>.cred` (0600), `.mount`- und `.automount`-Unit |
@@ -750,6 +754,23 @@ fehlgeschlagen, älter als 8 Tage), Benachrichtigungen und Firewall. Jeder Befun
 Kennung und Parameter; Text und Hinweis kommen aus `locales/*.json` (`check.*`), ein Knopf
 führt zur Seite, auf der man es behebt. Ein Bereich, der sich nicht prüfen lässt, wird als
 „nicht prüfbar“ genannt, nicht als Fehler. Schlafende Platten werden nicht geweckt.
+
+## Betrieb: Remote-Syslog, Platte finden, Parity-Verlauf, alle Apps (ab Meilenstein 30)
+
+- Remote-Syslog (Einstellungen): journald behält das lokale Protokoll. Eingeschaltet reicht
+  journald jede Meldung an rsyslog weiter (`/etc/systemd/journald.conf.d/dahlia-remote-syslog.conf`),
+  rsyslog schickt sie per `omfwd` (UDP oder TCP) an den Server und verwirft sie danach (`stop`),
+  damit unter `/var/log` keine zweite Kopie entsteht. Ausgeschaltet ist rsyslog gestoppt und
+  deaktiviert; der Postinst schaltet es aus, solange nichts eingerichtet ist.
+- Platte finden (Speicher, je Platte „LED blinken“): `dahlia-locate` liest zwei Minuten lang
+  zweimal pro Sekunde 16 MiB an zufälligen Stellen, an der Seite vorbei (`iflag=direct`),
+  mit niedriger I/O-Priorität. Nur lesend; eine schlafende Platte wacht dabei auf.
+- Parity-Verlauf: `dahlia-snapraid` hängt jeden Lauf (Sync, Scrub, Reparatur) an `history` in
+  `/var/lib/dahlia/snapraid.json` an, die letzten 100 bleiben. Die Parity-Seite zeigt sie mit
+  Dauer, Ergebnis und Details.
+- Alle Apps (Apps-Seite): „Alle stoppen“ stoppt jede App, ohne den Autostart zu ändern;
+  „Alle starten“ startet danach genau die Apps mit Autostart wieder. Gedacht für Wartung,
+  etwa vor dem Tausch einer Platte.
 
 ## Diagnosepaket (ab Meilenstein 16)
 
