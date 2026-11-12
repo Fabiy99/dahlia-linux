@@ -14,7 +14,7 @@ def test_source_must_be_mountable_and_unused():
     assert importer.check_source(found, "NTFS1234").path == "/dev/sdf1"
     assert importer.check_source(found, "uuid-sdb").fstype == "xfs"
     for uuid, why in [("uuid-sda1", "managed by Dahlia"), ("root-uuid", "running system"),
-                      ("uuid-sdg1", "mounted outside"), ("luks-uuid", "member of"),
+                      ("uuid-sdg1", "mounted outside"), ("luks-uuid", "encrypted"),
                       ("nope", "no filesystem")]:
         with pytest.raises(importer.ImportError_, match=why):
             importer.check_source(found, uuid)

@@ -169,6 +169,31 @@ der alten. Danach `fix --disk N`: `snapraid -d dN fix` (Protokoll in
 der Stand des letzten Syncs. Bis dahin verweigert SnapRAID den Sync, weil dN fehlt bzw. leer
 ist. Erzwungener Sync und Reparaturen laufen als Unit `dahlia-parity.service`.
 
+### Verschlüsselung (ab Meilenstein 35)
+
+Daten-, Parity- und Cache-Platten lassen sich beim Formatieren verschlüsseln (LUKS2, Standard-
+Parameter von cryptsetup). Der Container liegt auf der GPT-Partition, das Dateisystem darin.
+Entsperrt heißt er `/dev/mapper/luks-<LUKS-UUID>` (Namensschema von systemd-cryptsetup);
+`storage.json` hält die LUKS-UUID je Platte (`luks`). Die Systemplatte und ein Btrfs-RAID1-Cache
+aus zwei Platten werden nicht verschlüsselt.
+
+| Thema | Umsetzung |
+| --- | --- |
+| Passwort | eins für alle verschlüsselten Platten; eine neue Platte muss das der vorhandenen haben. 8 bis 512 Zeichen, keine Steuerzeichen. Geht nur über stdin an cryptsetup, nie auf die Kommandozeile |
+| Nach dem Start | ohne Schlüsseldatei bleiben die Platten gesperrt; ihre Mount-Units überspringen sich (`ConditionPathExists=/dev/mapper/luks-…`). Übersicht und Speicher-Seite zeigen das, das Passwort entsperrt (`dahlia-disk unlock`): öffnen, einhängen, Zweige in die laufenden mergerfs-Pools |
+| Automatisch entsperren | optional: Schlüsseldatei `/etc/dahlia/luks/array.key` (64 Zufallsbytes, 0400) als zusätzlicher Key-Slot jeder Platte, dazu ein Block in `/etc/crypttab` (`luks,nofail`); systemd-cryptsetup öffnet die Platten beim Start, die Mount-Units warten darauf. Schützt Platten, die allein das Haus verlassen, nicht einen gestohlenen Server |
+| Passwort ändern | `luksChangeKey` auf jeder angeschlossenen Platte, nachdem das alte auf allen geprüft ist; der Slot der Schlüsseldatei bleibt |
+| Entfernen | Platte aushängen, Container schließen; Daten und Verschlüsselung bleiben |
+
+`dahlia-disk`: `format … --encrypt`, `unlock [--key-file DATEI]`, `auto-unlock on|off`,
+`passphrase`, `crypt-status`. Agent: `storage.format` (`encrypt`, `passphrase`),
+`storage.encryption`, `storage.unlock`, `storage.auto_unlock`, `storage.change_passphrase`.
+Dashboard: `GET /api/storage/encryption`, `POST /api/storage/unlock`,
+`POST /api/storage/auto-unlock`, `POST /api/storage/passphrase`.
+
+Passwort und Schlüsseldatei weg: die Daten sind verloren. Getestet wird gegen Loop-Devices
+(`tests/integration/storage-loop.sh`), auch der Start-Pfad über crypttab.
+
 ## Rechte und Sicherheit
 
 - `dahlia-dashboard` läuft als `dahlia-ui` mit systemd-Härtung und hört nur auf

@@ -173,6 +173,22 @@ class DiskFormatBody(BaseModel):
     device: str
     filesystem: str
     confirm: str
+    encrypt: bool = False
+    passphrase: str | None = None
+
+
+class UnlockBody(BaseModel):
+    passphrase: str
+
+
+class AutoUnlockBody(BaseModel):
+    enabled: bool
+    passphrase: str | None = None
+
+
+class PassphraseBody(BaseModel):
+    old: str
+    new: str
 
 
 class SmartTestBody(BaseModel):
@@ -618,7 +634,23 @@ def create_app(cfg: Config | None = None) -> FastAPI:
 
     @app.post("/api/storage/format", dependencies=changing)
     def storage_format(body: DiskFormatBody):
-        return agent("storage.format", body.model_dump())
+        return agent("storage.format", body.model_dump(exclude_defaults=True))
+
+    @app.get("/api/storage/encryption", dependencies=authed)
+    def storage_encryption():
+        return agent("storage.encryption")
+
+    @app.post("/api/storage/unlock", dependencies=changing)
+    def storage_unlock(body: UnlockBody):
+        return agent("storage.unlock", body.model_dump())
+
+    @app.post("/api/storage/auto-unlock", dependencies=changing)
+    def storage_auto_unlock(body: AutoUnlockBody):
+        return agent("storage.auto_unlock", body.model_dump(exclude_none=True))
+
+    @app.post("/api/storage/passphrase", dependencies=changing)
+    def storage_passphrase(body: PassphraseBody):
+        return agent("storage.change_passphrase", body.model_dump())
 
     @app.post("/api/disks/smart-test", dependencies=changing)
     def disks_smart_test(body: SmartTestBody):

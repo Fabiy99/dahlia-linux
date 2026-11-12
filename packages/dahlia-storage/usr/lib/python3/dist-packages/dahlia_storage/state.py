@@ -35,6 +35,12 @@ class Disk:
     serial: str | None = None
     model: str | None = None
     size: int = 0
+    luks: str = ""  # UUID of the LUKS container, "" when not encrypted
+
+    @property
+    def mapper(self) -> str:
+        """Device of the unlocked container, "" when not encrypted."""
+        return f"/dev/mapper/luks-{self.luks}" if self.luks else ""
 
     @property
     def mountpoint(self) -> str:

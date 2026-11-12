@@ -885,3 +885,22 @@ def test_token_store_limit(tmp_path):
     with pytest.raises(auth.AuthError, match="token_limit"):
         store.create("one more")
     assert store.verify(None) is None and store.verify("dahlia_" + "x" * 200) is None
+
+
+def test_encryption_routes(env):
+    client, agent, _ = logged_in(env)
+    client.post("/api/storage/format", json={"device": "/dev/sdb", "filesystem": "xfs",
+                                             "confirm": "sdb", "encrypt": True,
+                                             "passphrase": "Grüne Wiese 42"}, headers=CSRF)
+    assert agent.calls[-1] == ("storage.format", {"device": "/dev/sdb", "filesystem": "xfs",
+                                                  "confirm": "sdb", "encrypt": True,
+                                                  "passphrase": "Grüne Wiese 42"})
+    client.get("/api/storage/encryption")
+    assert agent.calls[-1] == ("storage.encryption", {})
+    assert client.post("/api/storage/unlock", json={"passphrase": "x" * 10}).status_code == 403
+    client.post("/api/storage/unlock", json={"passphrase": "x" * 10}, headers=CSRF)
+    assert agent.calls[-1] == ("storage.unlock", {"passphrase": "x" * 10})
+    client.post("/api/storage/auto-unlock", json={"enabled": False}, headers=CSRF)
+    assert agent.calls[-1] == ("storage.auto_unlock", {"enabled": False})
+    client.post("/api/storage/passphrase", json={"old": "a" * 8, "new": "b" * 8}, headers=CSRF)
+    assert agent.calls[-1] == ("storage.change_passphrase", {"old": "a" * 8, "new": "b" * 8})

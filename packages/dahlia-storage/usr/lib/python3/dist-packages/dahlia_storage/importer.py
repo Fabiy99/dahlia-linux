@@ -79,6 +79,8 @@ def check_source(found: list[disks.Device], uuid: str) -> disks.Device:
         raise ImportError_(f"no filesystem with UUID {uuid}")
     if dev.status not in IMPORT_STATUSES:
         raise ImportError_(f"{dev.path} cannot be imported: {dev.reason}")
+    if dev.luks:
+        raise ImportError_(f"{dev.path} is encrypted; add it as a disk instead")
     if dev.fstype not in MOUNT_OPTIONS:
         raise ImportError_(f"{dev.path}: {dev.fstype} cannot be copied")
     return dev

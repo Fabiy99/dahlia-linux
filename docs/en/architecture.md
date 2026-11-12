@@ -168,6 +168,31 @@ as a data disk. It gets the lowest free number, i.e. that of the old one. Then
 to sync because dN is missing or empty. Forced sync and repairs run as unit
 `dahlia-parity.service`.
 
+### Encryption (from milestone 35)
+
+Data, parity and cache disks can be encrypted when they are formatted (LUKS2, cryptsetup's
+default parameters). The container sits on the GPT partition, the filesystem inside it.
+Unlocked it is `/dev/mapper/luks-<LUKS UUID>` (the systemd-cryptsetup naming);
+`storage.json` keeps each disk's LUKS UUID (`luks`). The system disk and a two-disk Btrfs RAID1
+cache are not encrypted.
+
+| Topic | Implementation |
+| --- | --- |
+| Passphrase | one for all encrypted disks; a new disk must use the one the others have. 8 to 512 characters, no control characters. Passed to cryptsetup on stdin only, never on the command line |
+| After boot | without key file the disks stay locked; their mount units skip themselves (`ConditionPathExists=/dev/mapper/luks-…`). Overview and storage page say so; the passphrase unlocks them (`dahlia-disk unlock`): open, mount, branches back into the running mergerfs pools |
+| Unlock automatically | optional: key file `/etc/dahlia/luks/array.key` (64 random bytes, 0400) as an extra key slot on every disk, plus a block in `/etc/crypttab` (`luks,nofail`); systemd-cryptsetup opens the disks at boot, the mount units wait for it. Protects disks that leave the house alone, not a stolen server |
+| Change passphrase | `luksChangeKey` on every connected disk once the old one was checked on all; the key file slot stays |
+| Remove | unmount the disk, close the container; data and encryption stay |
+
+`dahlia-disk`: `format … --encrypt`, `unlock [--key-file FILE]`, `auto-unlock on|off`,
+`passphrase`, `crypt-status`. Agent: `storage.format` (`encrypt`, `passphrase`),
+`storage.encryption`, `storage.unlock`, `storage.auto_unlock`, `storage.change_passphrase`.
+Dashboard: `GET /api/storage/encryption`, `POST /api/storage/unlock`,
+`POST /api/storage/auto-unlock`, `POST /api/storage/passphrase`.
+
+Passphrase and key file lost: the data is gone. Tested against loop devices
+(`tests/integration/storage-loop.sh`), including the boot path through crypttab.
+
 ## Privileges and security
 
 - `dahlia-dashboard` runs as `dahlia-ui` with systemd hardening and listens on

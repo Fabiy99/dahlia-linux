@@ -588,6 +588,7 @@ function updateAppsBadge(installed) {
 }
 
 async function loadOverview() {
+  cryptLockedNotice();
   const [info, stats] = await Promise.all([api("GET", "system"), api("GET", "stats")]);
   setSidebar(info);
   const dl = document.getElementById("system-info");
@@ -760,7 +761,7 @@ function renderChart(id, stamps, lines, opts) {
 // --- storage --------------------------------------------------------------------
 
 const DISK_KIND = { registered: "ok", candidate: "info", "external-only": "info", system: "accent",
-                    mounted: "warn", foreign: "warn", empty: "", unsupported: "" };
+                    mounted: "warn", foreign: "warn", locked: "warn", empty: "", unsupported: "" };
 
 const POOLS = [["/mnt/user", "fs.user", "storage.pool_user"],
                ["/mnt/storage", "fs.storage", "storage.pool_storage"],
@@ -805,7 +806,9 @@ function diskRow(d, mounts) {
   status.title = d.reason;
 
   const usage = row.querySelector(".part-usage");
-  const fs = mounts.filter((m) => m.source === d.path);
+  // An encrypted filesystem is mounted from its unlocked container.
+  const sources = d.luks ? [d.path, `/dev/mapper/luks-${d.luks}`] : [d.path];
+  const fs = mounts.filter((m) => sources.includes(m.source));
   for (const m of fs.slice(0, 1)) {
     const pct = percent(m.used, m.size);
     const bar = el("div", "bar");
@@ -832,6 +835,7 @@ function diskRow(d, mounts) {
   importBtn.hidden = !canAdd || d.imported;
   importBtn.addEventListener("click", () => openImportDialog(d));
   if (d.imported) row.querySelector(".part-main").append(badge(t("storage.imported"), "ok"));
+  if (d.luks) row.querySelector(".part-main").append(badge(t("crypt.badge"), "accent"));
   const format = row.querySelector(".format");
   // A whole blank disk, or a filesystem whose data was imported (formats its whole disk).
   format.hidden = !((d.status === "empty" && d.path === d.disk) || d.imported);
@@ -950,10 +954,25 @@ function bindBurnin() {
   });
 }
 
+// Whether encrypted disks exist: a new one then takes their passphrase, no repeat.
+let cryptState = { auto_unlock: false, disks: [] };
+
+function formatCryptFields() {
+  const form = document.getElementById("format-form");
+  const on = form.elements.encrypt.checked;
+  const first = !cryptState.disks.length;
+  document.getElementById("format-crypt").hidden = !on;
+  document.getElementById("format-repeat").hidden = !first;
+  form.elements.passphrase.required = on;
+  form.elements.repeat.required = on && first;
+  document.getElementById("format-crypt-hint").textContent = t(first ? "crypt.format_hint_first" : "crypt.format_hint_more");
+}
+
 function openFormatDialog(d) {
   const form = document.getElementById("format-form");
   const name = d.disk.replace("/dev/", "");
   form.reset();
+  formatCryptFields();
   form.dataset.device = d.disk;
   document.getElementById("format-title").textContent = t("storage.format_title", { path: d.disk });
   document.getElementById("format-warning").textContent = t(
@@ -966,12 +985,20 @@ function openFormatDialog(d) {
 
 function bindFormat() {
   const form = document.getElementById("format-form");
+  form.elements.encrypt.addEventListener("change", formatCryptFields);
   form.addEventListener("submit", (e) => {
     if (e.submitter?.value === "cancel") return;
     e.preventDefault();
     const device = form.dataset.device;
     const body = { device, filesystem: form.elements.filesystem.value,
                    confirm: form.elements.confirm.value.trim() };
+    if (form.elements.encrypt.checked) {
+      if (!cryptState.disks.length && form.elements.passphrase.value !== form.elements.repeat.value) {
+        say(t("crypt.mismatch"), "error");
+        return;
+      }
+      Object.assign(body, { encrypt: true, passphrase: form.elements.passphrase.value });
+    }
     guarded(e.submitter, async () => {
       await api("POST", "storage/format", body);
       document.getElementById("format-dialog").close();
@@ -1157,7 +1184,92 @@ async function loadStorage() {
     box.append(card);
   }
   if (!groups.size) box.append(el("p", "empty", t("storage.none")));
-  await pollImport();
+  await Promise.all([pollImport(), loadCrypt()]);
+}
+
+// --- encryption -----------------------------------------------------------------
+
+async function loadCrypt() {
+  cryptState = await api("GET", "storage/encryption");
+  const card = document.getElementById("crypt-card");
+  card.hidden = !cryptState.disks.length;
+  const list = document.getElementById("crypt-disks");
+  list.replaceChildren();
+  for (const d of cryptState.disks) {
+    const li = el("li");
+    const state = !d.present ? badge(t("crypt.missing"), "warn")
+      : d.open ? badge(t(d.mounted ? "crypt.open" : "crypt.open_unmounted"), "ok") : badge(t("crypt.locked"), "warn");
+    li.append(el("b", "", d.mountpoint), el("span", "hint", tv("role", d.role)), state);
+    list.append(li);
+  }
+  document.getElementById("crypt-unlock").hidden = !cryptState.disks.some((d) => d.present && !d.open);
+  document.getElementById("crypt-auto").checked = cryptState.auto_unlock;
+  document.getElementById("crypt-auto-form").hidden = true;
+}
+
+function cryptLockedNotice() {
+  // Overview: say so when disks wait for the passphrase.
+  api("GET", "storage/encryption").then((c) => {
+    document.getElementById("crypt-locked-notice").hidden = !c.disks.some((d) => d.present && !d.open);
+  }).catch(() => {});
+}
+
+function bindCrypt() {
+  const unlock = document.getElementById("crypt-unlock");
+  unlock.addEventListener("submit", (e) => {
+    e.preventDefault();
+    guarded(e.submitter, async () => {
+      const res = await api("POST", "storage/unlock", { passphrase: unlock.elements.passphrase.value });
+      unlock.reset();
+      say(t("crypt.unlocked", { n: res.opened.length }), "ok");
+      await loadStorage();
+    });
+  });
+  const auto = document.getElementById("crypt-auto");
+  const autoForm = document.getElementById("crypt-auto-form");
+  auto.addEventListener("change", () => {
+    if (auto.checked) {
+      // Turning it on needs the passphrase; the box stays off until it worked.
+      auto.checked = false;
+      autoForm.hidden = false;
+      autoForm.elements.passphrase.focus();
+      return;
+    }
+    auto.checked = true;
+    guarded(auto, async () => {
+      if (!await ask(t("crypt.auto_off_confirm"), "crypt.auto_off", true)) return;
+      await api("POST", "storage/auto-unlock", { enabled: false });
+      say(t("crypt.auto_off_done"), "ok");
+      await loadCrypt();
+    });
+  });
+  autoForm.addEventListener("submit", (e) => {
+    e.preventDefault();
+    guarded(e.submitter, async () => {
+      await api("POST", "storage/auto-unlock", { enabled: true, passphrase: autoForm.elements.passphrase.value });
+      autoForm.reset();
+      say(t("crypt.auto_on_done"), "ok");
+      await loadCrypt();
+    });
+  });
+  document.getElementById("crypt-auto-cancel").addEventListener("click", () => {
+    autoForm.reset();
+    autoForm.hidden = true;
+  });
+  const change = document.getElementById("crypt-change");
+  change.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const f = formData(change);
+    if (f.new !== f.repeat) {
+      say(t("crypt.mismatch"), "error");
+      return;
+    }
+    guarded(e.submitter, async () => {
+      await api("POST", "storage/passphrase", { old: f.old, new: f.new });
+      change.reset();
+      say(t("crypt.changed"), "ok");
+    });
+  });
 }
 
 // --- apps -----------------------------------------------------------------------
@@ -3840,6 +3952,7 @@ async function start() {
   bindButtons();
   bindShares();
   bindFormat();
+  bindCrypt();
   bindRemotes();
   bindBurnin();
   bindImport();

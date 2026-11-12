@@ -516,3 +516,12 @@ code.pubkey { display: block; font-size: .78rem; overflow-wrap: anywhere; backgr
 .chart .legend { display: inline-flex; gap: .6rem; margin-left: .4rem; }
 .chart .legend i { display: inline-block; width: .7rem; height: .2rem; vertical-align: middle; margin-right: .25rem; background: var(--accent); }
 .chart .legend i.second { background: var(--ok); }
+
+/* encryption */
+.crypt-list { list-style: none; margin: 0 0 .8rem; padding: 0; }
+.crypt-list li { display: flex; flex-wrap: wrap; align-items: center; gap: .6rem; padding: .35rem 0; border-bottom: 1px solid var(--line); }
+.crypt-list li:last-child { border-bottom: 0; }
+#crypt-card details { margin-top: .8rem; }
+#crypt-card summary { cursor: pointer; }
+#crypt-locked-notice { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
+#crypt-locked-notice[hidden] { display: none; }
