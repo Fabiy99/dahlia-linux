@@ -20,7 +20,9 @@
     <div id="paired-box" class="paired" hidden>
       <span data-i18n="pair.paired"></span> <b id="paired-host"></b>
       <button type="button" id="reconnect" class="primary" data-i18n="pair.reconnect"></button>
+      <button type="button" id="repair" data-i18n="pair.repair"></button>
       <button type="button" id="forget" data-i18n="pair.forget"></button>
+      <p id="paired-problem" class="hint problem" hidden></p>
     </div>
     <div class="found-head"><h2 data-i18n="pair.found"></h2><button type="button" id="search" data-i18n="pair.search"></button></div>
     <ul id="found" class="found"></ul>
@@ -40,6 +42,12 @@
       <button type="button" id="confirm" class="primary" data-i18n="pair.confirm"></button>
       <button type="button" id="back" data-i18n="pair.back"></button>
     </div>
+    <h2 data-i18n="pair.code_title"></h2>
+    <p class="hint" data-i18n="pair.code_hint"></p>
+    <form id="code-form">
+      <label><span data-i18n="pair.code"></span><input name="code" autocomplete="off" spellcheck="false" maxlength="13" placeholder="ABCDE-FGHJK"></label>
+      <button type="submit" class="primary" data-i18n="pair.code_pair"></button>
+    </form>
     <p class="hint" data-i18n="pair.trust_hint"></p>
   </section>
 

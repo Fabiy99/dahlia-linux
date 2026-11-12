@@ -11,14 +11,15 @@ function t(key, vars) {
   return s;
 }
 
-function say(key, kind) {
+function say(key, kind, vars) {
   const m = document.getElementById("message");
-  m.textContent = key ? t(key) : "";
+  m.textContent = key ? t(key, vars) : "";
   m.className = `message ${kind || ""}`;
 }
 
 function errorKey(err) {
-  const known = ["address", "unreachable", "not_dahlia", "trust", "certificate", "not_paired"];
+  const known = ["address", "unreachable", "not_dahlia", "trust", "certificate", "not_paired",
+                 "changed", "code", "proof"];
   return known.includes(String(err)) ? `error.${err}` : "error.unexpected";
 }
 
@@ -44,6 +45,7 @@ async function check(host, btn) {
     pending = await invoke("fetch_ca", { host });
     document.getElementById("check-host").textContent = pending.host;
     document.getElementById("fingerprint").textContent = pending.fingerprint;
+    document.getElementById("code-form").reset();
     say("");
     show("check");
   });
@@ -74,6 +76,22 @@ async function search() {
   });
 }
 
+// Paired server: open its dashboard, or say why not.
+async function connect(host, btn) {
+  const problem = document.getElementById("paired-problem");
+  btn.disabled = true;
+  say("pair.connecting", "", { host });
+  try {
+    await invoke("connect");
+  } catch (err) {
+    say("");
+    problem.textContent = t(errorKey(err));
+    problem.hidden = false;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
 async function start() {
   strings = await invoke("ui_strings");
   document.documentElement.lang = strings["lang"] || "en";
@@ -82,7 +100,9 @@ async function start() {
   const paired = await invoke("paired");
   document.getElementById("paired-box").hidden = !paired;
   document.getElementById("paired-host").textContent = paired || "";
-  document.getElementById("reconnect").addEventListener("click", (e) => busy(e.currentTarget, () => invoke("connect")));
+  const reconnect = document.getElementById("reconnect");
+  reconnect.addEventListener("click", () => connect(paired, reconnect));
+  document.getElementById("repair").addEventListener("click", (e) => check(paired, e.currentTarget));
   document.getElementById("forget").addEventListener("click", (e) => busy(e.currentTarget, async () => {
     await invoke("forget");
     document.getElementById("paired-box").hidden = true;
@@ -97,6 +117,17 @@ async function start() {
     say("pair.trusting");
     await invoke("pair", { host: pending.host, pem: pending.pem });
   }));
+  document.getElementById("code-form").addEventListener("submit", (e) => {
+    e.preventDefault();
+    busy(e.submitter, async () => {
+      say("pair.checking_code");
+      await invoke("pair_code", { host: pending.host, pem: pending.pem, code: e.target.elements.code.value });
+    });
+  });
+  // "#choose": opened from the menu to pick another server.
+  if (paired && location.hash !== "#choose") {
+    await connect(paired, reconnect);
+  }
   search();
 }
 

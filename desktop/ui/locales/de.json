@@ -29,5 +29,15 @@
   "menu.server": "Anderer Server …",
   "menu.reload": "Neu laden",
   "menu.quit": "Beenden",
-  "menu.edit": "Bearbeiten"
+  "menu.edit": "Bearbeiten",
+  "pair.repair": "Neu koppeln",
+  "pair.connecting": "Verbinde mit {host} …",
+  "pair.code_title": "Oder mit Kopplungscode",
+  "pair.code_hint": "Öffne das Dashboard im Browser, etwa über das Lesezeichen auf dem Handy, tippe oben auf das Handy-Symbol und erzeuge einen Kopplungscode.",
+  "pair.code": "Kopplungscode",
+  "pair.code_pair": "Mit Code koppeln",
+  "pair.checking_code": "Prüfe den Code …",
+  "error.changed": "Der Server meldet sich mit einem anderen Zertifikat, etwa nach einer Neuinstallation. Koppel neu, am einfachsten mit einem Kopplungscode aus dem Dashboard auf dem Handy.",
+  "error.code": "Kein gültiger Kopplungscode. Erzeuge im Dashboard einen neuen.",
+  "error.proof": "Der Code passt nicht zu diesem Server. Nicht verbinden, wenn du die Adresse nicht kennst."
 }

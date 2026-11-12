@@ -353,6 +353,7 @@ async function enterApp() {
 function setLoggedIn(on) {
   document.getElementById("sidebar").hidden = !on;
   document.getElementById("logout").hidden = !on;
+  document.getElementById("phone").hidden = !on;
   document.getElementById("menu").hidden = !on;
   if (!on) {
     stopStats();
@@ -2303,6 +2304,49 @@ async function loadLog() {
   }
   if (!data.lines.length) out.textContent = t("log.empty");
   out.scrollTop = out.scrollHeight;
+}
+
+// --- phone and desktop app --------------------------------------------------------
+
+let codeTimer = null;
+
+function clearPairingCode() {
+  clearInterval(codeTimer);
+  document.getElementById("phone-code-box").hidden = true;
+  document.getElementById("phone-code").textContent = "";
+}
+
+async function openPhone() {
+  const p = await api("GET", "pairing");
+  const qr = document.getElementById("phone-qr");
+  qr.hidden = !p.qr;
+  if (p.qr) qr.src = `data:image/svg+xml;base64,${btoa(p.qr)}`;
+  document.getElementById("phone-url").textContent = p.url || location.origin;
+  clearPairingCode();
+  document.getElementById("phone-dialog").showModal();
+}
+
+async function newPairingCode() {
+  const res = await api("POST", "pairing/code");
+  const until = Date.now() + res.expires_in * 1000;
+  document.getElementById("phone-code").textContent = res.code;
+  document.getElementById("phone-code-box").hidden = false;
+  const valid = document.getElementById("phone-code-valid");
+  const tick = () => {
+    const left = Math.max(0, Math.round((until - Date.now()) / 1000));
+    valid.textContent = left ? t("phone.code_valid", { min: Math.floor(left / 60), sec: String(left % 60).padStart(2, "0") })
+      : t("phone.code_expired");
+    if (!left) clearInterval(codeTimer);
+  };
+  clearInterval(codeTimer);
+  tick();
+  codeTimer = setInterval(tick, 1000);
+}
+
+function bindPhone() {
+  document.getElementById("phone").addEventListener("click", (e) => guarded(e.currentTarget, openPhone));
+  document.getElementById("phone-code-new").addEventListener("click", (e) => guarded(e.currentTarget, newPairingCode));
+  document.getElementById("phone-dialog").addEventListener("close", clearPairingCode);
 }
 
 // --- domains --------------------------------------------------------------------
@@ -4984,6 +5028,7 @@ async function start() {
   bindParity();
   bindBackup();
   bindVpn();
+  bindPhone();
   bindHome();
   try {
     const state = await api("GET", "state");

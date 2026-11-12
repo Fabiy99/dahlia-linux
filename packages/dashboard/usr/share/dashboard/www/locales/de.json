@@ -1281,5 +1281,16 @@
   "screen.running": "laufen",
   "domains.fingerprint_title": "Fingerabdruck für die Desktop-App",
   "domains.fingerprint_hint": "Beim Koppeln zeigt die Desktop-App diesen Fingerabdruck. Nur verbinden, wenn beide gleich sind.",
-  "screen.fingerprint": "Fingerabdruck: {fp}"
+  "screen.fingerprint": "Fingerabdruck: {fp}",
+  "phone.open": "Handy und Desktop-App",
+  "phone.title": "Mit dem Handy öffnen",
+  "phone.scan": "Scanne den Code mit der Kamera des Handys. Das Handy öffnet dieses Dashboard im Browser.",
+  "phone.bookmark": "Lege die Seite als Lesezeichen oder auf dem Home-Bildschirm ab. So erreichst du den Server immer, auch wenn die Desktop-App nicht verbindet.",
+  "phone.certificate": "Beim ersten Öffnen warnt der Browser vor dem Zertifikat. Unter Adressen gibt es das CA-Zertifikat zum Installieren, dann bleibt die Warnung weg.",
+  "phone.desktop_title": "Desktop-App neu koppeln",
+  "phone.desktop_hint": "Findet die Desktop-App den Server nicht mehr, erzeuge hier einen Kopplungscode und gib ihn in der App ein. Der Code gilt einmal und 10 Minuten.",
+  "phone.code_new": "Kopplungscode erzeugen",
+  "phone.code_valid": "noch {min}:{sec} gültig",
+  "phone.code_expired": "abgelaufen",
+  "error.pairing_code": "Kein gültiger Kopplungscode. Erzeuge im Dashboard einen neuen."
 }

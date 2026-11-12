@@ -5,14 +5,23 @@
 //! SHA-256 fingerprint and only after the user compared it with the one on the
 //! server's monitor or in the dashboard adds it to the user's trust store, so
 //! the system webview accepts the server's certificate.
+//!
+//! Instead of the fingerprint the user can enter a pairing code the dashboard
+//! shows (usually on the phone). The code itself is never sent: the server
+//! proves it knows the code for exactly the CA the app downloaded (see
+//! packages/dashboard/.../dahlia_dashboard/pairing.py).
 
 use base64::Engine;
+use hmac::{Hmac, Mac};
 use sha2::{Digest, Sha256};
 use std::path::Path;
 use std::process::Command;
 use std::time::Duration;
 
 const MAX_CA_BYTES: usize = 64 * 1024;
+const PROOF_PREFIX: &[u8] = b"dahlia-pairing\0";
+const CODE_ALPHABET: &str = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+const CODE_LENGTH: usize = 10;
 
 /// Accepts a host name or IP address, optionally with a port; nothing else.
 pub fn normalize_host(input: &str) -> Result<String, String> {
@@ -49,16 +58,95 @@ pub fn fingerprint(der: &[u8]) -> String {
         .join(":")
 }
 
-/// Downloads /dahlia-ca.crt without certificate verification (the user checks
-/// the fingerprint afterwards).
-pub fn fetch_ca(host: &str) -> Result<String, String> {
-    let client = reqwest::blocking::Client::builder()
+fn hex(bytes: &[u8]) -> String {
+    bytes.iter().map(|b| format!("{b:02x}")).collect()
+}
+
+/// Pairing code as the dashboard shows it (ABCDE-FGHJK), without dash and spaces.
+pub fn normalize_code(input: &str) -> Result<String, String> {
+    let code: String = input
+        .chars()
+        .filter(|c| !matches!(c, '-' | ' '))
+        .map(|c| c.to_ascii_uppercase())
+        .collect();
+    if code.len() != CODE_LENGTH || !code.chars().all(|c| CODE_ALPHABET.contains(c)) {
+        return Err("code".into());
+    }
+    Ok(code)
+}
+
+/// HMAC-SHA256(code, PREFIX + nonce + sha256(CA)), hex.
+pub fn proof(code: &str, nonce: &[u8], der: &[u8]) -> String {
+    let mut mac = Hmac::<Sha256>::new_from_slice(code.as_bytes()).expect("any key length");
+    mac.update(PROOF_PREFIX);
+    mac.update(nonce);
+    mac.update(&Sha256::digest(der));
+    hex(&mac.finalize().into_bytes())
+}
+
+/// Compares in constant time.
+pub fn proof_matches(expected: &str, got: &str) -> bool {
+    expected.len() == got.len()
+        && expected.bytes().zip(got.bytes()).fold(0u8, |acc, (a, b)| acc | (a ^ b)) == 0
+}
+
+fn insecure_client() -> Result<reqwest::blocking::Client, String> {
+    reqwest::blocking::Client::builder()
         .danger_accept_invalid_certs(true)
         .timeout(Duration::from_secs(8))
         .redirect(reqwest::redirect::Policy::none())
         .build()
+        .map_err(|e| e.to_string())
+}
+
+/// Asks the server for its proof over the nonce. Without verification, like
+/// fetch_ca: the proof is what counts.
+pub fn request_proof(host: &str, nonce: &[u8]) -> Result<String, String> {
+    let resp = insecure_client()?
+        .post(format!("https://{host}/api/pairing/proof"))
+        .header("X-Dahlia-Request", "1")
+        .json(&serde_json::json!({ "nonce": hex(nonce) }))
+        .send()
+        .map_err(|_| "unreachable".to_string())?;
+    if resp.status() == reqwest::StatusCode::NOT_FOUND {
+        return Err("code".into());
+    }
+    if !resp.status().is_success() {
+        return Err("not_dahlia".into());
+    }
+    let body: serde_json::Value = resp.json().map_err(|_| "not_dahlia".to_string())?;
+    body.get("proof")
+        .and_then(|p| p.as_str())
+        .map(str::to_string)
+        .ok_or_else(|| "not_dahlia".to_string())
+}
+
+/// Before the dashboard opens: is the server there, with the CA we paired?
+/// Errors: "unreachable", or "changed" when it answers with another certificate
+/// (reinstalled server, or someone else at that address).
+pub fn check(host: &str, pem: &str) -> Result<(), String> {
+    let ca = reqwest::Certificate::from_pem(pem.as_bytes()).map_err(|_| "certificate".to_string())?;
+    let pinned = reqwest::blocking::Client::builder()
+        .tls_built_in_root_certs(false)
+        .add_root_certificate(ca)
+        .timeout(Duration::from_secs(6))
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
         .map_err(|e| e.to_string())?;
-    let resp = client
+    let url = format!("https://{host}/dahlia-ca.crt");
+    if pinned.get(&url).send().is_ok() {
+        return Ok(());
+    }
+    match insecure_client()?.get(&url).send() {
+        Ok(_) => Err("changed".into()),
+        Err(_) => Err("unreachable".into()),
+    }
+}
+
+/// Downloads /dahlia-ca.crt without certificate verification (the user checks
+/// the fingerprint afterwards).
+pub fn fetch_ca(host: &str) -> Result<String, String> {
+    let resp = insecure_client()?
         .get(format!("https://{host}/dahlia-ca.crt"))
         .send()
         .map_err(|_| "unreachable".to_string())?;
@@ -138,5 +226,27 @@ mod tests {
             "05:4E:DE:C1:D0:21:1F:62:4F:ED:0C:BC:A9:D4:F9:40:0B:0E:49:1C:43:74:2A:F2:C5:B0:AB:EB:F0:C9:90:D8"
         );
         assert!(pem_to_der("no certificate").is_err());
+    }
+
+    #[test]
+    fn code_input() {
+        assert_eq!(normalize_code("abcde-fghjk").unwrap(), "ABCDEFGHJK");
+        assert_eq!(normalize_code(" ABCDE FGHJK ").unwrap(), "ABCDEFGHJK");
+        for bad in ["", "ABCDE", "ABCDE-FGHJ0", "ABCDE-FGHJKL", "ÄBCDE-FGHJK"] {
+            assert!(normalize_code(bad).is_err(), "{bad}");
+        }
+    }
+
+    #[test]
+    fn proof_matches_dashboard() {
+        // tests/test_pairing.py computes the same value with Python's hmac.
+        let nonce: Vec<u8> = (0..32).collect();
+        let der: Vec<u8> = (0..50).collect();
+        let p = proof("ABCDEFGHJK", &nonce, &der);
+        assert_eq!(p, "f613c2eb6eadd6c08d622c35bb99c8980791618551b1d44c250fed92c5e47a46");
+        assert!(proof_matches(&p, &proof("ABCDEFGHJK", &nonce, &der)));
+        assert!(!proof_matches(&p, &proof("ABCDEFGHJL", &nonce, &der)));
+        assert!(!proof_matches(&p, &proof("ABCDEFGHJK", &nonce, &der[1..])));
+        assert!(!proof_matches(&p, ""));
     }
 }

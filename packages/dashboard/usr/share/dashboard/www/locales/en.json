@@ -1281,5 +1281,16 @@
   "screen.running": "running",
   "domains.fingerprint_title": "Fingerprint for the desktop app",
   "domains.fingerprint_hint": "When pairing, the desktop app shows this fingerprint. Connect only if both match.",
-  "screen.fingerprint": "Fingerprint: {fp}"
+  "screen.fingerprint": "Fingerprint: {fp}",
+  "phone.open": "Phone and desktop app",
+  "phone.title": "Open on the phone",
+  "phone.scan": "Scan the code with the phone camera. The phone opens this dashboard in the browser.",
+  "phone.bookmark": "Save the page as a bookmark or to the home screen. That way the server stays reachable, even when the desktop app does not connect.",
+  "phone.certificate": "On the first visit the browser warns about the certificate. The CA certificate to install is on the Addresses page, then the warning goes away.",
+  "phone.desktop_title": "Pair the desktop app again",
+  "phone.desktop_hint": "If the desktop app no longer finds the server, create a pairing code here and enter it in the app. The code works once and for 10 minutes.",
+  "phone.code_new": "Create pairing code",
+  "phone.code_valid": "valid for {min}:{sec}",
+  "phone.code_expired": "expired",
+  "error.pairing_code": "No valid pairing code. Create a new one in the dashboard."
 }

@@ -29,5 +29,15 @@
   "menu.server": "Other server …",
   "menu.reload": "Reload",
   "menu.quit": "Quit",
-  "menu.edit": "Edit"
+  "menu.edit": "Edit",
+  "pair.repair": "Pair again",
+  "pair.connecting": "Connecting to {host} …",
+  "pair.code_title": "Or with a pairing code",
+  "pair.code_hint": "Open the dashboard in a browser, for example from the bookmark on the phone, tap the phone icon at the top and create a pairing code.",
+  "pair.code": "Pairing code",
+  "pair.code_pair": "Pair with code",
+  "pair.checking_code": "Checking the code …",
+  "error.changed": "The server answers with another certificate, for example after a reinstall. Pair again, easiest with a pairing code from the dashboard on the phone.",
+  "error.code": "No valid pairing code. Create a new one in the dashboard.",
+  "error.proof": "The code does not match this server. Do not connect if you do not know this address."
 }

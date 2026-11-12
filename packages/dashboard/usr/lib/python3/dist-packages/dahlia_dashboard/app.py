@@ -32,7 +32,7 @@ from starlette.background import BackgroundTask
 from starlette.concurrency import run_in_threadpool
 from starlette.exceptions import HTTPException
 
-from . import home, setupcode
+from . import home, pairing, setupcode
 from .auth import (
     USERNAME_RE,
     AuthError,
@@ -126,10 +126,9 @@ def qr_svg(text: str) -> str | None:
     return proc.stdout if proc.returncode == 0 and proc.stdout.lstrip().startswith("<") else None
 
 
-def ca_fingerprint(path: Path) -> str | None:
-    """SHA-256 of the CA certificate (DER) as AB:CD:..., as the desktop app shows it."""
+def ca_der(path: Path) -> bytes | None:
+    """The CA certificate (first one in the PEM file) in DER form."""
     import base64
-    import hashlib
 
     try:
         pem = path.read_text(encoding="ascii")
@@ -139,10 +138,23 @@ def ca_fingerprint(path: Path) -> str | None:
     if not m:
         return None
     try:
-        der = base64.b64decode("".join(m.group(1).split()), validate=True)
+        return base64.b64decode("".join(m.group(1).split()), validate=True)
     except ValueError:
         return None
-    return ":".join(f"{b:02X}" for b in hashlib.sha256(der).digest())
+
+
+def ca_fingerprint(path: Path) -> str | None:
+    """SHA-256 of the CA certificate (DER) as AB:CD:..., as the desktop app shows it."""
+    import hashlib
+
+    der = ca_der(path)
+    return ":".join(f"{b:02X}" for b in hashlib.sha256(der).digest()) if der else None
+
+
+def lan_address(stats: dict) -> str | None:
+    """First IPv4 address of the server, for links a phone opens."""
+    return next((a.split("/")[0] for n in stats.get("network", [])
+                 for a in n.get("addresses", []) if ":" not in a), None)
 
 
 FILE_CHUNK = 1024 * 1024
@@ -496,6 +508,10 @@ class PlaceBody(BaseModel):
     country: str = ""
 
 
+class PairingProofBody(BaseModel):
+    nonce: str
+
+
 class HomeBody(BaseModel):
     widgets: dict[str, bool]
     places: list[PlaceBody]
@@ -512,6 +528,7 @@ def create_app(cfg: Config | None = None) -> FastAPI:
     setup_lock = threading.Lock()
     home_store = home.HomeStore(cfg.state_dir / "home.json")
     weather = home.Weather(fetch=cfg.weather_fetch, clock=cfg.clock)
+    pairing_codes = pairing.Codes()
 
     app = FastAPI(title="Dahlia Dashboard", docs_url=None, redoc_url=None, openapi_url=None)
 
@@ -802,10 +819,6 @@ def create_app(cfg: Config | None = None) -> FastAPI:
         except ValueError as e:
             raise ApiError(400, "error.request", str(e)) from None
 
-    @app.get("/api/pairing", dependencies=authed)
-    def pairing():
-        return {"ca_fingerprint": ca_fingerprint(cfg.ca_cert)}
-
     @app.get("/api/weather", dependencies=readable)
     def weather_get():
         return {"places": weather.all(home_store.get()["places"])}
@@ -845,8 +858,7 @@ def create_app(cfg: Config | None = None) -> FastAPI:
             raise ApiError(404, "error.not_found")
         info = cached("info", 300, lambda: agent("system.info")) or {}
         stats = cached("stats", 5, lambda: agent("system.stats")) or {}
-        address = next((a.split("/")[0] for n in stats.get("network", [])
-                        for a in n.get("addresses", []) if ":" not in a), None)
+        address = lan_address(stats)
         fs = {f["mountpoint"]: f for f in stats.get("filesystems", [])}
         storage = fs.get("/mnt/user") or fs.get("/")
         mem = stats.get("memory") or {}
@@ -872,6 +884,39 @@ def create_app(cfg: Config | None = None) -> FastAPI:
             "widgets": cfg_home["widgets"],
             "weather": weather.all(cfg_home["places"]),
         }
+
+    # --- phone and desktop app ------------------------------------------------------
+
+    @app.get("/api/pairing", dependencies=authed)
+    def pairing_info():
+        """Link and QR code for the phone, CA fingerprint for the desktop app."""
+        stats = cached("stats", 5, lambda: agent("system.stats")) or {}
+        address = lan_address(stats)
+        url = f"https://{address}/" if address else None
+        return {
+            "ca_fingerprint": ca_fingerprint(cfg.ca_cert),
+            "url": url,
+            "qr": cached(f"qr:{url}", 3600, lambda: qr_svg(url)) if url else None,
+        }
+
+    @app.post("/api/pairing/code", dependencies=changing)
+    def pairing_code():
+        return {"code": pairing.display(pairing_codes.create()), "expires_in": pairing.TTL}
+
+    @app.post("/api/pairing/proof", dependencies=[Depends(require_csrf)])
+    def pairing_proof(body: PairingProofBody):
+        """No login: the desktop app is not paired yet. See pairing.py."""
+        try:
+            nonce = bytes.fromhex(body.nonce)
+        except ValueError:
+            nonce = b""
+        if len(nonce) != pairing.NONCE_BYTES:
+            raise ApiError(400, "error.request")
+        der = ca_der(cfg.ca_cert)
+        code = pairing_codes.take()
+        if not der or not code:
+            raise ApiError(404, "error.pairing_code")
+        return {"proof": pairing.proof(code, nonce, der)}
 
     @app.get("/api/history", dependencies=readable)
     def history(range: str = "day"):
