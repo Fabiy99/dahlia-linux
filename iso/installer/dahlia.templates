@@ -45,9 +45,18 @@ Type: string
 Description: DNS server:
  Example: 192.168.1.1
 
+Template: dahlia/account
+Type: string
+Description: Account name:
+ ${MESSAGE}
+ .
+ Lower case letters, digits, "-" and "_", starting with a letter, 2 to 32
+ characters. The same name logs in to the console, via SSH, to the dashboard
+ and to its terminal.
+
 Template: dahlia/ssh_key
 Type: string
-Description: SSH public key for dahlia-admin (optional):
+Description: SSH public key for ${ACCOUNT} (optional):
  Paste one line from ~/.ssh/id_ed25519.pub or similar to log in without a
  password. Leave empty to skip; keys can be added later.
 
@@ -72,7 +81,7 @@ Description: Delete ${DISK} and install Dahlia Linux?
    Server name:  ${HOSTNAME}
    Time zone:    ${TIMEZONE}
    Network:      ${NETWORK}
+   Account:      ${ACCOUNT}
    SSH key:      ${SSH_KEY}
-   Admin user:   dahlia-admin
  .
  ALL DATA ON ${DISK} WILL BE DELETED. Choose "No" to change the answers.

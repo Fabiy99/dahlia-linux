@@ -26,6 +26,18 @@ def lib_out(func: str, *args: str) -> str:
                           capture_output=True, text=True, check=True).stdout
 
 
+@pytest.mark.parametrize("name", ["fabian", "fa", "anna_2", "ben-k", "x" * 32])
+def test_account_ok(name):
+    assert lib("valid_account", name)
+
+
+@pytest.mark.parametrize("name", ["", "f", "x" * 33, "Fabian", "1abc", "-ab", "fa bi", "root",
+                                  "dahlia", "dahlia-ui", "dahlia-admin2", "systemd-network",
+                                  "docker", "sudo", "nobody"])
+def test_account_bad(name):
+    assert not lib("valid_account", name)
+
+
 @pytest.mark.parametrize("name", ["dahlia", "nas-01", "a", "x" * 63])
 def test_hostname_ok(name):
     assert lib("valid_hostname", name)
@@ -94,7 +106,7 @@ iface enp1s0 inet dhcp
 @pytest.fixture
 def target(tmp_path):
     root = tmp_path / "target"
-    for d in ("etc/network", "usr/share/zoneinfo/Europe", "home/dahlia-admin"):
+    for d in ("etc/network", "usr/share/zoneinfo/Europe", "home/fabi"):
         (root / d).mkdir(parents=True)
     (root / "etc/hosts").write_text("127.0.0.1\tlocalhost\n127.0.1.1\tdahlia\n::1\tlocalhost\n")
     (root / "etc/network/interfaces").write_text(INTERFACES)
@@ -103,9 +115,9 @@ def target(tmp_path):
     return root
 
 
-def apply(target, tmp_path, answers: str, key: str | None = None):
+def apply(target, tmp_path, answers: str, key: str | None = None, account="fabi"):
     a = tmp_path / "answers"
-    a.write_text(answers)
+    a.write_text((f"ACCOUNT={account}\n" if account is not None else "") + answers)
     args = ["sh", str(INSTALLER / "apply-answers.sh"), str(target), str(a)]
     if key is not None:
         k = tmp_path / "key"
@@ -125,7 +137,7 @@ def test_apply_dhcp(target, tmp_path):
     assert (target / "etc/timezone").read_text() == "Europe/Vienna\n"
     assert (target / "etc/localtime").readlink() == Path("/usr/share/zoneinfo/Europe/Vienna")
     assert (target / "etc/network/interfaces").read_text() == INTERFACES
-    assert not (target / "home/dahlia-admin/.ssh").exists()
+    assert not (target / "home/fabi/.ssh").exists()
 
 
 def test_apply_static_and_key(target, tmp_path):
@@ -141,7 +153,7 @@ def test_apply_static_and_key(target, tmp_path):
     )
     assert "iface lo inet loopback" in ifaces
     assert (target / "etc/resolv.conf").read_text() == "nameserver 192.168.1.2\n"
-    keys = target / "home/dahlia-admin/.ssh/authorized_keys"
+    keys = target / "home/fabi/.ssh/authorized_keys"
     assert keys.read_text() == KEY + "\n"
     assert keys.stat().st_mode & 0o777 == 0o600
     assert keys.parent.stat().st_mode & 0o777 == 0o700
@@ -163,6 +175,13 @@ def test_apply_rejects(target, tmp_path, answers, message):
     # Nothing half-applied for an invalid host name.
     if "host name" in message:
         assert not (target / "etc/hostname").exists()
+
+
+@pytest.mark.parametrize("account", [None, "x", "Fabian", "dahlia-ui", "root", "docker", "a/b"])
+def test_apply_rejects_account(target, tmp_path, account):
+    res = apply(target, tmp_path, "HOSTNAME=nas\n", account=account)
+    assert res.returncode != 0
+    assert "account name" in res.stderr
 
 
 def test_apply_rejects_bad_key(target, tmp_path):

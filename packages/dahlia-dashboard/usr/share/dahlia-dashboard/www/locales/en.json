@@ -13,7 +13,7 @@
   "setup.title": "Setup",
   "setup.intro": "Create the dashboard account. The server shows the setup code on its screen and on SSH login.",
   "setup.code": "Setup code",
-  "setup.hint": "The account is for the dashboard only, not for SSH. The server name is optional; the server is then reachable as <name>.local.",
+  "setup.hint": "The name from the installation is suggested, so dashboard, console, SSH and terminal use the same name. The password here is for the dashboard only. The server name is optional; the server is then reachable as <name>.local.",
   "setup.submit": "Set up",
   "setup.done": "Setup complete.",
   "login.title": "Log in",

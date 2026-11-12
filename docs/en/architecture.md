@@ -19,7 +19,14 @@ share. The installer is in English. Boot menu (BIOS and UEFI):
 | Automatic install (serial console) | unattended on ttyS0 (CI test) |
 
 Guided (`iso/installer/dahlia-guided.cfg`, `guided.sh`): the Debian installer asks for the
-keyboard layout and the password of `dahlia-admin`. Then `guided.sh` asks for:
+keyboard layout, the account name and its password (from milestone 36; before that the
+fixed `dahlia-admin`, no full name). `guided.sh` checks the name as the dashboard does (2 to
+32 characters `a-z0-9_-`, starting with a letter) and asks again for names the system or
+Dahlia's packages use themselves (`root`, `docker`, `dahlia`, `dahlia-*`, `systemd-*` ...).
+The same account is used for the console, SSH and the dashboard's terminal; the setup wizard
+suggests the name for the dashboard account (first valid member of group `sudo`), and the
+terminal logs in with the dashboard account's name by default. Only the name is shown.
+Then `guided.sh` asks for:
 
 1. System disk, with device, size, model and serial number. The install medium is never
    offered.
@@ -27,13 +34,13 @@ keyboard layout and the password of `dahlia-admin`. Then `guided.sh` asks for:
 3. Time zone
 4. Network of the installed system: DHCP or static (address with prefix, gateway, DNS).
    The installer itself needs DHCP and internet access.
-5. SSH public key for `dahlia-admin` (optional)
+5. SSH public key for the account (optional)
 6. Summary with a warning that all data on the chosen disk will be deleted. "No" goes back
    to the disk selection with the answers kept as defaults.
 
 Every question has "Go Back". `late-command.sh` writes the answers into the target with
 `apply-answers.sh` (`/etc/hostname`, `/etc/hosts`, `/etc/timezone`,
-`/etc/network/interfaces`, `/etc/resolv.conf`, `~dahlia-admin/.ssh/authorized_keys`)
+`/etc/network/interfaces`, `/etc/resolv.conf`, `~<account>/.ssh/authorized_keys`)
 before the Dahlia packages are installed. The password is not expired.
 
 Unattended (`dahlia-auto.cfg`, kernel parameter `dahlia.mode=auto`): no questions. With
@@ -41,7 +48,7 @@ exactly one candidate disk, `pick-disk.sh` uses it without asking; with several 
 installer asks. Server name `dahlia`, German keyboard, time zone Europe/Berlin, user
 `dahlia-admin` with the initial password `dahlia`, which must be changed on first login.
 
-In both modes: user `dahlia-admin` (UID 1001, sudo), root has no password. At the end,
+In both modes: the account has UID 1001 and sudo, root has no password. At the end,
 `late-command.sh` installs the Dahlia packages shipped on the ISO under `/dahlia/pool`.
 
 Root filesystem: Btrfs; the installer creates the subvolume `@rootfs`. `snapper` takes a
@@ -527,7 +534,7 @@ The dashboard's Terminal page is a shell in the browser (xterm.js, MIT, in
 3. `dahlia-terminal.service` runs as `dahlia-term` without privileges and starts
    `su -l <user>` in a pseudo-terminal per session. `su` asks for the Linux password; root
    is then available with `sudo` as over SSH. Only accounts with UID 1000 or higher and a
-   login shell are accepted, `dahlia-admin` by default.
+   login shell are accepted; by default the account named like the dashboard account.
 
 At most 4 sessions, disconnect after 15 minutes without input. Start and end of each
 session (Linux account, dashboard account, IP) are logged in the journal of

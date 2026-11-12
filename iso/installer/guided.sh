@@ -1,7 +1,9 @@
 #!/bin/sh
 # Guided install: runs inside debian-installer as partman/early_command,
 # when disks and network are up and the admin password is already set.
-# Asks for the system disk, server name, time zone, network and SSH key,
+# Checks the account name d-i asked for (a name Dahlia's packages use itself
+# is asked again), then asks for the system disk, server name, time zone,
+# network and SSH key,
 # shows a summary with the wipe warning and hands the disk to partman.
 # The answers go to /tmp/dahlia-answers for late-command.sh.
 #
@@ -88,6 +90,23 @@ get() {
     db_get "$1"
     printf '%s' "$RET"
 }
+
+# The account d-i created questions for: same name for console, SSH,
+# dashboard and terminal. d-i applies passwd/username only at the end.
+account="$(get passwd/username)"
+while ! valid_account "$account"; do
+    log "account name '$account' not usable"
+    db_subst dahlia/account MESSAGE "'$account' cannot be used: it is too short or long, has other characters, or the system or Dahlia uses it."
+    db_set dahlia/account ""
+    db_fset dahlia/account seen false
+    db_input critical dahlia/account || true
+    db_go || true
+    account="$(get dahlia/account)"
+done
+db_set passwd/username "$account"
+db_fset passwd/username seen true
+db_subst dahlia/ssh_key ACCOUNT "$account"
+db_subst dahlia/confirm ACCOUNT "$account"
 
 step=disk
 while :; do
@@ -180,6 +199,7 @@ done
 disk="$(get dahlia/disk)"
 {
     echo "DISK=$disk"
+    echo "ACCOUNT=$account"
     echo "HOSTNAME=$(get dahlia/hostname)"
     echo "TIMEZONE=$(get dahlia/timezone)"
     echo "NETWORK=$(get dahlia/network)"

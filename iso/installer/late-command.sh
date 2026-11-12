@@ -12,6 +12,10 @@ KEYFILE=/tmp/dahlia-ssh-key
 
 log() { logger -t dahlia-install "$*"; }
 
+# The account d-i created (asked in the guided install, dahlia-admin in the
+# unattended one).
+ACCOUNT="$(debconf-get passwd/username)"
+
 if [ -f "$ANSWERS" ]; then
     if ! sh "$DIR/apply-answers.sh" /target "$ANSWERS" "$KEYFILE" 2>/tmp/dahlia-apply.err; then
         log "FAILED: apply-answers: $(cat /tmp/dahlia-apply.err)"
@@ -20,8 +24,8 @@ if [ -f "$ANSWERS" ]; then
     # Package scripts (certificate for <name>.local) read the running host
     # name, which is still the installer's.
     hostname "$(cat /target/etc/hostname)"
-    if [ -d /target/home/dahlia-admin/.ssh ]; then
-        in-target chown -R dahlia-admin:dahlia-admin /home/dahlia-admin/.ssh
+    if [ -d "/target/home/$ACCOUNT/.ssh" ]; then
+        in-target chown -R "$ACCOUNT:$ACCOUNT" "/home/$ACCOUNT/.ssh"
     fi
     log "guided answers applied: $(tr '\n' ' ' < "$ANSWERS")"
 fi
@@ -59,7 +63,7 @@ umount /target/media/cdrom
 # Unattended install: the initial password "dahlia" must be changed on
 # first login. The guided install asked for the password.
 if [ ! -f "$ANSWERS" ]; then
-    in-target chage -d 0 dahlia-admin
+    in-target chage -d 0 "$ACCOUNT"
 fi
 
 rm -rf "$STAGE"

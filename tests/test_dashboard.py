@@ -49,6 +49,7 @@ def env(tmp_path):
         run_dir=tmp_path / "run",
         secure_cookie=False,
         agent_call=agent,
+        system_account=lambda: "fabian",
     )
     cfg.state_dir.mkdir()
     code = setupcode.prepare(cfg.run_dir)
@@ -72,7 +73,22 @@ def logged_in(env):
 
 def test_state_before_setup(env):
     client, *_ = env
-    assert client.get("/api/state").json() == {"setup_required": True, "user": None}
+    assert client.get("/api/state").json() == {"setup_required": True, "user": None,
+                                                 "account": "fabian"}
+
+
+def test_installer_account_is_first_valid_sudo_member(monkeypatch):
+    from dahlia_dashboard import app as appmod
+
+    group = type("G", (), {"gr_mem": ["Bad Name", "fabi", "anna"]})
+    monkeypatch.setattr(appmod.grp, "getgrnam", lambda name: group)
+    assert appmod.installer_account() == "fabi"
+
+    def missing(name):
+        raise KeyError(name)
+
+    monkeypatch.setattr(appmod.grp, "getgrnam", missing)
+    assert appmod.installer_account() is None
 
 
 def test_setup_needs_code(env):
