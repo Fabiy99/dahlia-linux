@@ -184,6 +184,14 @@ class DeviceBody(BaseModel):
     device: str
 
 
+class SyslogBody(BaseModel):
+    enabled: bool
+    host: str = ""
+    port: int = 514
+    protocol: str = "udp"
+    severity: str = "info"
+
+
 class BurninStartBody(BaseModel):
     device: str
     confirm: str
@@ -632,6 +640,14 @@ def create_app(cfg: Config | None = None) -> FastAPI:
     def disks_burnin():
         return agent("disks.burnin_status")
 
+    @app.post("/api/disks/locate", dependencies=changing)
+    def disks_locate(body: DeviceBody):
+        return agent("disks.locate", body.model_dump())
+
+    @app.post("/api/disks/locate/stop", dependencies=changing)
+    def disks_locate_stop():
+        return agent("disks.locate_stop")
+
     @app.post("/api/disks/burnin/start", dependencies=changing)
     def disks_burnin_start(body: BurninStartBody):
         return agent("disks.burnin_start", body.model_dump())
@@ -751,6 +767,16 @@ def create_app(cfg: Config | None = None) -> FastAPI:
     @app.post("/api/apps/catalog/refresh", dependencies=changing)
     def apps_refresh():
         return agent("apps.catalog", {"refresh": True})
+
+    @app.get("/api/apps-all", dependencies=authed)
+    def apps_all_job():
+        return agent("apps.all_job")
+
+    @app.post("/api/apps-all/{op}", dependencies=changing)
+    def apps_all(op: str):
+        if op not in ("start", "stop"):
+            raise ApiError(404, "error.not_found")
+        return agent("apps.all", {"op": op})
 
     @app.get("/api/apps/{app_id}/job", dependencies=authed)
     def app_job(app_id: str):
@@ -879,6 +905,14 @@ def create_app(cfg: Config | None = None) -> FastAPI:
     @app.post("/api/settings/power", dependencies=changing)
     def settings_set_power(body: GovernorBody):
         return agent("power.set_governor", body.model_dump())
+
+    @app.get("/api/settings/syslog", dependencies=authed)
+    def settings_syslog():
+        return agent("settings.syslog")
+
+    @app.post("/api/settings/syslog", dependencies=changing)
+    def settings_set_syslog(body: SyslogBody):
+        return agent("settings.set_syslog", body.model_dump())
 
     @app.get("/api/settings/firewall", dependencies=authed)
     def settings_firewall():

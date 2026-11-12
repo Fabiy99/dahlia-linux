@@ -125,6 +125,20 @@ def test_blocked_sync_is_recorded(array, capsys):
     assert "sync" not in calls(array)
 
 
+def test_runs_are_kept_in_history(array, monkeypatch, capsys):
+    monkeypatch.setattr(snapraid_job, "HISTORY_MAX", 3)
+    snapraid_job.main(["sync"])
+    snapraid_job.main(["sync", "--force"])
+    array["content"].write_text("x")
+    snapraid_job.main(["scrub"])
+    snapraid_job.main(["fix", "--bad"])
+    history = runs(array)["history"]
+    assert [(h["kind"], h["result"]) for h in history] == [
+        ("sync", "ok"), ("scrub", "ok"), ("fix", "ok")]
+    assert all(h["end"] >= h["start"] for h in history)
+    assert snapraid_job.describe(array["state"])["history"] == history
+
+
 def test_forced_sync_runs(array, capsys):
     assert snapraid_job.main(["sync", "--force"]) == 0
     assert calls(array) == ["diff", "sync"]
