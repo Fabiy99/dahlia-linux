@@ -905,6 +905,24 @@ function diskRow(d, mounts) {
   return row;
 }
 
+// Find a disk in the case: its activity LED blinks for two minutes.
+let locating = { disk: "", until: 0 };
+
+function locateButton(disk) {
+  const active = locating.disk === disk && Date.now() < locating.until;
+  return button(active ? "disks.locate_stop" : "disks.locate", async () => {
+    if (active) {
+      await api("POST", "disks/locate/stop");
+      locating = { disk: "", until: 0 };
+    } else {
+      const res = await api("POST", "disks/locate", { device: disk });
+      locating = { disk, until: Date.now() + res.seconds * 1000 };
+      say(t("disks.locating", { path: disk, n: Math.round(res.seconds / 60) }), "ok");
+    }
+    await loadStorage();
+  });
+}
+
 // SMART self-test of one disk: last result and buttons to start or abort.
 function smartTestRow(disk, h) {
   const row = el("div", "disk-tests");
@@ -931,6 +949,7 @@ function smartTestRow(disk, h) {
   };
   if (st.running) ops.append(button("smart.test_abort", run("abort")));
   else ops.append(button("smart.test_short", run("short")), button("smart.test_long", run("long")));
+  ops.append(locateButton(disk));
   row.append(ops);
   return row;
 }
@@ -1323,7 +1342,43 @@ function renderInstalled(installed) {
   all.hidden = !pending.length;
   all.textContent = t("apps.update_all", { count: pending.length });
   all.onclick = () => guarded(all, () => updateAll(pending));
+  bindAppsAll(installed);
   updateAppsBadge(installed);
+}
+
+// Start every app that starts at boot, or stop all apps (start-at-boot stays).
+let appsAllTimer = null;
+
+function bindAppsAll(installed) {
+  const start = document.getElementById("apps-start-all");
+  const stop = document.getElementById("apps-stop-all");
+  start.hidden = !installed.some((a) => a.enabled !== false && a.status !== "running");
+  stop.hidden = !installed.some((a) => a.status === "running");
+  const run = (op, btn) => guarded(btn, async () => {
+    if (op === "stop" && !await ask(t("apps.stop_all_confirm"), "apps.stop_all", true)) return;
+    await api("POST", `apps-all/${op}`);
+    say(t(op === "start" ? "apps.start_all_started" : "apps.stop_all_started"), "ok");
+    watchAppsAll();
+  });
+  start.onclick = () => run("start", start);
+  stop.onclick = () => run("stop", stop);
+}
+
+function watchAppsAll() {
+  clearTimeout(appsAllTimer);
+  appsAllTimer = setTimeout(async () => {
+    try {
+      const job = await api("GET", "apps-all");
+      if (["active", "activating"].includes(job.active)) {
+        watchAppsAll();
+        return;
+      }
+      if (job.error) say(t("apps.all_failed", { error: job.error }), "error");
+      if (current === "apps") await loadApps();
+    } catch (err) {
+      sayError(err);
+    }
+  }, 2000);
 }
 
 // --- install dialog and folder picker -------------------------------------------
@@ -1955,6 +2010,40 @@ function parityRun(run) {
   return text;
 }
 
+function formatDuration(sec) {
+  const s = Math.max(0, Math.round(sec));
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  return h ? `${h} h ${m} min` : m ? `${m} min` : `${s} s`;
+}
+
+function renderParityHistory(history) {
+  const kinds = { result: { ok: "ok", no_changes: "ok", blocked: "warn", failed: "crit" } };
+  const tbody = document.getElementById("parity-history");
+  tbody.replaceChildren();
+  for (const run of [...history].reverse()) {
+    const tr = el("tr");
+    cell(tr, parityTime(run.end || run.start));
+    let kind = t(`parity.kind_${run.kind}`);
+    if (run.kind === "fix" && run.what) {
+      kind += ` (${run.what === "bad" ? t("parity.what_bad") : `/mnt/disk${String(run.what).slice(1)}`})`;
+    }
+    cell(tr, kind);
+    cell(tr, run.end && run.start ? formatDuration(run.end - run.start) : "-");
+    cell(tr, badge(tv("parity_result", run.result), kinds.result[run.result] || ""));
+    const c = run.counts;
+    const detail = run.message
+      || (c ? t("parity.counts", { added: c.added || 0, removed: c.removed || 0, updated: c.updated || 0 }) : "");
+    cell(tr, detail || "-");
+    tbody.append(tr);
+  }
+  if (!history.length) {
+    const tr = el("tr");
+    cell(tr, t("parity.history_none")).colSpan = 5;
+    tbody.append(tr);
+  }
+}
+
 function parityNotice(d, running) {
   const box = document.getElementById("parity-notice");
   box.replaceChildren();
@@ -2038,6 +2127,8 @@ async function loadParity() {
       : `/mnt/disk${String(d.runs.fix.what || "").slice(1)}`;
     fact(dl, "parity.last_fix", `${what}, ${parityRun(d.runs.fix)}`);
   }
+
+  renderParityHistory(d.history || []);
 
   const tbody = document.getElementById("parity-disks");
   tbody.replaceChildren();
@@ -2928,7 +3019,8 @@ async function loadAccount() {
   document.querySelector("#hostname-form [name=hostname]").value = info.hostname;
   // Each card loads on its own; one failing part does not hide the others.
   await Promise.all([loadTime(), loadNetwork(), loadNetLayout(), loadSpindown(), loadPower(),
-               loadDevices(), loadFirewall(), loadSchedules(), loadNotify(), loadUps(), loadInflux(),
+               loadDevices(), loadSyslog(), loadFirewall(), loadSchedules(), loadNotify(), loadUps(),
+               loadInflux(),
                loadVpn(), loadTotp(), loadTokens()]
     .map((p) => p.catch(sayError)));
 }
@@ -3145,6 +3237,24 @@ async function loadDevices() {
     [`${String(d.bus).padStart(3, "0")}:${String(d.device).padStart(3, "0")}`, d.name, d.id])));
   if (!usb.children.length) usb.append(cells(el("tr"), [t("devices.none")]));
   document.getElementById("devices-iommu").textContent = t(data.iommu ? "devices.iommu_on" : "devices.iommu_off");
+}
+
+// --- settings: remote syslog ------------------------------------------------------
+
+const SYSLOG_SEVERITIES = ["debug", "info", "notice", "warning", "err"];
+
+async function loadSyslog() {
+  const data = await api("GET", "settings/syslog");
+  const f = document.getElementById("syslog-form");
+  fillOptions(f.elements.severity, SYSLOG_SEVERITIES, (v) => t(`syslog.sev_${v}`));
+  f.elements.enabled.checked = data.enabled;
+  f.elements.host.value = data.host;
+  f.elements.port.value = data.port;
+  f.elements.protocol.value = data.protocol;
+  f.elements.severity.value = data.severity;
+  document.getElementById("syslog-state").textContent = data.enabled
+    ? t(data.running ? "syslog.state_on" : "syslog.state_down", { host: data.host, port: data.port })
+    : t("syslog.state_off");
 }
 
 async function loadFirewall() {
@@ -3893,6 +4003,19 @@ function bindForms() {
   });
   const devRefresh = document.getElementById("devices-refresh");
   devRefresh.addEventListener("click", () => guarded(devRefresh, loadDevices));
+
+  document.getElementById("syslog-form").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const f = e.target.elements;
+    guarded(e.submitter, async () => {
+      await api("POST", "settings/syslog", {
+        enabled: f.enabled.checked, host: f.host.value.trim(), port: Number(f.port.value) || 514,
+        protocol: f.protocol.value, severity: f.severity.value,
+      });
+      say(t("syslog.saved"), "ok");
+      await loadSyslog();
+    });
+  });
 
   document.getElementById("spindown-form").addEventListener("submit", (e) => {
     e.preventDefault();
