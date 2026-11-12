@@ -4857,7 +4857,8 @@ function bindForms() {
     const codeBox = document.getElementById("login-code");
     guarded(e.submitter, async () => {
       try {
-        await api("POST", "login", { username: f.username, password: f.password, code: f.code || "" });
+        await api("POST", "login", { username: f.username, password: f.password, code: f.code || "",
+                                     remember: Boolean(f.remember) });
       } catch (err) {
         // Password was right; the account also wants a code from the app.
         if (err.key !== "error.totp_required") throw err;

@@ -1305,5 +1305,6 @@
   "home.up": "up",
   "home.apps_running": "{n} of {total} running",
   "home.yesterday": "yesterday",
-  "home.parity_synced": "Parity last synced: {when}"
+  "home.parity_synced": "Parity last synced: {when}",
+  "login.remember": "Stay signed in (30 days)"
 }

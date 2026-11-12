@@ -422,7 +422,7 @@ SSH or the console.
 | Frontend | static files in `/usr/share/dashboard/www`, served by nginx, texts from `locales/de.json` and `locales/en.json` |
 | Accounts | `/var/lib/dashboard/users.json` (0600), scrypt password hashes |
 | Second factor | optional TOTP (RFC 6238, SHA-1, 6 digits, 30 s, ±1 step), each code once; 10 recovery codes (SHA-256, each once); QR code via `qrencode` |
-| Sessions | random token in memory, cookie `HttpOnly`, `Secure`, `SameSite=Strict`; 2 h idle, 12 h at most |
+| Sessions | random token in memory, cookie `HttpOnly`, `Secure`, `SameSite=Strict`; 2 h idle, 12 h at most; with "Stay signed in" 30 days without use (cookie with `Max-Age`) |
 | Protection | changing requests need the header `X-Dahlia-Request`; 5 failures per IP within 5 minutes, then blocked |
 | Root actions | only through `agent`; `ui` is a member of the group `agent` |
 

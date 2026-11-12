@@ -425,7 +425,7 @@ nur für das Web-UI, nicht für SSH oder die Konsole.
 | Frontend | statische Dateien unter `/usr/share/dashboard/www`, von nginx ausgeliefert, Texte aus `locales/de.json` und `locales/en.json` |
 | Konten | `/var/lib/dashboard/users.json` (0600), Passwörter mit scrypt |
 | Zweiter Faktor | optional TOTP (RFC 6238, SHA-1, 6 Stellen, 30 s, ±1 Schritt), jeder Code nur einmal; 10 Wiederherstellungscodes (SHA-256, je einmal); QR-Code über `qrencode` |
-| Sitzungen | zufälliges Token im Speicher, Cookie `HttpOnly`, `Secure`, `SameSite=Strict`; 2 h Leerlauf, höchstens 12 h |
+| Sitzungen | zufälliges Token im Speicher, Cookie `HttpOnly`, `Secure`, `SameSite=Strict`; 2 h Leerlauf, höchstens 12 h; mit „Angemeldet bleiben“ 30 Tage ohne Nutzung (Cookie mit `Max-Age`) |
 | Schutz | ändernde Anfragen brauchen den Header `X-Dahlia-Request`; 5 Fehlversuche pro IP in 5 Minuten, dann Sperre |
 | root-Aktionen | nur über `agent`; `ui` ist Mitglied der Gruppe `agent` |
 
