@@ -647,6 +647,7 @@ def test_action_list_is_fixed():
         "settings.spindown",
         "settings.syslog",
         "settings.time",
+        "shares.empty_recycle",
         "shares.list",
         "shares.remove",
         "shares.set",

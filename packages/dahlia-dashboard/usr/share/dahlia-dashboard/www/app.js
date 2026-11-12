@@ -2754,6 +2754,7 @@ async function loadShares() {
     name.append(el("b", "", s.name));
     if (s.time_machine) name.append(badge(t("shares.time_machine_badge"), "accent"));
     if (s.nfs) name.append(badge(t("shares.nfs_badge"), "accent"));
+    if (s.recycle_days) name.append(badge(t("shares.recycle_badge", { n: s.recycle_days }), "info"));
     if (!s.exists) name.append(badge(t("shares.missing"), "warn"));
     if (s.comment) name.append(el("small", "muted", s.comment));
     cell(tr, name);
@@ -2765,6 +2766,13 @@ async function loadShares() {
     if (s.nfs) addr.append(el("code", "", nfsAddress(s.name)));
     cell(tr, addr).dataset.label = t("shares.address");
     const ops = el("div", "row-ops");
+    if (s.recycle_days) {
+      ops.append(button("shares.recycle_empty", async () => {
+        if (!await ask(t("shares.recycle_confirm", { name: s.name }), "shares.recycle_empty", true)) return;
+        const res = await api("POST", `shares/${encodeURIComponent(s.name)}/empty-recycle`);
+        say(t("shares.recycle_emptied", { name: s.name, n: res.files, size: formatBytes(res.bytes) }), "ok");
+      }));
+    }
     ops.append(button("shares.edit", () => openShareDialog(s)),
                button("shares.remove", async () => {
                  if (!await ask(t("shares.confirm_remove", { name: s.name }), "shares.remove", true)) return;
@@ -2917,6 +2925,8 @@ function renderSecurityHint() {
   nfsHint.hidden = sec === "private" || !f.elements.nfs.checked;
   nfsHint.textContent = t(`shares.nfs_hint_${sec === "public" ? "rw" : "ro"}`);
   document.getElementById("share-tm-size").hidden = !f.elements.time_machine.checked;
+  document.getElementById("share-recycle-days").hidden = !f.elements.recycle.checked;
+  document.getElementById("share-recycle-hint").hidden = !f.elements.recycle.checked;
 }
 
 function openShareDialog(share) {
@@ -2932,6 +2942,8 @@ function openShareDialog(share) {
   f.elements.time_machine.checked = share?.time_machine ?? false;
   f.elements.time_machine_size.value = share?.time_machine_size || "";
   f.elements.nfs.checked = share?.nfs ?? false;
+  f.elements.recycle.checked = Boolean(share?.recycle_days);
+  f.elements.recycle_days.value = share?.recycle_days || 30;
   const box = document.getElementById("share-users");
   box.replaceChildren();
   if (!sharesData.users.length) box.append(el("p", "hint", t("shares.no_users")));
@@ -2960,7 +2972,7 @@ function openPasswordDialog(user) {
 function bindShares() {
   document.getElementById("share-new").addEventListener("click", () => openShareDialog(null));
   const form = document.getElementById("share-form");
-  for (const name of ["security", "nfs", "time_machine"]) {
+  for (const name of ["security", "nfs", "time_machine", "recycle"]) {
     form.elements[name].addEventListener("change", renderSecurityHint);
   }
   form.addEventListener("submit", (e) => {
@@ -2978,6 +2990,7 @@ function bindShares() {
         users: f.security.value === "public" ? {} : users, time_machine: f.time_machine.checked,
         time_machine_size: f.time_machine.checked ? Number(f.time_machine_size.value) || 0 : 0,
         nfs: f.security.value !== "private" && f.nfs.checked,
+        recycle_days: f.recycle.checked ? Math.min(365, Math.max(1, Number(f.recycle_days.value) || 30)) : 0,
       });
       document.getElementById("share-dialog").close();
       say(t("shares.saved", { name }), "ok");

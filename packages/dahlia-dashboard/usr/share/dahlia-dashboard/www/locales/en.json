@@ -1125,5 +1125,12 @@
   "influx.failed": "Failed, {time}",
   "influx.error": "Error",
   "influx.saved": "Export to InfluxDB saved, test value arrived.",
-  "influx.off": "Export to InfluxDB switched off."
+  "influx.off": "Export to InfluxDB switched off.",
+  "shares.recycle": "Recycle bin: keep deleted files",
+  "shares.recycle_days": "Keep (days)",
+  "shares.recycle_hint": "Files deleted over SMB go to the share's .recycle folder and are deleted for good after this time. To restore, copy a file back out of .recycle. Deletes over NFS are final.",
+  "shares.recycle_badge": "Recycle bin {n} d",
+  "shares.recycle_empty": "Empty recycle bin",
+  "shares.recycle_confirm": "Empty the recycle bin of “{name}” for good now?",
+  "shares.recycle_emptied": "Recycle bin of {name} emptied: {n} files, {size}."
 }
