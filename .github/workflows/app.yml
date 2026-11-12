@@ -1,0 +1,148 @@
+name: app
+
+# Native desktop app (Flutter, app/): tests, installers for Windows, macOS and
+# Linux, and on a release the installers plus app.json, the update manifest
+# that tools/fetch-app-manifests.sh signs into the apt repository.
+
+on:
+  pull_request:
+    paths:
+      - "app/**"
+      - "VERSION"
+      - ".github/workflows/app.yml"
+  push:
+    branches: [main]
+    paths:
+      - "app/**"
+      - ".github/workflows/app.yml"
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Existing tag (e.g. v1.4.0) to attach the app to; empty = build only"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+env:
+  FLUTTER_VERSION: "3.50.0"
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+      - run: flutter pub get
+      - run: flutter analyze
+      - run: flutter test
+      - name: App carries the apt repository key
+        working-directory: .
+        run: cmp app/assets/dahlia-archive-keyring.asc packages/archive-keyring/usr/share/keyrings/dahlia-archive-keyring.asc
+
+  build:
+    needs: test
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+      - name: Version
+        run: echo "VERSION=$(tr -d '[:space:]' < ../VERSION)" >> "$GITHUB_ENV"
+
+      - name: Linux build tools
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends clang cmake ninja-build pkg-config \
+            libgtk-3-dev libsecret-1-dev
+      - name: Linux
+        if: runner.os == 'Linux'
+        run: |
+          flutter build linux --release --build-name="$VERSION" --dart-define=DAHLIA_VERSION="$VERSION"
+          packaging/linux/build-deb.sh "$VERSION" build/linux/x64/release/bundle dist
+
+      - name: Windows
+        if: runner.os == 'Windows'
+        run: |
+          flutter build windows --release --build-name="$VERSION" --dart-define=DAHLIA_VERSION="$VERSION"
+          choco install innosetup --no-progress -y
+          "/c/Program Files (x86)/Inno Setup 6/ISCC.exe" //DVersion="$VERSION" packaging/windows/dahlia.iss
+          mkdir -p dist
+          cp packaging/windows/output/*.exe dist/
+
+      - name: macOS
+        if: runner.os == 'macOS'
+        run: |
+          flutter build macos --release --build-name="$VERSION" --dart-define=DAHLIA_VERSION="$VERSION"
+          mkdir -p dist
+          ditto -c -k --sequesterRsrc --keepParent build/macos/Build/Products/Release/Dahlia.app \
+            "dist/Dahlia-$VERSION-macos.zip"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dahlia-app-${{ matrix.os }}
+          if-no-files-found: error
+          path: app/dist/*
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v') || inputs.release_tag != ''
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Update manifest and upload
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.release_tag || github.ref_name }}
+        run: |
+          version="$(tr -d '[:space:]' < VERSION)"
+          if [ "v$version" != "$RELEASE_TAG" ]; then
+            echo "Tag $RELEASE_TAG does not match VERSION $version" >&2
+            exit 1
+          fi
+          python3 - "$version" "$GITHUB_REPOSITORY" "$RELEASE_TAG" dist > dist/app.json <<'PY'
+          import hashlib, json, pathlib, sys
+          version, repo, tag, root = sys.argv[1:]
+          kinds = {"windows-x64": f"Dahlia-{version}-windows-x64-setup.exe",
+                   "macos": f"Dahlia-{version}-macos.zip",
+                   "linux-x64": f"dahlia_{version}_amd64.deb"}
+          files = {}
+          for key, name in kinds.items():
+              data = (pathlib.Path(root) / name).read_bytes()
+              files[key] = {"name": name, "size": len(data),
+                            "sha256": hashlib.sha256(data).hexdigest(),
+                            "url": f"https://github.com/{repo}/releases/download/{tag}/{name}"}
+          print(json.dumps({"version": version, "files": files}, indent=2))
+          PY
+          cat dist/app.json
+          # The ISO workflow or the GitHub UI creates the release; wait for it.
+          for _ in $(seq 1 30); do
+            gh release view "$RELEASE_TAG" >/dev/null 2>&1 && break
+            sleep 20
+          done
+          gh release upload "$RELEASE_TAG" dist/* --clobber

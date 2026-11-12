@@ -690,6 +690,45 @@ echten Server nur einen Nachweis über dessen CA und kann ohne den Code keinen p
 eigene berechnen. Jeder Code beantwortet genau eine Anfrage; wer ihn vorher abruft, verbraucht ihn
 nur (dann neuen Code erzeugen).
 
+### Native Desktop-App (ab Meilenstein 41)
+
+`app/` enthält die native App (Flutter, eine Codebasis für Windows, macOS und Linux). Sie zeigt
+keine Webseite, sondern eine eigene Oberfläche im Dahlia-Design und spricht mit der Dashboard-API.
+Bis alle Bereiche nativ sind, wird die Tauri-App (`desktop/`) weiter gebaut.
+
+| Schritt | Umsetzung |
+| --- | --- |
+| Finden | mDNS `_dahlia._tcp` wie oben, sonst Adresse eintippen |
+| Koppeln | Fingerabdruck oder Kopplungscode wie bei der Tauri-App. Die App trägt nichts in den Zertifikatsspeicher des Systems ein: Sie speichert die CA in `settings.json` und vertraut bei jeder Verbindung nur ihr (`SecurityContext(withTrustedRoots: false)`) |
+| Anmelden | `POST /api/login` mit `remember`; Sitzung und Passwort liegen im Schlüsselspeicher des Systems (Windows-Anmeldeinformationen, macOS-Schlüsselbund, unter Linux `secret-tool`). Ist die Sitzung abgelaufen, meldet die App sich mit dem gespeicherten Passwort an. „Abmelden“ löscht beides |
+| Sprache | Auswahl auf jeder Seite vor der Anmeldung und im Kontomenü, Standard Englisch. Eigene Texte aus `app/assets/locales/`, Fehlermeldungen des Servers aus dessen `locales/<lang>.json` |
+| Start | Begrüßung, Zustand, Apps, Speicher, System, Server-Update |
+
+**Versionsbindung.** App und Server haben immer dieselbe Version. Jede Antwort der API trägt
+`X-Dahlia-Version` (`dahlia_dashboard/version.py`, von `tools/build-packages.sh` gesetzt). Weicht
+sie von der App ab, bricht die App den Aufruf ab und aktualisiert sich auf genau diese Version,
+bevor sie Daten zeigt. Das gilt auch rückwärts. Es spielt keine Rolle, wo das Server-Update
+gestartet wurde (Handy, Browser, automatische Updates oder die App selbst). Startet die App das
+Update, wartet sie, bis der Server mit der neuen Version antwortet, und zieht dann nach. Ein Server
+ohne Header (vor 1.4.0) muss erst über das Dashboard aktualisiert werden.
+
+**Update-Kanal.** Neben dem apt-Repo liegt für jede Version `app/<version>.json` mit Name, Größe,
+SHA-256 und Download-Adresse der Installer (Release-Assets). `.github/workflows/app.yml` erzeugt die
+Datei beim Release (`app.json`), `tools/fetch-app-manifests.sh` sammelt sie für alle Releases ein,
+`tools/sign-repo.sh` signiert sie mit dem Schlüssel des apt-Repos (`<version>.json.sig`). Die App
+enthält den öffentlichen Schlüssel (`app/assets/dahlia-archive-keyring.asc`), prüft die Signatur
+(`app/lib/src/openpgp.dart`, Ed25519) und die Prüfsumme des Downloads und installiert erst dann:
+
+| System | Paket | Installation |
+| --- | --- | --- |
+| Windows | Inno-Setup-Installer, pro Benutzer nach `%LOCALAPPDATA%\Programs\Dahlia` | Installer mit `/VERYSILENT`, keine Rückfrage; er startet die App neu |
+| macOS | `Dahlia.app` als Zip | wird nach dem Beenden der App neben dem alten Bundle entpackt und getauscht, dann geöffnet |
+| Linux | `dahlia_<version>_amd64.deb`, Programm unter `/opt/dahlia` | `pkexec apt-get install --allow-downgrades`, danach Neustart |
+
+Eine Kopie außerhalb dieser Orte (z. B. ein Entwicklungs-Build) aktualisiert sich nicht selbst,
+sondern verweist auf die Release-Seite. Builds ohne `--dart-define=DAHLIA_VERSION` (`dev`) binden
+sich an keine Version.
+
 ### Dateimanager (ab Meilenstein 34)
 
 Seite Dateien im Dashboard, nur für Administratoren (auch lesend, weil sie jede Datei der

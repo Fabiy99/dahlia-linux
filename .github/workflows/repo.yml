@@ -68,8 +68,13 @@ jobs:
       - name: Build and sign
         env:
           DAHLIA_SIGNING_KEY: ${{ secrets.DAHLIA_SIGNING_KEY }}
+          # Desktop app manifests of all releases (app.yml uploads them).
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ inputs.release_tag || github.ref_name }}
         run: |
           tools/build-packages.sh
+          tools/fetch-app-manifests.sh
           tools/sign-repo.sh
 
       - uses: actions/upload-pages-artifact@v3

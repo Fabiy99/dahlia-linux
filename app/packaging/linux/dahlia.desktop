@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Dahlia
+Comment=Dahlia Linux home server
+Exec=/usr/bin/dahlia
+Icon=dahlia
+Terminal=false
+Categories=Network;System;
+StartupWMClass=org.dahlialinux.dahlia
