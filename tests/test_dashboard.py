@@ -825,6 +825,17 @@ def test_disk_tests_routes(env):
     assert client.post("/api/jobs/smart-short/start", headers=CSRF).status_code == 200
 
 
+def test_firewall_rules_endpoint(env):
+    client, agent, _ = logged_in(env)
+    agent.calls.clear()
+    rules = [{"action": "accept", "protocol": "tcp", "ports": "25565", "source": "any",
+              "comment": "Minecraft"}]
+    assert client.post("/api/settings/firewall/rules", json={"rules": rules},
+                       headers=CSRF).status_code == 200
+    assert agent.calls == [("settings.set_firewall_rules", {"rules": rules})]
+    assert client.post("/api/settings/firewall/rules", json={"rules": []}).status_code == 403
+
+
 # --- API tokens -----------------------------------------------------------------
 
 

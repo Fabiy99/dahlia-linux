@@ -600,7 +600,7 @@
             <p class="hint" id="devices-iommu"></p>
             <button id="devices-refresh" data-i18n="common.refresh"></button>
           </article>
-          <article class="card">
+          <article class="card tile wide">
             <h2 data-i18n="settings.firewall_title"></h2>
             <form id="firewall-form">
               <label class="check"><input name="enabled" type="checkbox"><span data-i18n="settings.firewall_enabled"></span></label>
@@ -609,6 +609,38 @@
               <p class="hint" id="firewall-ports"></p>
               <label><span data-i18n="settings.firewall_networks"></span><input name="networks" placeholder="192.168.50.0/24, 10.8.0.0/24"></label>
               <button type="submit" data-i18n="common.save"></button>
+            </form>
+            <h3 data-i18n="fwrules.title"></h3>
+            <p class="hint" data-i18n="fwrules.hint"></p>
+            <table class="fw-rules">
+              <thead><tr>
+                <th data-i18n="fwrules.action"></th><th data-i18n="fwrules.port"></th>
+                <th data-i18n="fwrules.source"></th><th data-i18n="fwrules.comment"></th><th></th>
+              </tr></thead>
+              <tbody id="fw-rules"></tbody>
+            </table>
+            <form id="fw-rule-form" class="fw-rule-form">
+              <label><span data-i18n="fwrules.action"></span>
+                <select name="action">
+                  <option value="accept" data-i18n="fwrules.accept"></option>
+                  <option value="drop" data-i18n="fwrules.drop"></option>
+                </select></label>
+              <label><span data-i18n="fwrules.protocol"></span>
+                <select name="protocol">
+                  <option value="tcp" data-i18n="fwrules.tcp"></option>
+                  <option value="udp" data-i18n="fwrules.udp"></option>
+                  <option value="all" data-i18n="fwrules.all"></option>
+                </select></label>
+              <label><span data-i18n="fwrules.ports"></span><input name="ports" autocomplete="off" placeholder="27015-27030"></label>
+              <label><span data-i18n="fwrules.source"></span>
+                <select name="source_kind">
+                  <option value="local" data-i18n="fwrules.local"></option>
+                  <option value="any" data-i18n="fwrules.any"></option>
+                  <option value="net" data-i18n="fwrules.net"></option>
+                </select></label>
+              <label id="fw-rule-net"><span data-i18n="fwrules.network"></span><input name="network" autocomplete="off" placeholder="192.168.1.20"></label>
+              <label><span data-i18n="fwrules.comment"></span><input name="comment" autocomplete="off" maxlength="64"></label>
+              <button type="submit" class="primary" data-i18n="fwrules.add"></button>
             </form>
           </article>
           <article class="card tile wide" id="wg-card">

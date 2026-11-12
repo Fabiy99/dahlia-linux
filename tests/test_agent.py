@@ -631,6 +631,7 @@ def test_action_list_is_fixed():
         "settings.network",
         "settings.schedules",
         "settings.set_firewall",
+        "settings.set_firewall_rules",
         "settings.set_network",
         "settings.set_schedule",
         "settings.set_spindown",
