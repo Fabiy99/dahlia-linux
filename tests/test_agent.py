@@ -630,6 +630,7 @@ def test_action_list_is_fixed():
         "settings.network_layout",
         "settings.schedules",
         "settings.set_firewall",
+        "settings.set_firewall_rules",
         "settings.set_network",
         "settings.set_network_layout",
         "settings.set_schedule",
