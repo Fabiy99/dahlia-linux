@@ -16,7 +16,7 @@ Kein Abo, keine Lizenzschlüssel. Lizenz: GPLv3.
 
 ### Stand
 
-Aktuelle Version: 1.1.0. Die ISO hängt am jeweiligen
+Aktuelle Version: 1.2.0. Die ISO hängt am jeweiligen
 [GitHub-Release](https://github.com/Fabiy99/dahlia-linux/releases). Installierte Server holen
 Updates über das apt-Repo, im Dashboard unter "Updates".
 
@@ -96,7 +96,7 @@ Details: [docs/de/architektur.md](docs/de/architektur.md)
 
 ### Meilensteine
 
-Erledigt: 1 bis 24. Offen: 25 bis 36.
+Erledigt: 1 bis 36.
 
 1. Repo-Gerüst, Lizenz, CI-Linting
 2. Pakete und apt-Repo, ISO mit Preseed installiert sich in QEMU
@@ -167,7 +167,7 @@ No subscription, no license keys. License: GPLv3.
 
 ### Status
 
-Current version: 1.1.0. The ISO is attached to each
+Current version: 1.2.0. The ISO is attached to each
 [GitHub release](https://github.com/Fabiy99/dahlia-linux/releases). Installed servers get
 updates from the apt repository, in the dashboard under "Updates".
 
@@ -243,7 +243,7 @@ Details: [docs/en/architecture.md](docs/en/architecture.md)
 
 ### Milestones
 
-Done: 1 to 24. Open: 25 to 36.
+Done: 1 to 36.
 
 1. Repository skeleton, license, CI linting
 2. Packages and apt repository, preseeded ISO installs in QEMU
