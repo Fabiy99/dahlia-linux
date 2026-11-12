@@ -606,6 +606,7 @@ async function loadOverview() {
     updateAppsBadge(data.installed);
   }).catch(tileError("overview-apps"));
   api("GET", "jobs").then(renderOverviewJobs).catch(tileError("overview-jobs"));
+  loadHistory().catch(sayError);
   api("GET", "hardware").then((hw) => {
     renderOverviewDisks(hw);
     const board = [hw.board.board_vendor, hw.board.board_name].filter(Boolean).join(" ")
@@ -632,6 +633,128 @@ function renderOverviewDisks(hw) {
     box.append(item);
   }
   if (!hw.disks.length) box.append(el("p", "empty", t("storage.none")));
+}
+
+// --- history --------------------------------------------------------------------
+
+const HISTORY_RANGES = ["hour", "day", "week", "month", "year"];
+let historyRange = "day";
+
+async function loadHistory() {
+  const data = await api("GET", `history?range=${historyRange}`);
+  renderHistoryRange();
+  const stamps = Array.from({ length: data.points }, (_, i) => data.start + i * data.step);
+  const s = data.series;
+  // All interfaces together, per direction.
+  const sum = (prefix) => {
+    const keys = Object.keys(s).filter((k) => k.startsWith(prefix));
+    if (!keys.length) return null;
+    return stamps.map((_, i) => {
+      const vals = keys.map((k) => s[k][i]).filter((v) => v !== null);
+      return vals.length ? vals.reduce((a, b) => a + b, 0) : null;
+    });
+  };
+  const pct = (v) => `${Math.round(v)} %`;
+  renderChart("chart-cpu", stamps, [s.cpu], { max: 100, fmt: pct });
+  renderChart("chart-mem", stamps, [s.mem], { max: 100, fmt: pct });
+  renderChart("chart-net", stamps, [sum("net_rx:"), sum("net_tx:")],
+              { fmt: formatRate, legend: [t("history.rx"), t("history.tx")] });
+  const hasTemp = Boolean(s.temp_cpu && s.temp_cpu.some((v) => v !== null));
+  document.getElementById("chart-temp").hidden = !hasTemp;
+  if (hasTemp) renderChart("chart-temp", stamps, [s.temp_cpu], { fmt: formatTemp });
+  document.getElementById("history-empty").hidden = Object.keys(s).length > 0;
+}
+
+function renderHistoryRange() {
+  const box = document.getElementById("history-range");
+  if (!box.firstElementChild) {
+    for (const r of HISTORY_RANGES) {
+      const b = el("button", "", tv("history_range", r));
+      b.type = "button";
+      b.dataset.range = r;
+      b.addEventListener("click", () => {
+        historyRange = r;
+        loadHistory().catch(sayError);
+      });
+      box.append(b);
+    }
+  }
+  for (const b of box.children) b.setAttribute("aria-pressed", String(b.dataset.range === historyRange));
+}
+
+function axisTime(sec) {
+  const d = new Date(sec * 1000);
+  if (historyRange === "hour") return d.toLocaleTimeString(lang, { hour: "2-digit", minute: "2-digit" });
+  // A day starts and ends at the same clock time; the weekday tells them apart.
+  if (historyRange === "day") {
+    return d.toLocaleString(lang, { weekday: "short", hour: "2-digit", minute: "2-digit" });
+  }
+  if (historyRange === "year") return d.toLocaleDateString(lang, { month: "short", year: "numeric" });
+  return d.toLocaleDateString(lang, { day: "2-digit", month: "2-digit" });
+}
+
+// Line chart without a library: one polyline per run of values, gaps stay empty.
+function renderChart(id, stamps, lines, opts) {
+  const fig = document.getElementById(id);
+  const plot = fig.querySelector(".plot");
+  const stats = fig.querySelector("figcaption small");
+  const w = 600;
+  const h = 160;
+  const values = lines.filter(Boolean).flat().filter((v) => v !== null);
+  const peak = values.length ? Math.max(...values) : 0;
+  const max = opts.max ?? (peak > 0 ? peak * 1.1 : 1);
+  const n = Math.max(stamps.length - 1, 1);
+  const ns = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(ns, "svg");
+  svg.setAttribute("viewBox", `0 0 ${w} ${h}`);
+  svg.setAttribute("preserveAspectRatio", "none");
+  const grid = document.createElementNS(ns, "path");
+  grid.setAttribute("class", "grid");
+  grid.setAttribute("d", `M0 ${h / 2} H${w} M0 ${h / 4} H${w} M0 ${(3 * h) / 4} H${w}`);
+  svg.append(grid);
+  lines.forEach((series, li) => {
+    if (!series) return;
+    let run = [];
+    const flush = () => {
+      if (run.length > 1) {
+        const pts = run.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(" ");
+        if (li === 0 && lines.length === 1) {
+          const area = document.createElementNS(ns, "polygon");
+          area.setAttribute("class", "area");
+          area.setAttribute("points", `${run[0][0].toFixed(1)},${h} ${pts} ${run.at(-1)[0].toFixed(1)},${h}`);
+          svg.append(area);
+        }
+        const pl = document.createElementNS(ns, "polyline");
+        pl.setAttribute("class", li ? "line second" : "line");
+        pl.setAttribute("points", pts);
+        svg.append(pl);
+      }
+      run = [];
+    };
+    series.forEach((v, i) => {
+      if (v === null) { flush(); return; }
+      run.push([(i * w) / n, h - (Math.min(v, max) / max) * (h - 4) - 2]);
+    });
+    flush();
+  });
+  const label = (cls, text) => el("span", `axis ${cls}`, text);
+  plot.replaceChildren(svg, label("top", opts.fmt(max)), label("start", axisTime(stamps[0])),
+                       label("end", axisTime(stamps.at(-1))));
+  stats.replaceChildren();
+  if (opts.legend) {
+    const leg = el("span", "legend");
+    opts.legend.forEach((name, i) => {
+      const item = el("span", "", name);
+      item.prepend(el("i", i ? "second" : ""));
+      leg.append(item);
+    });
+    stats.append(leg);
+  }
+  const first = (lines[0] || []).filter((v) => v !== null);
+  if (first.length && !opts.legend) {
+    const avg = first.reduce((a, b) => a + b, 0) / first.length;
+    stats.textContent = t("history.stats", { avg: opts.fmt(avg), max: opts.fmt(Math.max(...first)) });
+  }
 }
 
 // --- storage --------------------------------------------------------------------
@@ -2760,7 +2883,7 @@ async function loadAccount() {
   document.querySelector("#hostname-form [name=hostname]").value = info.hostname;
   // Each card loads on its own; one failing part does not hide the others.
   await Promise.all([loadTime(), loadNetwork(), loadSpindown(), loadFirewall(), loadSchedules(),
-               loadNotify(), loadUps(), loadVpn(), loadTotp(), loadTokens()]
+               loadNotify(), loadUps(), loadInflux(), loadVpn(), loadTotp(), loadTokens()]
     .map((p) => p.catch(sayError)));
 }
 
@@ -3301,6 +3424,58 @@ function bindTokens() {
   }));
 }
 
+// --- history: InfluxDB export -----------------------------------------------------
+
+function renderInfluxForm() {
+  const f = document.getElementById("influx-form").elements;
+  document.getElementById("influx-fields").hidden = !f.enabled.checked;
+  document.getElementById("influx-v2").hidden = f.version.value !== "2";
+  document.getElementById("influx-v1").hidden = f.version.value !== "1";
+}
+
+async function loadInflux() {
+  const data = await api("GET", "history/influx");
+  const c = data.settings;
+  const f = document.getElementById("influx-form").elements;
+  f.enabled.checked = c.enabled;
+  f.version.value = String(c.version);
+  for (const k of ["url", "org", "bucket", "database", "username"]) f[k].value = c[k];
+  f.token.value = "";
+  f.token.placeholder = c.has_token ? t("notify.secret_kept") : "";
+  f.password.value = "";
+  f.password.placeholder = c.has_password ? t("notify.secret_kept") : "";
+  renderInfluxForm();
+  const dl = document.getElementById("influx-status");
+  dl.replaceChildren();
+  if (c.enabled && data.last) {
+    const when = new Date(data.last.time * 1000).toLocaleString(lang);
+    fact(dl, "influx.last", data.last.ok ? badge(t("influx.ok", { time: when }), "ok")
+      : badge(t("influx.failed", { time: when }), "crit"));
+    if (!data.last.ok) fact(dl, "influx.error", data.last.error);
+  }
+}
+
+function bindInflux() {
+  const form = document.getElementById("influx-form");
+  form.elements.enabled.addEventListener("change", renderInfluxForm);
+  form.elements.version.addEventListener("change", renderInfluxForm);
+  form.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const f = form.elements;
+    const body = { enabled: f.enabled.checked, version: Number(f.version.value), url: f.url.value.trim(),
+                   org: f.org.value.trim(), bucket: f.bucket.value.trim(),
+                   database: f.database.value.trim(), username: f.username.value.trim() };
+    // Empty secret field: keep the saved one.
+    if (f.token.value) body.token = f.token.value;
+    if (f.password.value) body.password = f.password.value;
+    guarded(e.submitter, async () => {
+      await api("POST", "history/influx", body);
+      say(t(body.enabled ? "influx.saved" : "influx.off"), "ok");
+      await loadInflux();
+    });
+  });
+}
+
 function bindNotifyUps() {
   for (const form of document.querySelectorAll("form[data-channel]")) {
     form.addEventListener("submit", (e) => {
@@ -3599,6 +3774,7 @@ async function start() {
   bindFolderPicker();
   bindNotifyUps();
   bindTokens();
+  bindInflux();
   bindAutoUpdates();
   bindRootSnapshots();
   bindParity();

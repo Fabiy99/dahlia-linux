@@ -576,6 +576,23 @@ def test_shares_endpoints(env):
     assert client.post("/api/shares/media/remove").status_code == 403
 
 
+def test_history_endpoints(env):
+    client, agent, _ = logged_in(env)
+    agent.calls.clear()
+    client.get("/api/history?range=week")
+    client.get("/api/history/influx")
+    client.post("/api/history/influx", json={"enabled": True, "url": "http://nas:8086",
+                                             "org": "home", "bucket": "dahlia"}, headers=CSRF)
+    assert agent.calls == [
+        ("history.get", {"range": "week"}),
+        ("history.influx", {}),
+        ("history.set_influx", {"enabled": True, "url": "http://nas:8086", "version": 2,
+                                "org": "home", "bucket": "dahlia", "database": "",
+                                "username": ""}),
+    ]
+    assert client.post("/api/history/influx", json={"enabled": False}).status_code == 403
+
+
 def test_remotes_endpoints(env):
     client, agent, _ = logged_in(env)
     agent.calls.clear()
@@ -813,7 +830,7 @@ def test_api_token_reads_values_only(env):
     api = TestClient(client.app)  # no cookie
     bearer = {"Authorization": f"Bearer {token}"}
     for path in ("/api/system", "/api/stats", "/api/storage", "/api/hardware", "/api/jobs",
-                 "/api/docker", "/api/parity"):
+                 "/api/docker", "/api/parity", "/api/history"):
         assert api.get(path, headers=bearer).status_code == 200, path
     assert api.get("/api/system").status_code == 401
     wrong = {"Authorization": "Bearer dahlia_wrong"}
@@ -821,6 +838,7 @@ def test_api_token_reads_values_only(env):
     # Not for settings, secrets or changes.
     assert api.get("/api/notify", headers=bearer).status_code == 401
     assert api.get("/api/tokens", headers=bearer).status_code == 401
+    assert api.get("/api/history/influx", headers=bearer).status_code == 401
     assert api.post("/api/system/reboot", headers={**bearer, **CSRF}).status_code == 401
     assert json.loads((cfg.state_dir / "tokens.json").read_text())["tokens"][0]["last_used"]
 

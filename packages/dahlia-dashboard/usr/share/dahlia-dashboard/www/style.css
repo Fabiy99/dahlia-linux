@@ -487,3 +487,28 @@ code.pubkey { display: block; font-size: .78rem; overflow-wrap: anywhere; backgr
 .token-list { list-style: none; padding: 0; margin: 0 0 1rem; display: grid; gap: .5rem; }
 .token-list .token { display: flex; justify-content: space-between; align-items: center; gap: 1rem; }
 #token-new pre { white-space: pre-wrap; word-break: break-all; font-size: .78rem; }
+
+/* history charts */
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: .5rem; overflow: hidden; }
+.seg button { border: 0; border-radius: 0; background: transparent; padding: .3rem .7rem; font-size: .82rem; }
+.seg button + button { border-left: 1px solid var(--line); }
+.seg button[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.charts { display: grid; gap: 1.25rem; grid-template-columns: repeat(auto-fill, minmax(22rem, 1fr)); }
+.chart { margin: 0; min-width: 0; }
+.chart figcaption { display: flex; justify-content: space-between; gap: .5rem; align-items: baseline; margin-bottom: .35rem; }
+.chart figcaption b { font-size: .9rem; font-weight: 600; }
+.chart figcaption small { color: var(--muted); font-size: .78rem; text-align: right; }
+.chart .plot { position: relative; height: 8rem; border-left: 1px solid var(--track); border-bottom: 1px solid var(--track); }
+.chart svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+.chart .grid { stroke: var(--track); stroke-width: 1; stroke-dasharray: 3 3; vector-effect: non-scaling-stroke; }
+.chart .line { fill: none; stroke: var(--accent); stroke-width: 1.6; vector-effect: non-scaling-stroke; stroke-linejoin: round; }
+.chart .line.second { stroke: var(--ok); }
+.chart .area { fill: color-mix(in srgb, var(--accent) 14%, transparent); stroke: none; }
+.chart .axis { position: absolute; font-size: .7rem; color: var(--muted); pointer-events: none; }
+.chart .axis.top { top: 0; left: .3rem; }
+.chart .axis.start { bottom: -1.2rem; left: 0; }
+.chart .axis.end { bottom: -1.2rem; right: 0; }
+.chart { padding-bottom: 1.2rem; }
+.chart .legend { display: inline-flex; gap: .6rem; margin-left: .4rem; }
+.chart .legend i { display: inline-block; width: .7rem; height: .2rem; vertical-align: middle; margin-right: .25rem; background: var(--accent); }
+.chart .legend i.second { background: var(--ok); }
