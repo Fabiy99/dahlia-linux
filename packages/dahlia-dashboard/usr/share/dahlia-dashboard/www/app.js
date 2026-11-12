@@ -2363,14 +2363,20 @@ function bindParity() {
 
 const STARTABLE = ["mover", "snapraid-sync", "snapraid-scrub", "backup", "smart-short", "smart-long"];
 
+let jobsTimer = null;
+
 async function loadJobs() {
+  clearTimeout(jobsTimer);
   const jobs = await api("GET", "jobs");
   const tbody = document.getElementById("jobs");
   tbody.replaceChildren();
+  let running = false;
   for (const [name, s] of Object.entries(jobs)) {
+    const active = s.active === "active" || s.active === "activating";
+    running = running || active;
     const tr = el("tr");
     cell(tr, el("b", "", t(`job.${name}`)));
-    cell(tr, badge(tv("job_state", s.active), s.active === "active" ? "info" : ""));
+    cell(tr, badge(tv("job_state", s.active), active ? "info" : ""));
     cell(tr, s.result ? badge(tv("job_result", s.result), RESULT_KIND[s.result] || "")
       : badge(t("jobs.never"), ""));
     cell(tr, s.started || "-");
@@ -2381,11 +2387,14 @@ async function loadJobs() {
         say(t("jobs.started", { job: t(`job.${name}`) }), "ok");
         await loadJobs();
       });
-      b.disabled = s.active === "active" || s.active === "activating";
+      b.disabled = active;
       td.append(b);
     }
     tbody.append(tr);
   }
+  // A started job (mover, SnapRAID sync/scrub, SMART test, ...) can run for a
+  // long time; keep the table live instead of only showing its state once.
+  if (running) jobsTimer = setTimeout(() => { if (current === "jobs") guarded(null, loadJobs); }, 5000);
 }
 
 // --- automatic security updates -------------------------------------------------
