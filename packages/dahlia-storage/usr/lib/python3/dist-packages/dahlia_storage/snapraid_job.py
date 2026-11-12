@@ -37,6 +37,7 @@ from . import snapraid, state
 SNAPRAID = os.environ.get("DAHLIA_SNAPRAID", "snapraid")
 RUNS_PATH = os.environ.get("DAHLIA_SNAPRAID_RUNS", "/var/lib/dahlia/snapraid.json")
 FIX_LOG = os.environ.get("DAHLIA_SNAPRAID_FIX_LOG", "/var/log/dahlia/snapraid-fix.log")
+HISTORY_MAX = 100
 FIX_COUNT = re.compile(r"^\s*(\d+)\s+(recovered|unrecoverable) errors\s*$")
 
 
@@ -111,8 +112,11 @@ def save_runs(runs: dict) -> None:
 
 
 def record(kind: str, entry: dict) -> None:
+    """Keep the last run per kind and a history of the last HISTORY_MAX runs."""
     runs = load_runs()
     runs[kind] = entry
+    history = runs.get("history") if isinstance(runs.get("history"), list) else []
+    runs["history"] = [*history, {"kind": kind, **entry}][-HISTORY_MAX:]
     save_runs(runs)
 
 
@@ -270,6 +274,7 @@ def describe(st: state.State) -> dict:
                 out["busy"] = True
     out["status"] = runs.get("status")
     out["runs"] = {k: runs[k] for k in ("sync", "scrub", "fix") if k in runs}
+    out["history"] = runs.get("history") if isinstance(runs.get("history"), list) else []
     return out
 
 
