@@ -210,8 +210,10 @@ function say(text, kind) {
 
 function errorText(err) {
   if (err instanceof ApiError) return err.detail ? `${t(err.key)} (${err.detail})` : t(err.key);
+  // A bug in the dashboard's own code, not a network problem; do not blame
+  // the server for it.
   console.error(err);
-  return t("error.network");
+  return t("error.unexpected");
 }
 
 function sayError(err) {
@@ -554,7 +556,7 @@ function setSidebar(info) {
 }
 
 const STATUS_KIND = { running: "ok", partial: "warn", restarting: "warn", exited: "", created: "",
-                      paused: "warn", dead: "crit", missing: "crit" };
+                      paused: "warn", dead: "crit", missing: "crit", busy: "warn" };
 const DOT_KIND = { ok: "ok", warn: "warn", crit: "crit", "": "" };
 
 function primaryUrl(app) {
@@ -1364,11 +1366,14 @@ function bindCrypt() {
 let catalogApps = [];
 let gpuAvailable = false;
 
-// Install and update run in the background on the server; poll until done.
+// Install and update run in the background on the server; poll until done,
+// refreshing the visible list each time so progress (e.g. the "busy"
+// status) is not just shown once at the start and once at the end.
 async function waitForAppJob(id) {
   for (let i = 0; i < 360; i++) {
     await new Promise((r) => setTimeout(r, 5000));
     const job = await api("GET", `apps/${id}/job`);
+    if (current === "apps") await loadApps();
     if (!["active", "activating"].includes(job.active)) return job;
   }
   return null;
@@ -2358,14 +2363,20 @@ function bindParity() {
 
 const STARTABLE = ["mover", "snapraid-sync", "snapraid-scrub", "backup", "smart-short", "smart-long"];
 
+let jobsTimer = null;
+
 async function loadJobs() {
+  clearTimeout(jobsTimer);
   const jobs = await api("GET", "jobs");
   const tbody = document.getElementById("jobs");
   tbody.replaceChildren();
+  let running = false;
   for (const [name, s] of Object.entries(jobs)) {
+    const active = s.active === "active" || s.active === "activating";
+    running = running || active;
     const tr = el("tr");
     cell(tr, el("b", "", t(`job.${name}`)));
-    cell(tr, badge(tv("job_state", s.active), s.active === "active" ? "info" : ""));
+    cell(tr, badge(tv("job_state", s.active), active ? "info" : ""));
     cell(tr, s.result ? badge(tv("job_result", s.result), RESULT_KIND[s.result] || "")
       : badge(t("jobs.never"), ""));
     cell(tr, s.started || "-");
@@ -2376,11 +2387,14 @@ async function loadJobs() {
         say(t("jobs.started", { job: t(`job.${name}`) }), "ok");
         await loadJobs();
       });
-      b.disabled = s.active === "active" || s.active === "activating";
+      b.disabled = active;
       td.append(b);
     }
     tbody.append(tr);
   }
+  // A started job (mover, SnapRAID sync/scrub, SMART test, ...) can run for a
+  // long time; keep the table live instead of only showing its state once.
+  if (running) jobsTimer = setTimeout(() => { if (current === "jobs") guarded(null, loadJobs); }, 5000);
 }
 
 // --- automatic security updates -------------------------------------------------
