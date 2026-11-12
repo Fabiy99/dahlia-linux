@@ -60,6 +60,10 @@ case "$1" in
             if ! grep -q '"nfs": true' /etc/dahlia/shares.json 2>/dev/null; then
                 systemctl disable --now nfs-server.service >/dev/null 2>&1 || true
             fi
+            # rsyslog only forwards to a remote syslog server; off until that is set up.
+            if [ ! -e /etc/rsyslog.d/90-dahlia-remote.conf ]; then
+                systemctl disable --now rsyslog.service >/dev/null 2>&1 || true
+            fi
             # NUT stays off until a UPS is set up in the dashboard.
             if [ ! -e /etc/dahlia/ups.json ]; then
                 systemctl disable --now nut-monitor.service nut-server.service \

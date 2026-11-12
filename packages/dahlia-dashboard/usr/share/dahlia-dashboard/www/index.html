@@ -294,6 +294,17 @@
               <div class="actions"><button type="submit" class="primary" data-i18n="common.save"></button></div>
             </form>
           </article>
+          <article class="card tile wide">
+            <h2 data-i18n="parity.history_title"></h2>
+            <table>
+              <thead><tr>
+                <th data-i18n="parity.history_when"></th><th data-i18n="parity.history_kind"></th>
+                <th data-i18n="parity.history_duration"></th><th data-i18n="parity.history_result"></th>
+                <th data-i18n="parity.history_detail"></th>
+              </tr></thead>
+              <tbody id="parity-history"></tbody>
+            </table>
+          </article>
         </div>
       </section>
 
@@ -301,6 +312,8 @@
         <div class="section-head">
           <h2 data-i18n="apps.installed"></h2>
           <button id="apps-update-all" class="primary" hidden></button>
+          <button id="apps-start-all" data-i18n="apps.start_all" hidden></button>
+          <button id="apps-stop-all" data-i18n="apps.stop_all" hidden></button>
           <button id="apps-custom" data-i18n="custom.add"></button>
         </div>
         <div id="apps-installed" class="app-grid"></div>
@@ -551,6 +564,24 @@
               <label><span data-i18n="settings.spindown_default"></span><select name="default"></select></label>
               <div id="spindown-disks" class="field-group"></div>
               <p class="hint" data-i18n="settings.spindown_hint"></p>
+              <button type="submit" data-i18n="common.save"></button>
+            </form>
+          </article>
+          <article class="card">
+            <h2 data-i18n="syslog.title"></h2>
+            <form id="syslog-form">
+              <label class="check"><input name="enabled" type="checkbox"><span data-i18n="syslog.enabled"></span></label>
+              <label><span data-i18n="syslog.host"></span><input name="host" data-i18n-placeholder="syslog.host_hint" autocomplete="off"></label>
+              <div class="field-group">
+                <label><span data-i18n="syslog.port"></span><input name="port" type="number" min="1" max="65535"></label>
+                <label><span data-i18n="syslog.protocol"></span><select name="protocol">
+                  <option value="udp" data-i18n="syslog.udp"></option>
+                  <option value="tcp" data-i18n="syslog.tcp"></option>
+                </select></label>
+              </div>
+              <label><span data-i18n="syslog.severity"></span><select name="severity"></select></label>
+              <p class="hint" id="syslog-state"></p>
+              <p class="hint" data-i18n="syslog.hint"></p>
               <button type="submit" data-i18n="common.save"></button>
             </form>
           </article>
