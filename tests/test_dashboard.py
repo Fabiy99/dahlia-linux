@@ -566,6 +566,13 @@ def test_power_and_devices_endpoints(env):
     assert client.post("/api/settings/power", json={"governor": "performance"}).status_code == 403
 
 
+def test_health_endpoint(env):
+    client, agent, _ = logged_in(env)
+    agent.calls.clear()
+    client.get("/api/health")
+    assert agent.calls == [("system.health", {})]
+
+
 def test_ops_endpoints(env):
     client, agent, _ = logged_in(env)
     agent.calls.clear()

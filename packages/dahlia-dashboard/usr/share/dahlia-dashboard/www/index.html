@@ -119,6 +119,12 @@
 
       <section id="view-overview" hidden>
         <div class="tiles">
+          <article class="card tile wide" id="health-card">
+            <header><svg><use href="#i-parity"/></svg><h2 data-i18n="check.title"></h2>
+              <button class="link-btn" id="health-refresh" data-i18n="check.again"></button></header>
+            <p id="health-summary" class="health-summary" data-i18n="check.running"></p>
+            <ul id="health-list" class="health-list"></ul>
+          </article>
           <article class="card tile">
             <header><svg><use href="#i-server"/></svg><h2 data-i18n="overview.system"></h2></header>
             <dl id="system-info" class="facts"></dl>
