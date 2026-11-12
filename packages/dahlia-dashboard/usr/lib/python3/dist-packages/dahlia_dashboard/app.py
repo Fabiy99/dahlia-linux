@@ -234,6 +234,10 @@ class SpindownBody(BaseModel):
     disks: dict[str, int] = {}
 
 
+class GovernorBody(BaseModel):
+    governor: str
+
+
 class FirewallBody(BaseModel):
     enabled: bool
     networks: list[str] = []
@@ -823,6 +827,14 @@ def create_app(cfg: Config | None = None) -> FastAPI:
     def hardware():
         return agent("system.hardware")
 
+    @app.get("/api/devices", dependencies=authed)
+    def devices():
+        return agent("system.devices")
+
+    @app.get("/api/health", dependencies=authed)
+    def health():
+        return agent("system.health")
+
     @app.post("/api/diagnostics", dependencies=changing)
     def diagnostics_create():
         return agent("system.diagnostics")
@@ -883,6 +895,14 @@ def create_app(cfg: Config | None = None) -> FastAPI:
     @app.post("/api/settings/spindown", dependencies=changing)
     def settings_set_spindown(body: SpindownBody):
         return agent("settings.set_spindown", body.model_dump())
+
+    @app.get("/api/settings/power", dependencies=authed)
+    def settings_power():
+        return agent("power.get")
+
+    @app.post("/api/settings/power", dependencies=changing)
+    def settings_set_power(body: GovernorBody):
+        return agent("power.set_governor", body.model_dump())
 
     @app.get("/api/settings/firewall", dependencies=authed)
     def settings_firewall():
