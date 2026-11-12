@@ -281,6 +281,8 @@ Protokoll: eine Anfrage pro Verbindung, je eine JSON-Zeile hin und zurück.
 | `settings.time` / `settings.set_time` | `timezone`, `ntp` | `timedatectl set-timezone`, `set-ntp` |
 | `settings.network` / `settings.set_network` | `mode` (`dhcp`/`static`), `address` (CIDR), `gateway`, `dns` | `/etc/network/interfaces`, Anwendung über `dahlia-network` mit Rückfall |
 | `settings.confirm_network` | – | bestätigt die neue Netzwerkeinstellung |
+| `settings.network_layout` / `settings.set_network_layout` | `nics`, `bond_mode` (`active-backup`/`802.3ad`/`balance-alb`), `bridge`, `vlans` (`id`, `mode` `static`/`manual`, `address`) | schreibt `/etc/network/interfaces` ganz neu, Anwendung wie oben mit Rückfall |
+| `settings.set_wol` | `port`, `enabled` | `ethtool -s <Port> wol g\|d`, beim Booten `dahlia-wol@<Port>.service` |
 | `settings.spindown` / `settings.set_spindown` | `default`, `disks` (Seriennummer → Minuten) | `/etc/dahlia/spindown.json`, `hdparm -S` |
 | `power.get` / `power.set_governor` | `governor` (einer der vom Kernel angebotenen) | cpufreq in `/sys`, dauerhaft über `/etc/tmpfiles.d/dahlia-cpu-governor.conf` |
 | `system.devices` | - | PCI (`lspci -vmm -nn -k`: Klasse, IDs, Treiber, IOMMU-Gruppe) und USB (`lsusb`) |
@@ -515,6 +517,16 @@ Einstellungen (M9b):
   tauscht die Dateien und startet es neu. Wird die Änderung nicht innerhalb von
   180 Sekunden über `settings.confirm_network` bestätigt, stellt sie die alte
   Konfiguration wieder her.
+- Netzwerk-Aufbau (M31): Anschlüsse → `bond0` (ab zwei Anschlüssen, ifenslave) → `br0`
+  (optional, bridge-utils) → VLANs `<Haupt>.<ID>` (feste Adresse ohne Gateway oder ohne
+  Adresse). Die IPv4-Einstellung der Hauptschnittstelle zieht mit auf `bond0` bzw. `br0`.
+  Die Datei wird als Ganzes neu geschrieben (Kopfzeile „Written by dahlia-agent“);
+  `dahlia-network apply` nimmt alle Schnittstellen der alten Datei herunter (VLANs und
+  Bridge zuerst) und startet die `auto`-Schnittstellen der neuen, mit demselben Rückfall.
+  Eine Adressänderung danach lässt Bridge- und Bond-Optionen stehen.
+- Wake-on-LAN (M31): je Anschluss mit Unterstützung für Magic Packet (`Supports Wake-on`
+  enthält `g`); sofort per `ethtool` und bei jedem Start über `dahlia-wol@<Port>.service`,
+  weil Treiber die Einstellung beim Booten zurücksetzen.
 - Spindown: Standard für alle drehenden Platten plus Werte pro Seriennummer.
   `dahlia-spindown.service` wendet sie beim Booten an, eine udev-Regel bei neu
   angeschlossenen Platten. SSDs und NVMe werden übersprungen.
