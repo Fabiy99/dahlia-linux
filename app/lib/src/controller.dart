@@ -15,6 +15,9 @@ import 'strings.dart';
 
 enum Stage { starting, connect, fingerprint, connecting, login, update, home }
 
+/// Area shown in Stage.home, picked in the top bar.
+enum Area { home, apps }
+
 typedef Assets = Future<String> Function(String path);
 
 class Controller extends ChangeNotifier {
@@ -35,6 +38,7 @@ class Controller extends ChangeNotifier {
   Settings settings = Settings();
   Strings strings = Strings('en', const {});
   Stage stage = Stage.starting;
+  Area area = Area.home;
 
   /// Locale key of the last error, shown on the current stage.
   String? error;
@@ -53,6 +57,11 @@ class Controller extends ChangeNotifier {
   /// Login needs the second factor.
   bool needsCode = false;
   bool busy = false;
+
+  void go(Area a) {
+    area = a;
+    notifyListeners();
+  }
 
   String t(String key, [Map<String, Object?> vars = const {}]) => strings.t(key, vars);
 
@@ -261,6 +270,7 @@ class Controller extends ChangeNotifier {
       await secrets.write(s.host, 'password', null);
     }
     user = null;
+    area = Area.home;
     _set(Stage.login);
   }
 

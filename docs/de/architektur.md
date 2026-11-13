@@ -702,7 +702,8 @@ Bis alle Bereiche nativ sind, wird die Tauri-App (`desktop/`) weiter gebaut.
 | Koppeln | Fingerabdruck oder Kopplungscode wie bei der Tauri-App. Die App trägt nichts in den Zertifikatsspeicher des Systems ein: Sie speichert die CA in `settings.json` und vertraut bei jeder Verbindung nur ihr (`SecurityContext(withTrustedRoots: false)`) |
 | Anmelden | `POST /api/login` mit `remember`; Sitzung und Passwort liegen im Schlüsselspeicher des Systems (Windows-Anmeldeinformationen, macOS-Schlüsselbund, unter Linux `secret-tool`). Ist die Sitzung abgelaufen, meldet die App sich mit dem gespeicherten Passwort an. „Abmelden“ löscht beides |
 | Sprache | Auswahl auf jeder Seite vor der Anmeldung und im Kontomenü, Standard Englisch. Eigene Texte aus `app/assets/locales/`, Fehlermeldungen des Servers aus dessen `locales/<lang>.json` |
-| Start | Begrüßung, Zustand, Apps, Speicher, System, Server-Update |
+| Start | Begrüßung, Zustand, Apps, Speicher, System, Server-Update. Eine laufende App öffnet ihre Weboberfläche, jede andere führt zu Apps |
+| Apps (ab Meilenstein 42) | Wie die Seite Apps im Dashboard, gleiche API: installierte Apps öffnen, starten, stoppen, aktualisieren (auch alle), entfernen mit oder ohne Daten; alle starten oder stoppen; Katalog mit Suche und Kategorien, „Katalog aktualisieren“. Installieren fragt Ort (System-SSD `/srv` oder Array `/mnt/user`, Array vorgewählt, wenn eingehängt) und die Ordner der App über den Ordnerwähler (`GET /api/files`, `POST /api/files/mkdir`); geänderte Ordner gehen als volle Pfade in `folders`. Installation und Update laufen auf dem Server; die App fragt `GET /api/apps/<id>/job` alle 3 s ab und meldet das Ergebnis auch, wenn man den Bereich verlassen hat. App-Symbole (SVG oder Bild) kommen von `/app-icons/` |
 
 **Versionsbindung.** App und Server haben immer dieselbe Version. Jede Antwort der API trägt
 `X-Dahlia-Version` (`dahlia_dashboard/version.py`, von `tools/build-packages.sh` gesetzt). Weicht

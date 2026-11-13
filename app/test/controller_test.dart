@@ -96,6 +96,24 @@ void main() {
     again.dispose();
   });
 
+  test('areas of the top bar; signing out goes back to the start page', () async {
+    final c = make();
+    await c.start();
+    await c.choose(fake.host);
+    await c.confirmFingerprint();
+    await c.login('fabian', 'pw', save: false);
+    expect(c.area, Area.home);
+    var told = 0;
+    c.addListener(() => told++);
+    c.go(Area.apps);
+    expect(c.area, Area.apps);
+    expect(told, 1);
+    await c.logout();
+    expect(c.stage, Stage.login);
+    expect(c.area, Area.home);
+    c.dispose();
+  });
+
   test('another server version leads to the update, also later', () async {
     final c = make();
     await c.start();
