@@ -685,7 +685,8 @@ are native, the Tauri app (`desktop/`) is still built.
 | Pair | Fingerprint or pairing code as with the Tauri app. The app adds nothing to the system's certificate store: it keeps the CA in `settings.json` and trusts only that CA on every connection (`SecurityContext(withTrustedRoots: false)`) |
 | Sign in | `POST /api/login` with `remember`; session and password live in the system's secret store (Windows Credential Manager, macOS Keychain, `secret-tool` on Linux). When the session has expired, the app signs in with the saved password. "Sign out" deletes both |
 | Language | Picker on every page before sign-in and in the account menu, English by default. Own texts from `app/assets/locales/`, server error messages from its `locales/<lang>.json` |
-| Home | Greeting, health, apps, storage, system, server update |
+| Home | Greeting, health, apps, storage, system, server update. A running app opens its web interface, any other leads to Apps |
+| Apps (from milestone 42) | Like the dashboard's Apps page, same API: open, start, stop, update (also all at once) and remove installed apps with or without their data; start or stop all; catalog with search and categories, "Refresh catalog". Installing asks for the location (system SSD `/srv` or array `/mnt/user`, the array preselected when mounted) and the app's folders through the folder picker (`GET /api/files`, `POST /api/files/mkdir`); changed folders are sent as full paths in `folders`. Install and update run on the server; the app polls `GET /api/apps/<id>/job` every 3 s and reports the result also after leaving the area. App icons (SVG or bitmap) come from `/app-icons/` |
 
 **Version binding.** App and server always have the same version. Every API response carries
 `X-Dahlia-Version` (`dahlia_dashboard/version.py`, set by `tools/build-packages.sh`). If it differs

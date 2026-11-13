@@ -11,6 +11,9 @@ class FakeDahlia {
   String version = '1.4.0';
   final requests = <HttpRequest>[];
 
+  /// Answers of `/api/apps/<id>/job`, one per poll; the last one repeats.
+  final jobs = <Map>[];
+
   String get host => '127.0.0.1:${http.port}';
 
   Future<void> start() async {
@@ -43,6 +46,10 @@ class FakeDahlia {
         final body = jsonDecode(await utf8.decoder.bind(req).join());
         final nonce = [for (var i = 0; i < 64; i += 2) int.parse(body['nonce'].substring(i, i + 2), radix: 16)];
         r.write(jsonEncode({'proof': proof('ABCDEFGHJK', nonce, pemToDer(fixture('ca.crt')))}));
+      case final p when p.startsWith('/api/apps/') && p.endsWith('/job'):
+        r.write(jsonEncode(jobs.length > 1 ? jobs.removeAt(0) : jobs.first));
+      case '/app-icons/jellyfin.png':
+        r.add([0x89, 0x50, 0x4e, 0x47]);
       default:
         r.statusCode = 404;
     }

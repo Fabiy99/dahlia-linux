@@ -150,6 +150,12 @@ ThemeData dahliaTheme(Brightness b) {
       fillColor: WidgetStateProperty.resolveWith((s) => s.contains(WidgetState.selected) ? p.accent : null),
       checkColor: WidgetStatePropertyAll(p.accentFg),
     ),
+    dialogTheme: DialogThemeData(
+      backgroundColor: p.card,
+      surfaceTintColor: Colors.transparent,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+    ),
+    snackBarTheme: const SnackBarThemeData(behavior: SnackBarBehavior.floating, width: 560),
     progressIndicatorTheme: ProgressIndicatorThemeData(color: p.accent, linearTrackColor: p.track),
   );
 }

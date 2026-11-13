@@ -2,7 +2,6 @@
 // laid out like the dashboard's start screen.
 
 import 'dart:async';
-import 'dart:math' as math;
 
 import 'package:material_ui/material_ui.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -10,7 +9,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../src/controller.dart';
 import '../src/format.dart';
 import '../src/server.dart';
-import 'bloom.dart';
+import 'shell.dart';
 import 'theme.dart';
 import 'widgets.dart';
 
@@ -168,55 +167,42 @@ class _HomePageState extends State<HomePage> {
   Widget build(BuildContext context) {
     final p = context.palette;
     final width = MediaQuery.of(context).size.width;
-    final pad = math.max(16.0, math.min(48.0, width * .04));
     final findings = health?['findings'];
     final attention = findings is List
         ? findings.whereType<Map>().where((f) => f['level'] == 'critical' || f['level'] == 'warning').length
         : 0;
-    return SingleChildScrollView(
-      padding: EdgeInsets.fromLTRB(pad, 16, pad, 56),
-      child: Align(
-        alignment: Alignment.topCenter,
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 1240),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            _TopBar(c),
-            const SizedBox(height: 56),
-            Rise(
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(longDate(now, c.settings.lang), style: TextStyle(color: p.muted, fontSize: 15)),
-                const SizedBox(height: 6),
-                Text(_greeting(),
-                    style: const TextStyle(fontSize: 44, fontWeight: FontWeight.w700, letterSpacing: -1, height: 1.1)),
-                const SizedBox(height: 10),
-                if (health != null)
-                  Row(children: [
-                    Icon(attention == 0 ? Icons.local_florist_rounded : Icons.error_outline_rounded,
-                        size: 18, color: attention == 0 ? p.ok : p.warn),
-                    const SizedBox(width: 8),
-                    Text(attention == 0 ? c.t('home.all_ok') : c.t('home.attention', {'n': attention}),
-                        style: TextStyle(color: p.muted, fontSize: 15)),
-                  ]),
-              ]),
-            ),
-            const SizedBox(height: 34),
-            Wrap(spacing: 18, runSpacing: 18, children: [
-              _tile(0, width, wide: true, child: _apps(p)),
-              _tile(1, width, child: _storage(p)),
-              _tile(2, width, child: _system(p)),
-              _tile(3, width, child: _serverUpdate(p)),
+    return PageFrame(c: c, children: [
+      const SizedBox(height: 56),
+      Rise(
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(longDate(now, c.settings.lang), style: TextStyle(color: p.muted, fontSize: 15)),
+          const SizedBox(height: 6),
+          Text(_greeting(),
+              style: const TextStyle(fontSize: 44, fontWeight: FontWeight.w700, letterSpacing: -1, height: 1.1)),
+          const SizedBox(height: 10),
+          if (health != null)
+            Row(children: [
+              Icon(attention == 0 ? Icons.local_florist_rounded : Icons.error_outline_rounded,
+                  size: 18, color: attention == 0 ? p.ok : p.warn),
+              const SizedBox(width: 8),
+              Text(attention == 0 ? c.t('home.all_ok') : c.t('home.attention', {'n': attention}),
+                  style: TextStyle(color: p.muted, fontSize: 15)),
             ]),
-          ]),
-        ),
+        ]),
       ),
-    );
+      const SizedBox(height: 34),
+      Wrap(spacing: 18, runSpacing: 18, children: [
+        _tile(0, width, wide: true, child: _apps(p)),
+        _tile(1, width, child: _storage(p)),
+        _tile(2, width, child: _system(p)),
+        _tile(3, width, child: _serverUpdate(p)),
+      ]),
+    ]);
   }
 
   Widget _tile(int i, double width, {required Widget child, bool wide = false}) {
-    final content = math.min(1240.0, width - 2 * math.max(16.0, math.min(48.0, width * .04)));
-    final cols = content > 980 ? 3 : (content > 640 ? 2 : 1);
-    final unit = (content - 18 * (cols - 1)) / cols;
-    final w = wide && cols > 1 ? unit * 2 + 18 : unit;
+    final g = pageGrid(width);
+    final w = wide && g.cols > 1 ? g.unit * 2 + 18 : g.unit;
     return SizedBox(width: w, child: Rise(delay: 60 * i, child: Glass(child: child)));
   }
 
@@ -324,51 +310,36 @@ class _AppTile extends StatelessWidget {
   final Controller c;
   final Map app;
 
-  Uri? get url {
-    final port = app['public_port'];
-    if (port == null) return null;
-    final urls = app['urls'];
-    final mdns = urls is Map ? urls['mdns'] : null;
-    if (mdns is String) return Uri.tryParse(mdns);
-    final host = c.settings.host!.replaceFirst(RegExp(r':\d+$'), '');
-    return Uri.parse('http://$host:$port');
-  }
-
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
     final id = '${app['id'] ?? ''}';
     final name = '${app['name'] ?? id}';
     final status = '${app['status'] ?? ''}';
-    final link = url;
-    final hue = id.codeUnits.fold<int>(0, (h, ch) => (h * 31 + ch) % 360).toDouble();
-    final state = app['update'] == true
+    final link = appUrl(c, app);
+    final update = app['update'] != null;
+    final state = update
         ? c.t('app.update')
         : c.strings.has('app.$status')
             ? c.t('app.$status')
-            : status;
-    final color = app['update'] == true ? p.warn : (status == 'running' ? p.ok : p.muted);
+            : c.strings.has('app_status.$status')
+                ? c.t('app_status.$status')
+                : status;
+    final color = update ? p.warn : (status == 'running' ? p.ok : p.muted);
+    // A running app opens its web interface; anything else goes to Apps,
+    // where it can be started, updated or repaired.
+    final open = link != null && status == 'running' ? () => launchUrl(link) : () => c.go(Area.apps);
     return Material(
       color: p.sub,
       borderRadius: BorderRadius.circular(18),
       child: InkWell(
         borderRadius: BorderRadius.circular(18),
-        onTap: link != null && status == 'running' ? () => launchUrl(link) : null,
+        onTap: open,
         child: SizedBox(
           width: 118,
           height: 118,
           child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-            Container(
-              width: 44,
-              height: 44,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: HSLColor.fromAHSL(1, hue, .45, .45).toColor(),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Text(name.isEmpty ? '?' : name.substring(0, 1).toUpperCase(),
-                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 18)),
-            ),
+            AppAvatar(c, app),
             const SizedBox(height: 10),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -378,64 +349,6 @@ class _AppTile extends StatelessWidget {
           ]),
         ),
       ),
-    );
-  }
-}
-
-class _TopBar extends StatelessWidget {
-  const _TopBar(this.c);
-
-  final Controller c;
-
-  @override
-  Widget build(BuildContext context) {
-    final p = context.palette;
-    return Glass(
-      radius: 18,
-      padding: const EdgeInsets.fromLTRB(18, 8, 10, 8),
-      child: Row(children: [
-        const DahliaMark(size: 28),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-            const Text('Dahlia', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 17)),
-            Text(c.settings.host ?? '', overflow: TextOverflow.ellipsis, style: TextStyle(color: p.muted, fontSize: 12)),
-          ]),
-        ),
-        Container(
-          height: 44,
-          padding: const EdgeInsets.symmetric(horizontal: 18),
-          alignment: Alignment.center,
-          decoration: BoxDecoration(color: p.navActive, borderRadius: BorderRadius.circular(12)),
-          child: Text(c.t('nav.overview'), style: TextStyle(color: p.navActiveFg, fontWeight: FontWeight.w500, fontSize: 14)),
-        ),
-        const SizedBox(width: 4),
-        PopupMenuButton<String>(
-          tooltip: '',
-          position: PopupMenuPosition.under,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          icon: Icon(Icons.account_circle_rounded, color: p.navActiveFg),
-          onSelected: (v) {
-            switch (v) {
-              case 'en' || 'de':
-                c.setLanguage(v);
-              case 'server':
-                c.otherServer();
-              case 'logout':
-                c.logout();
-            }
-          },
-          itemBuilder: (context) => [
-            PopupMenuItem(enabled: false, child: Text(displayName(c.user ?? ''), style: const TextStyle(fontWeight: FontWeight.w600))),
-            const PopupMenuDivider(),
-            CheckedPopupMenuItem(value: 'en', checked: c.settings.lang == 'en', child: const Text('English')),
-            CheckedPopupMenuItem(value: 'de', checked: c.settings.lang == 'de', child: const Text('Deutsch')),
-            const PopupMenuDivider(),
-            PopupMenuItem(value: 'server', child: Text(c.t('menu.other_server'))),
-            PopupMenuItem(value: 'logout', child: Text(c.t('menu.logout'), style: TextStyle(color: p.danger))),
-          ],
-        ),
-      ]),
     );
   }
 }

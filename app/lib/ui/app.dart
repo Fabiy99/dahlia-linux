@@ -4,6 +4,7 @@ import 'package:material_ui/material_ui.dart';
 
 import '../src/controller.dart';
 import 'bloom.dart';
+import 'apps.dart';
 import 'home.dart';
 import 'pages.dart';
 import 'theme.dart';
@@ -27,10 +28,10 @@ class DahliaApp extends StatelessWidget {
           home: Scaffold(
             backgroundColor: Colors.transparent,
             body: Backdrop(
-              home: c.stage == Stage.home,
+              home: c.stage == Stage.home && c.area == Area.home,
               child: AnimatedSwitcher(
                 duration: const Duration(milliseconds: 350),
-                child: KeyedSubtree(key: ValueKey(c.stage), child: _page()),
+                child: KeyedSubtree(key: ValueKey((c.stage, c.area)), child: SizedBox.expand(child: _page())),
               ),
             ),
           ),
@@ -43,6 +44,9 @@ class DahliaApp extends StatelessWidget {
         Stage.fingerprint => FingerprintPage(c),
         Stage.login => LoginPage(c),
         Stage.update => UpdatePage(c),
-        Stage.home => HomePage(c),
+        Stage.home => switch (c.area) {
+          Area.home => HomePage(c),
+          Area.apps => AppsPage(c),
+        },
       };
 }

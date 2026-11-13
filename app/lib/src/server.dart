@@ -218,5 +218,27 @@ class Server {
     return data;
   }
 
+  /// Raw bytes of a static file (app icons); null when missing or unreachable.
+  Future<Uint8List?> bytes(String path, {int max = 2 << 20}) async {
+    try {
+      final req = await _http.getUrl(_url(host, path));
+      final resp = await req.close().timeout(const Duration(seconds: 15));
+      if (resp.statusCode != 200) {
+        await resp.drain<void>();
+        return null;
+      }
+      final out = BytesBuilder(copy: false);
+      await for (final chunk in resp) {
+        out.add(chunk);
+        if (out.length > max) return null;
+      }
+      return out.takeBytes();
+    } on IOException {
+      return null;
+    } on TimeoutException {
+      return null;
+    }
+  }
+
   void close() => _http.close(force: true);
 }
