@@ -24,6 +24,9 @@ gen_key "$T/other" "Someone else"
 GNUPGHOME="$T/gpg" gpg --batch --armor --export > "$T/test.asc"
 
 "$ROOT/tools/build-packages.sh"
+# A desktop app manifest as tools/fetch-app-manifests.sh leaves it.
+mkdir -p "$REPO/app"
+printf '{"version":"%s","files":{}}\n' "$VERSION" > "$REPO/app/$VERSION.json"
 
 echo "== sign"
 DAHLIA_SIGNING_KEY="$(GNUPGHOME="$T/gpg" gpg --batch --armor --export-secret-keys)" \
@@ -39,6 +42,10 @@ fi
 # Re-sign with the right key (the failed run removed the signatures).
 DAHLIA_SIGNING_KEY="$(GNUPGHOME="$T/gpg" gpg --batch --armor --export-secret-keys)" \
     DAHLIA_KEYRING="$T/test.asc" "$ROOT/tools/sign-repo.sh" >/dev/null
+
+echo "== the app manifest is signed with the repository key"
+GNUPGHOME="$T/gpg" gpg --batch --yes --dearmor --output "$T/test.gpg" < "$T/test.asc"
+gpgv --keyring "$T/test.gpg" "$REPO/app/$VERSION.json.sig" "$REPO/app/$VERSION.json"
 
 apt_in() { # <dir> <apt-get|apt-cache> args...
     local dir="$1" tool="$2"
@@ -76,4 +83,4 @@ if ! grep -q "NO_PUBKEY\|not signed\|signatures couldn't be verified\|is not sig
     exit 1
 fi
 
-echo "OK: signed repository accepted, foreign signature rejected (base $VERSION)"
+echo "OK: signed repository and app manifest, foreign signature rejected (base $VERSION)"

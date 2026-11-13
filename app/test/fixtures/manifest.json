@@ -1,0 +1,23 @@
+{
+  "version": "1.4.0",
+  "files": {
+    "windows-x64": {
+      "name": "installer.bin",
+      "url": "https://example.invalid/installer.bin",
+      "sha256": "bfe3e30b4053e1e1b4319798748d684dd3023bcb3e9553e55edc25b003bea160",
+      "size": 22
+    },
+    "macos": {
+      "name": "installer.bin",
+      "url": "https://example.invalid/installer.bin",
+      "sha256": "bfe3e30b4053e1e1b4319798748d684dd3023bcb3e9553e55edc25b003bea160",
+      "size": 22
+    },
+    "linux-x64": {
+      "name": "installer.bin",
+      "url": "https://example.invalid/installer.bin",
+      "sha256": "bfe3e30b4053e1e1b4319798748d684dd3023bcb3e9553e55edc25b003bea160",
+      "size": 22
+    }
+  }
+}

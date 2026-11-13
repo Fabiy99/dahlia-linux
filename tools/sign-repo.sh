@@ -1,5 +1,7 @@
 #!/bin/bash
-# Sign the flat apt repository in build/repo/ (InRelease and Release.gpg).
+# Sign the flat apt repository in build/repo/ (InRelease and Release.gpg)
+# and the desktop app's update manifests in build/repo/app/ (<version>.json.sig,
+# see tools/fetch-app-manifests.sh and app/lib/src/manifest.dart).
 #
 # Usage: DAHLIA_SIGNING_KEY="$(cat private.asc)" tools/sign-repo.sh
 # Env:   DAHLIA_SIGNING_KEY  ASCII-armored private key without passphrase (required)
@@ -47,5 +49,14 @@ gpg --batch --yes --local-user "$fpr" --digest-algo SHA512 \
 gpg --batch --yes --dearmor --output "$GNUPGHOME/trusted.gpg" < "$KEYRING"
 gpgv --keyring "$GNUPGHOME/trusted.gpg" "$REPO/InRelease"
 gpgv --keyring "$GNUPGHOME/trusted.gpg" "$REPO/Release.gpg" "$REPO/Release"
+
+# The desktop app verifies these with the same public key.
+shopt -s nullglob
+for manifest in "$REPO"/app/*.json; do
+    gpg --batch --yes --local-user "$fpr" --digest-algo SHA512 \
+        --armor --detach-sign --output "$manifest.sig" "$manifest"
+    gpgv --keyring "$GNUPGHOME/trusted.gpg" "$manifest.sig" "$manifest"
+done
+shopt -u nullglob
 
 echo "Signed $REPO with key $fpr"

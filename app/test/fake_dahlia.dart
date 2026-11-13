@@ -1,0 +1,52 @@
+import 'dart:convert';
+import 'dart:io';
+
+import 'package:dahlia/src/pairing.dart';
+
+String fixture(String name) => File('test/fixtures/$name').readAsStringSync();
+
+/// A fake Dahlia server: TLS with a certificate from test/fixtures/ca.crt.
+class FakeDahlia {
+  late HttpServer http;
+  String version = '1.4.0';
+  final requests = <HttpRequest>[];
+
+  String get host => '127.0.0.1:${http.port}';
+
+  Future<void> start() async {
+    final ctx = SecurityContext()
+      ..useCertificateChain('test/fixtures/server-chain.crt')
+      ..usePrivateKey('test/fixtures/server.key');
+    http = await HttpServer.bindSecure(InternetAddress.loopbackIPv4, 0, ctx);
+    http.listen(handle);
+  }
+
+  Future<void> handle(HttpRequest req) async {
+    requests.add(req);
+    final r = req.response..headers.set('X-Dahlia-Version', version);
+    switch (req.uri.path) {
+      case '/dahlia-ca.crt':
+        r.write(fixture('ca.crt'));
+      case '/api/login':
+        final body = jsonDecode(await utf8.decoder.bind(req).join());
+        if (body['password'] == 'pw') {
+          r.cookies.add(Cookie('dahlia_session', 'tok'));
+          r.write('{"user":"fabian"}');
+        } else {
+          r.statusCode = 401;
+          r.write('{"error":"error.invalid_credentials"}');
+        }
+      case '/api/state':
+        final c = req.cookies.where((c) => c.name == 'dahlia_session');
+        r.write(jsonEncode({'user': c.isEmpty ? null : 'fabian', 'version': version}));
+      case '/api/pairing/proof':
+        final body = jsonDecode(await utf8.decoder.bind(req).join());
+        final nonce = [for (var i = 0; i < 64; i += 2) int.parse(body['nonce'].substring(i, i + 2), radix: 16)];
+        r.write(jsonEncode({'proof': proof('ABCDEFGHJK', nonce, pemToDer(fixture('ca.crt')))}));
+      default:
+        r.statusCode = 404;
+    }
+    await r.close();
+  }
+}
+

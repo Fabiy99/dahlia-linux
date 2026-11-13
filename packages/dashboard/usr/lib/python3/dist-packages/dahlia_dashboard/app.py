@@ -44,6 +44,7 @@ from .auth import (
     UserStore,
     totp_uri,
 )
+from .version import VERSION, VersionHeader
 
 COOKIE = "dahlia_session"
 CSRF_HEADER = "x-dahlia-request"
@@ -105,6 +106,8 @@ class Config:
     ca_cert: Path = Path("/etc/dahlia/tls/ca.crt")
     # url -> JSON for the weather service; tests set it.
     weather_fetch: home.Fetch = home.http_fetch
+    # Sent as X-Dahlia-Version; tests set it.
+    version: str = VERSION
 
 
 def installer_account(group: str = "sudo") -> str | None:
@@ -537,6 +540,7 @@ def create_app(cfg: Config | None = None) -> FastAPI:
     pairing_codes = pairing.Codes()
 
     app = FastAPI(title="Dahlia Dashboard", docs_url=None, redoc_url=None, openapi_url=None)
+    app.add_middleware(VersionHeader, version=cfg.version)
 
     @app.exception_handler(ApiError)
     def api_error(_request: Request, exc: ApiError):
@@ -611,6 +615,7 @@ def create_app(cfg: Config | None = None) -> FastAPI:
         session = sessions.get(request.cookies.get(COOKIE))
         setup_required = not users.has_users()
         out = {
+            "version": cfg.version,
             "setup_required": setup_required,
             "user": session.username if session else None,
             "role": users.role(session.username) if session else None,

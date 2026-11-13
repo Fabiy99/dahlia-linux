@@ -51,6 +51,7 @@ def env(tmp_path):
         secure_cookie=False,
         agent_call=agent,
         system_account=lambda: "fabian",
+        version="1.4.0",
     )
     cfg.state_dir.mkdir()
     code = setupcode.prepare(cfg.run_dir)
@@ -74,8 +75,22 @@ def logged_in(env):
 
 def test_state_before_setup(env):
     client, *_ = env
-    assert client.get("/api/state").json() == {"setup_required": True, "user": None,
-                                                 "account": "fabian", "role": None}
+    assert client.get("/api/state").json() == {"version": "1.4.0", "setup_required": True,
+                                                 "user": None, "account": "fabian", "role": None}
+
+
+def test_every_api_response_names_the_version(env):
+    client, *_ = env
+    assert client.get("/api/state").headers["x-dahlia-version"] == "1.4.0"
+    r = client.get("/api/stats")
+    assert r.status_code == 401
+    assert r.headers["x-dahlia-version"] == "1.4.0"
+
+
+def test_version_is_filled_in_by_the_package_build():
+    from dahlia_dashboard import version
+
+    assert version.VERSION == "@VERSION@"
 
 
 def test_installer_account_is_first_valid_sudo_member(monkeypatch):
@@ -105,8 +120,8 @@ def test_setup_creates_account_once(env):
     r = do_setup(client, code.lower().replace("-", " "), hostname="nas")
     assert r.status_code == 200
     assert ("system.set_hostname", {"hostname": "nas"}) in agent.calls
-    assert client.get("/api/state").json() == {"setup_required": False, "user": "fabian",
-                                                 "role": "admin"}
+    assert client.get("/api/state").json() == {"version": "1.4.0", "setup_required": False,
+                                                 "user": "fabian", "role": "admin"}
     assert setupcode.current(cfg.run_dir) is None
     assert not (cfg.run_dir / setupcode.ISSUE_FILE).exists()
     assert (cfg.state_dir / "users.json").stat().st_mode & 0o777 == 0o600

@@ -154,6 +154,8 @@ Nach 1.0 (1.x):
 38. Startbildschirm auf dem Monitor am Server
 39. Desktop-App für Windows, macOS und Linux; Apps öffnen sich in der App
 40. Handy über den Browser per QR-Code, neu koppeln der Desktop-App
+41. Native Desktop-App (Flutter): Kopplung, Anmeldung, Start, Server-Update; immer dieselbe
+    Version wie der Server, aktualisiert sich selbst aus dem Repo
 
 Später: USB-Creator für Windows, Installationsanleitung.
 
@@ -327,6 +329,8 @@ After 1.0 (1.x):
 38. Start screen on the monitor attached to the server
 39. Desktop app for Windows, macOS and Linux; apps open inside the app
 40. Phone through the browser via QR code, re-pairing of the desktop app
+41. Native desktop app (Flutter): pairing, sign-in, home, server update; always the same
+    version as the server, updates itself from the repository
 
 Later: USB creator for Windows, installation guide.
 
