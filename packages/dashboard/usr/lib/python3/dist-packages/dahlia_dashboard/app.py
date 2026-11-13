@@ -34,6 +34,7 @@ from starlette.exceptions import HTTPException
 
 from . import home, pairing, setupcode
 from .auth import (
+    REMEMBER_AGE,
     USERNAME_RE,
     AuthError,
     RateLimiter,
@@ -197,6 +198,7 @@ class LoginBody(BaseModel):
     username: AccountName
     password: str
     code: str = ""
+    remember: bool = False
 
 
 class TotpBeginBody(BaseModel):
@@ -589,11 +591,13 @@ def create_app(cfg: Config | None = None) -> FastAPI:
             return None
         raise ApiError(401, "error.login_required")
 
-    def set_session(response: Response, username: str) -> None:
-        token = sessions.create(username)
+    def set_session(response: Response, username: str, remember: bool = False) -> None:
+        token = sessions.create(username, remember)
         response.set_cookie(
             COOKIE,
             token,
+            # Without "stay signed in" the cookie ends with the browser session.
+            max_age=REMEMBER_AGE if remember else None,
             httponly=True,
             secure=cfg.secure_cookie,
             samesite="strict",
@@ -662,7 +666,7 @@ def create_app(cfg: Config | None = None) -> FastAPI:
                 limiter.fail(ip)
                 raise ApiError(401, "error.totp_code")
         limiter.reset(ip)
-        set_session(response, body.username)
+        set_session(response, body.username, body.remember)
         return {"user": body.username}
 
     @app.post("/api/logout", dependencies=[Depends(require_csrf)])

@@ -422,13 +422,14 @@ SSH or the console.
 | Frontend | static files in `/usr/share/dashboard/www`, served by nginx, texts from `locales/de.json` and `locales/en.json` |
 | Accounts | `/var/lib/dashboard/users.json` (0600), scrypt password hashes |
 | Second factor | optional TOTP (RFC 6238, SHA-1, 6 digits, 30 s, ±1 step), each code once; 10 recovery codes (SHA-256, each once); QR code via `qrencode` |
-| Sessions | random token in memory, cookie `HttpOnly`, `Secure`, `SameSite=Strict`; 2 h idle, 12 h at most |
+| Sessions | random token in memory, cookie `HttpOnly`, `Secure`, `SameSite=Strict`; 2 h idle, 12 h at most; with "Stay signed in" 30 days without use (cookie with `Max-Age`) |
 | Protection | changing requests need the header `X-Dahlia-Request`; 5 failures per IP within 5 minutes, then blocked |
 | Root actions | only through `agent`; `ui` is a member of the group `agent` |
 
-Layout: sidebar with server name and version, content in tiles. Confirmations use an own
-dialog, messages appear at the bottom right. Below 48rem width (phones) the sidebar becomes
-a menu and tables turn into cards. A web app manifest allows "add to home screen" on phones
+Layout: floating bar at the top with server name, Home, Apps, Disks, Files, "More" (other
+pages, language, reboot, power off, log out, version) and Phone; content in tiles, font Inter
+(`vendor/inter`, OFL). Confirmations use an own dialog, messages appear at the bottom right.
+Below 48rem width (phones) the bar wraps to a second line and tables turn into cards. A web app manifest allows "add to home screen" on phones
 and tablets.
 
 | Page | Content |
@@ -605,7 +606,9 @@ health check, otherwise "Everything is fine"). Behind it is an animated dahlia a
 blurred in the background. With a warning one petal turns amber. `prefers-reduced-motion` turns
 all motion off.
 
-Which widgets are shown and which places the weather shows is stored in
+Without a choice the overview shows weather, apps, storage, system and "Recently done";
+network, disk temperatures, health check, processor, memory and history can be switched on
+under "Customize". Which widgets are shown and which places the weather shows is stored in
 `/var/lib/dashboard/home.json` (applies to all devices, only `admin` changes it). The backend
 fetches the weather from Open-Meteo (`api.open-meteo.com`, place search via
 `geocoding-api.open-meteo.com`, no API key), cached for 15 minutes per place. The browser never
@@ -840,6 +843,12 @@ mDNS aliases: `mdns.service` (unprivileged, user `mdns`) publishes `<app>.local`
 for every app with a web UI via `avahi-publish` on the primary IPv4 address. When the
 address changes, the aliases follow within 10 seconds. An app named like the server gets no
 alias.
+
+`domains apply` limits avahi to the LAN interfaces (without Docker and VM bridges) through
+`allow-interfaces` in `/etc/avahi/avahi-daemon.conf`. On the Docker bridges avahi otherwise
+saw its own answers and renamed the server to `<server>-2.local`; the desktop app then found
+it under a name the certificate did not hold. If avahi still announces another name, it is
+added to the server certificate as well.
 
 Certificates (`domains`, part of `agent`):
 

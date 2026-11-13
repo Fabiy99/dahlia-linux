@@ -295,6 +295,30 @@ def test_password_hash_roundtrip():
     assert not auth.verify_password("x", "garbage")
 
 
+def test_remembered_session_lasts_30_days(tmp_path):
+    now = [0.0]
+    path = tmp_path / "sessions.json"
+    store = auth.SessionStore(max_age=100, idle=10, clock=lambda: now[0], path=path)
+    token = store.create("a", remember=True)
+    now[0] = 20 * 86400
+    assert store.get(token)
+    # Kept across a restart of the dashboard.
+    again = auth.SessionStore(max_age=100, idle=10, clock=lambda: now[0], path=path)
+    assert again.get(token)
+    now[0] += auth.REMEMBER_AGE + 1
+    assert again.get(token) is None
+
+
+def test_login_remember_sets_lasting_cookie(env):
+    client, _, _ = logged_in(env)
+    client.post("/api/logout", headers=CSRF)
+    body = {"username": "fabian", "password": "correct horse battery"}
+    r = client.post("/api/login", json=body, headers=CSRF)
+    assert r.status_code == 200 and "max-age" not in r.headers["set-cookie"].lower()
+    r = client.post("/api/login", json={**body, "remember": True}, headers=CSRF)
+    assert f"Max-Age={auth.REMEMBER_AGE}" in r.headers["set-cookie"]
+
+
 def test_session_expiry():
     now = [0.0]
     store = auth.SessionStore(max_age=100, idle=10, clock=lambda: now[0])

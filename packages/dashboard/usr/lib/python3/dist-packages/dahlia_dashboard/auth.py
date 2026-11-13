@@ -297,11 +297,16 @@ class UserStore:
             self._save(data)
 
 
+# "Stay signed in": the session and its cookie last this long without use.
+REMEMBER_AGE = 30 * 86400
+
+
 @dataclass
 class Session:
     username: str
     created: float
     last_seen: float
+    remember: bool = False
 
 
 class SessionStore:
@@ -331,6 +336,8 @@ class SessionStore:
         return hashlib.sha256(token.encode()).hexdigest()
 
     def _expired(self, s: Session, now: float) -> bool:
+        if s.remember:
+            return now - s.last_seen > REMEMBER_AGE
         return now - s.created > self.max_age or now - s.last_seen > self.idle
 
     def _load(self) -> None:
@@ -340,7 +347,8 @@ class SessionStore:
             data = json.loads(self.path.read_text())
             now = self.clock()
             for key, v in data.get("sessions", {}).items():
-                s = Session(str(v["username"]), float(v["created"]), float(v["last_seen"]))
+                s = Session(str(v["username"]), float(v["created"]), float(v["last_seen"]),
+                            v.get("remember") is True)
                 if not self._expired(s, now):
                     self.sessions[key] = s
         except FileNotFoundError:
@@ -360,13 +368,13 @@ class SessionStore:
         tmp.replace(self.path)
         self.saved = self.clock()
 
-    def create(self, username: str) -> str:
+    def create(self, username: str, remember: bool = False) -> str:
         token = secrets.token_urlsafe(32)
         now = self.clock()
         with self.lock:
             for k in [k for k, s in self.sessions.items() if self._expired(s, now)]:
                 del self.sessions[k]
-            self.sessions[self._key(token)] = Session(username, now, now)
+            self.sessions[self._key(token)] = Session(username, now, now, remember)
             self._save()
         return token
 

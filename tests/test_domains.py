@@ -37,6 +37,7 @@ def d(tmp_path):
         tls=TlsPaths(tmp_path / "tls"),
         nginx=tmp_path / "nginx",
         aliases=tmp_path / "aliases.json",
+        avahi=tmp_path / "avahi-daemon.conf",
     )
     paths.nginx.mkdir()
     calls = {"nginx": 0, "mdns": 0}
@@ -103,6 +104,62 @@ def test_lan_addresses(monkeypatch):
 
     monkeypatch.setattr(domains, "run_json", fake)
     assert domains.lan_addresses() == ["192.168.1.5", "10.0.0.7"]
+
+
+def test_lan_interfaces(monkeypatch):
+    addr = [
+        {"ifname": "docker0", "addr_info": [{"local": "172.17.0.1"}]},
+        {"ifname": "br-1a2b", "addr_info": [{"local": "172.18.0.1"}]},
+        {"ifname": "enp1s0", "addr_info": [{"local": "192.168.1.5"}]},
+        {"ifname": "wan0", "addr_info": [{"local": "203.0.113.4"}]},
+    ]
+    monkeypatch.setattr(domains, "run_json", lambda cmd: addr)
+    assert domains.lan_interfaces() == ["enp1s0"]
+
+
+@pytest.mark.parametrize(("out", "code", "want"), [
+    ('s "test-2.local"\n', 0, "test-2"),
+    ('s "Dahlia.local"\n', 0, "dahlia"),
+    ("", 1, None),
+    ('s "bad name.local"\n', 0, None),
+])
+def test_avahi_hostname(monkeypatch, out, code, want):
+    monkeypatch.setattr(domains.subprocess, "run",
+                        lambda *a, **k: subprocess.CompletedProcess(a, code, out, ""))
+    assert domains.avahi_hostname() == want
+
+
+def test_avahi_conf():
+    text = "[server]\n#host-name=foo\nuse-ipv6=yes\n\n[publish]\npublish-hinfo=no\n"
+    out = domains.avahi_conf(text, ["enp1s0", "enp2s0"])
+    assert out.splitlines()[:2] == ["[server]", "allow-interfaces=enp1s0,enp2s0"]
+    assert "publish-hinfo=no" in out
+    # Applying again replaces the line instead of adding another.
+    again = domains.avahi_conf(out, ["eth0"])
+    assert again.count("allow-interfaces=") == 1 and "allow-interfaces=eth0" in again
+    assert "allow-interfaces" not in domains.avahi_conf(again, [])
+    assert domains.avahi_conf("", ["eth0"]) == "[server]\nallow-interfaces=eth0\n"
+
+
+def test_apply_limits_avahi_and_names_conflict_rename(d):
+    # avahi renamed the host to dahlia-2.local: the certificate covers both names.
+    d.paths.avahi.write_text("[server]\nuse-ipv6=yes\n")
+    restarts = []
+    d.avahi_restart = lambda: restarts.append(1)
+    d.host = Host("dahlia", ["192.168.1.5"], interfaces=["enp1s0"], mdns_name="dahlia-2")
+    d.apply([])
+    assert "allow-interfaces=enp1s0" in d.paths.avahi.read_text()
+    names = sans(d.paths.tls.crt)
+    assert "DNS:dahlia.local" in names and "DNS:dahlia-2.local" in names
+    d.apply([])
+    assert restarts == [1]
+
+
+def test_apply_without_avahi_conf(d):
+    d.host = Host("dahlia", ["192.168.1.5"], interfaces=["enp1s0"])
+    d.avahi_restart = lambda: pytest.fail("restarted avahi without a config file")
+    d.apply([])
+    assert not d.paths.avahi.exists()
 
 
 def test_lan_addresses_without_ip(monkeypatch):

@@ -50,7 +50,7 @@
   <symbol id="i-terminal" viewBox="0 0 24 24"><rect x="2.5" y="4" width="19" height="16" rx="2"/><path d="M6.5 9l3 3-3 3M12 15h5"/></symbol>
   <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4"/></symbol>
   <symbol id="i-phone" viewBox="0 0 24 24"><rect x="6.5" y="2.5" width="11" height="19" rx="2.5"/><path d="M10.5 18.5h3"/></symbol>
-  <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></symbol>
+  <symbol id="i-chevron" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
 </svg>
 
 <div id="backdrop" class="backdrop" aria-hidden="true">
@@ -79,43 +79,46 @@
 </div>
 
 <div id="shell" class="shell">
-  <aside id="sidebar" class="sidebar" hidden>
-    <div class="side-brand"><svg class="logo"><use href="#i-logo"/></svg><span class="brand">Dahlia</span></div>
-    <div class="side-host">
-      <span class="dot ok"></span>
-      <span id="side-hostname" class="side-hostname"></span>
-      <span id="side-version" class="side-version"></span>
-    </div>
-    <nav id="nav">
-      <button data-view="overview"><svg><use href="#i-overview"/></svg><span data-i18n="nav.overview"></span></button>
-      <button data-view="storage"><svg><use href="#i-storage"/></svg><span data-i18n="nav.storage"></span></button>
-      <button data-view="parity"><svg><use href="#i-parity"/></svg><span data-i18n="nav.parity"></span></button>
-      <button data-view="shares"><svg><use href="#i-share"/></svg><span data-i18n="nav.shares"></span></button>
-      <button data-view="files"><svg><use href="#i-folder"/></svg><span data-i18n="nav.files"></span></button>
-      <button data-view="apps"><svg><use href="#i-apps"/></svg><span data-i18n="nav.apps"></span><span id="nav-apps-badge" class="count" hidden></span></button>
-      <button data-view="docker"><svg><use href="#i-docker"/></svg><span data-i18n="nav.docker"></span></button>
-      <button data-view="domains"><svg><use href="#i-domains"/></svg><span data-i18n="nav.domains"></span></button>
-      <button data-view="jobs"><svg><use href="#i-jobs"/></svg><span data-i18n="nav.jobs"></span></button>
-      <button data-view="backup"><svg><use href="#i-backup"/></svg><span data-i18n="nav.backup"></span></button>
-      <button data-view="log"><svg><use href="#i-log"/></svg><span data-i18n="nav.log"></span></button>
-      <button data-view="terminal"><svg><use href="#i-terminal"/></svg><span data-i18n="nav.terminal"></span></button>
-      <button data-view="updates"><svg><use href="#i-updates"/></svg><span data-i18n="nav.updates"></span></button>
-      <button data-view="account"><svg><use href="#i-account"/></svg><span data-i18n="nav.account"></span></button>
-    </nav>
-  </aside>
-
   <div class="content">
-    <header class="topbar">
-      <button id="menu" class="icon-btn menu-btn" hidden data-i18n-title="nav.menu"><svg><use href="#i-menu"/></svg></button>
-      <h1 id="page-title"></h1>
-      <span class="spacer"></span>
-      <select id="lang" aria-label="Language">
-        <option value="de">Deutsch</option>
-        <option value="en">English</option>
-      </select>
-      <button id="phone" class="icon-btn viewer-ok" hidden data-i18n-title="phone.open"><svg><use href="#i-phone"/></svg></button>
-      <button id="logout" class="icon-btn" hidden data-i18n-title="nav.logout"><svg><use href="#i-logout"/></svg></button>
+    <header id="topnav" class="topnav" hidden>
+      <div class="top-brand">
+        <svg class="logo"><use href="#i-logo"/></svg>
+        <div class="top-brand-text"><span class="brand">Dahlia</span><span id="side-hostname" class="top-host"></span></div>
+      </div>
+      <nav id="nav">
+        <button data-view="overview"><span data-i18n="nav.overview"></span></button>
+        <button data-view="apps"><span data-i18n="nav.apps"></span><span id="nav-apps-badge" class="count" hidden></span></button>
+        <button data-view="storage"><span data-i18n="nav.storage"></span></button>
+        <button data-view="files"><span data-i18n="nav.files"></span></button>
+        <button id="menu" type="button" class="more-btn" aria-expanded="false" aria-controls="more-menu"><span data-i18n="nav.more"></span><svg><use href="#i-chevron"/></svg></button>
+        <div id="more-menu" class="more-menu" hidden>
+          <div class="more-views">
+            <button data-view="parity"><svg><use href="#i-parity"/></svg><span data-i18n="nav.parity"></span></button>
+            <button data-view="shares"><svg><use href="#i-share"/></svg><span data-i18n="nav.shares"></span></button>
+            <button data-view="docker"><svg><use href="#i-docker"/></svg><span data-i18n="nav.docker"></span></button>
+            <button data-view="domains"><svg><use href="#i-domains"/></svg><span data-i18n="nav.domains"></span></button>
+            <button data-view="jobs"><svg><use href="#i-jobs"/></svg><span data-i18n="nav.jobs"></span></button>
+            <button data-view="backup"><svg><use href="#i-backup"/></svg><span data-i18n="nav.backup"></span></button>
+            <button data-view="log"><svg><use href="#i-log"/></svg><span data-i18n="nav.log"></span></button>
+            <button data-view="terminal"><svg><use href="#i-terminal"/></svg><span data-i18n="nav.terminal"></span></button>
+            <button data-view="updates"><svg><use href="#i-updates"/></svg><span data-i18n="nav.updates"></span></button>
+            <button data-view="account"><svg><use href="#i-account"/></svg><span data-i18n="nav.account"></span></button>
+          </div>
+          <div class="more-foot">
+            <select id="lang" aria-label="Language">
+              <option value="de">Deutsch</option>
+              <option value="en">English</option>
+            </select>
+            <button id="reboot" type="button" class="danger admin-only"><svg><use href="#i-reboot"/></svg><span data-i18n="overview.reboot"></span></button>
+            <button id="poweroff" type="button" class="danger admin-only"><svg><use href="#i-power"/></svg><span data-i18n="overview.poweroff"></span></button>
+            <button id="logout" type="button" hidden><svg><use href="#i-logout"/></svg><span data-i18n="nav.logout"></span></button>
+          </div>
+          <span id="side-version" class="more-version"></span>
+        </div>
+      </nav>
+      <button id="phone" type="button" class="phone-btn viewer-ok" hidden data-i18n-title="phone.open"><svg><use href="#i-phone"/></svg><span data-i18n="nav.phone"></span></button>
     </header>
+    <h1 id="page-title" class="page-title"></h1>
 
     <main>
       <section id="view-setup" class="auth" hidden>
@@ -143,6 +146,7 @@
             <label><span data-i18n="field.username"></span><input name="username" autocomplete="username" required></label>
             <label><span data-i18n="field.password"></span><input name="password" type="password" autocomplete="current-password" required></label>
             <label id="login-code" hidden><span data-i18n="login.code"></span><input name="code" autocomplete="one-time-code" spellcheck="false"></label>
+            <label class="check"><input type="checkbox" name="remember" id="login-remember"><span data-i18n="login.remember"></span></label>
             <button type="submit" data-i18n="login.submit"></button>
           </form>
         </div>
@@ -175,30 +179,62 @@
           <ul id="place-results" class="place-results"></ul>
           <div class="actions"><button type="button" id="home-done" class="primary" data-i18n="home.done"></button></div>
         </article>
-        <div class="tiles">
-          <article class="card tile" data-widget="weather" id="weather-card">
-            <header><svg><use href="#i-sun"/></svg><h2 data-i18n="weather.title"></h2></header>
+        <div class="tiles home-tiles">
+          <article class="card tile w-weather" data-widget="weather" id="weather-card">
+            <header><h2 data-i18n="weather.title"></h2></header>
             <div id="weather-tabs" class="chip-row small viewer-ok"></div>
             <div id="weather-now" class="weather-now"></div>
             <div id="weather-days" class="weather-days"></div>
           </article>
-          <article class="card tile wide" id="health-card" data-widget="health">
-            <header><svg><use href="#i-parity"/></svg><h2 data-i18n="check.title"></h2>
+
+          <article class="card tile w-apps" data-widget="apps">
+            <header><h2 data-i18n="overview.apps"></h2><span id="overview-apps-count" class="tile-note"></span></header>
+            <div id="overview-apps" class="app-tiles"></div>
+          </article>
+
+          <article class="card tile" data-widget="storage">
+            <header><h2 data-i18n="overview.storage"></h2></header>
+            <div id="storage-sum" class="big-figure"></div>
+            <div id="storage-bar" class="seg-bar"></div>
+            <div id="storage-disks" class="rows"></div>
+            <p id="storage-parity" class="tile-note"></p>
+          </article>
+
+          <article class="card tile" data-widget="system">
+            <header><h2 data-i18n="overview.system"></h2></header>
+            <div class="meter"><div class="meter-head"><span data-i18n="overview.cpu"></span><span id="cpu-pct"></span></div><div class="meter-bar"><span id="cpu-bar"></span></div></div>
+            <div class="meter"><div class="meter-head"><span data-i18n="overview.memory"></span><span id="mem-amount"></span></div><div class="meter-bar"><span id="mem-bar"></span></div></div>
+            <p id="system-line" class="system-line"></p>
+            <details class="system-details">
+              <summary data-i18n="overview.details"></summary>
+              <dl id="system-info" class="facts"></dl>
+            </details>
+          </article>
+
+          <article class="card tile" data-widget="jobs">
+            <header><h2 data-i18n="home.recent"></h2></header>
+            <div id="overview-jobs" class="rows"></div>
+          </article>
+
+          <article class="card tile" data-widget="network">
+            <header><h2 data-i18n="overview.network"></h2></header>
+            <div id="net-info" class="net-now"></div>
+          </article>
+
+          <article class="card tile" data-widget="disks">
+            <header><h2 data-i18n="home.temps"></h2></header>
+            <div id="overview-disks" class="rows"><p class="empty" data-i18n="common.loading"></p></div>
+          </article>
+
+          <article class="card tile w-wide" id="health-card" data-widget="health">
+            <header><h2 data-i18n="check.title"></h2>
               <button class="link-btn" id="health-refresh" data-i18n="check.again"></button></header>
             <p id="health-summary" class="health-summary" data-i18n="check.running"></p>
             <ul id="health-list" class="health-list"></ul>
           </article>
-          <article class="card tile" data-widget="system">
-            <header><svg><use href="#i-server"/></svg><h2 data-i18n="overview.system"></h2></header>
-            <dl id="system-info" class="facts"></dl>
-            <div class="tile-actions">
-              <button id="reboot" class="danger"><svg><use href="#i-reboot"/></svg><span data-i18n="overview.reboot"></span></button>
-              <button id="poweroff" class="danger"><svg><use href="#i-power"/></svg><span data-i18n="overview.poweroff"></span></button>
-            </div>
-          </article>
 
           <article class="card tile" data-widget="cpu">
-            <header><svg><use href="#i-cpu"/></svg><h2 data-i18n="overview.cpu"></h2></header>
+            <header><h2 data-i18n="overview.cpu"></h2></header>
             <div class="gauge-row">
               <div id="cpu-gauge" class="gauge"></div>
               <dl id="cpu-info" class="facts compact"></dl>
@@ -207,41 +243,12 @@
           </article>
 
           <article class="card tile" data-widget="memory">
-            <header><svg><use href="#i-memory"/></svg><h2 data-i18n="overview.memory"></h2></header>
+            <header><h2 data-i18n="overview.memory"></h2></header>
             <div class="gauge-row">
               <div id="mem-gauge" class="gauge"></div>
               <dl id="mem-info" class="facts compact"></dl>
             </div>
             <div id="mem-history" class="spark"></div>
-          </article>
-
-          <article class="card tile" data-widget="disks">
-            <header><svg><use href="#i-thermo"/></svg><h2 data-i18n="overview.disks"></h2>
-              <button class="link-btn" data-goto="storage" data-i18n="overview.manage"></button></header>
-            <div id="overview-disks" class="disk-mini-list"><p class="empty" data-i18n="common.loading"></p></div>
-          </article>
-
-          <article class="card tile wide" data-widget="storage">
-            <header><svg><use href="#i-storage"/></svg><h2 data-i18n="overview.storage"></h2>
-              <button class="link-btn" data-goto="storage" data-i18n="overview.manage"></button></header>
-            <div id="fs-list" class="usage-list"></div>
-          </article>
-
-          <article class="card tile" data-widget="network">
-            <header><svg><use href="#i-network"/></svg><h2 data-i18n="overview.network"></h2></header>
-            <div id="net-info" class="net-list"></div>
-          </article>
-
-          <article class="card tile wide" data-widget="apps">
-            <header><svg><use href="#i-apps"/></svg><h2 data-i18n="overview.apps"></h2>
-              <button class="link-btn" data-goto="apps" data-i18n="overview.manage"></button></header>
-            <div id="overview-apps" class="app-mini-list"></div>
-          </article>
-
-          <article class="card tile" data-widget="jobs">
-            <header><svg><use href="#i-jobs"/></svg><h2 data-i18n="overview.jobs"></h2>
-              <button class="link-btn" data-goto="jobs" data-i18n="overview.manage"></button></header>
-            <div id="overview-jobs" class="job-mini-list"></div>
           </article>
         </div>
 

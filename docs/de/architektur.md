@@ -425,13 +425,15 @@ nur für das Web-UI, nicht für SSH oder die Konsole.
 | Frontend | statische Dateien unter `/usr/share/dashboard/www`, von nginx ausgeliefert, Texte aus `locales/de.json` und `locales/en.json` |
 | Konten | `/var/lib/dashboard/users.json` (0600), Passwörter mit scrypt |
 | Zweiter Faktor | optional TOTP (RFC 6238, SHA-1, 6 Stellen, 30 s, ±1 Schritt), jeder Code nur einmal; 10 Wiederherstellungscodes (SHA-256, je einmal); QR-Code über `qrencode` |
-| Sitzungen | zufälliges Token im Speicher, Cookie `HttpOnly`, `Secure`, `SameSite=Strict`; 2 h Leerlauf, höchstens 12 h |
+| Sitzungen | zufälliges Token im Speicher, Cookie `HttpOnly`, `Secure`, `SameSite=Strict`; 2 h Leerlauf, höchstens 12 h; mit „Angemeldet bleiben“ 30 Tage ohne Nutzung (Cookie mit `Max-Age`) |
 | Schutz | ändernde Anfragen brauchen den Header `X-Dahlia-Request`; 5 Fehlversuche pro IP in 5 Minuten, dann Sperre |
 | root-Aktionen | nur über `agent`; `ui` ist Mitglied der Gruppe `agent` |
 
-Aufbau: Seitenleiste mit Servername und Version, Inhalt in Kacheln. Bestätigungen laufen
-über einen eigenen Dialog, Meldungen erscheinen unten rechts. Unter 48rem Breite (Handy)
-wird die Seitenleiste zum Menü, Tabellen werden zu Karten. Ein Web-App-Manifest erlaubt
+Aufbau: schwebende Leiste oben mit Servername, Start, Apps, Platten, Dateien, „Mehr“ (übrige
+Seiten, Sprache, Neustart, Ausschalten, Abmelden, Version) und Handy; Inhalt in Kacheln, Schrift
+Inter (`vendor/inter`, OFL). Bestätigungen laufen über einen eigenen Dialog, Meldungen
+erscheinen unten rechts. Unter 48rem Breite (Handy) rückt die Leiste in eine zweite Zeile,
+Tabellen werden zu Karten. Ein Web-App-Manifest erlaubt
 „Zum Home-Bildschirm“ auf Handy und Tablet.
 
 | Seite | Inhalt |
@@ -619,7 +621,9 @@ Gesundheitschecks, sonst „Alles in Ordnung“). Dahinter liegt eine animierte 
 und unscharf im Hintergrund. Gibt es eine Warnung, färbt sich ein Blütenblatt bernsteinfarben.
 `prefers-reduced-motion` schaltet alle Bewegungen ab.
 
-Welche Widgets sichtbar sind und welche Orte das Wetter zeigt, steht in
+Ohne Auswahl zeigt die Übersicht Wetter, Apps, Speicher, System und „Zuletzt erledigt“;
+Netzwerk, Plattentemperaturen, Gesundheitscheck, Prozessor, Arbeitsspeicher und Verlauf
+lassen sich unter „Anpassen“ zuschalten. Welche Widgets sichtbar sind und welche Orte das Wetter zeigt, steht in
 `/var/lib/dashboard/home.json` (gilt für alle Geräte, ändern nur `admin`). Das Wetter holt das
 Backend bei Open-Meteo (`api.open-meteo.com`, Ortssuche über `geocoding-api.open-meteo.com`,
 ohne API-Schlüssel), 15 Minuten Cache pro Ort. Der Browser spricht nie mit einem fremden Dienst.
@@ -861,6 +865,12 @@ mDNS-Aliase: `mdns.service` (ohne Rechte, Benutzer `mdns`) veröffentlicht für 
 mit Web-Oberfläche `<app>.local` per `avahi-publish` auf der primären IPv4-Adresse. Ändert
 sich die Adresse, folgen die Aliase nach höchstens 10 Sekunden. Eine App, die so heißt wie
 der Server, bekommt keinen Alias.
+
+`domains apply` beschränkt avahi über `allow-interfaces` in `/etc/avahi/avahi-daemon.conf`
+auf die LAN-Schnittstellen (ohne Docker- und VM-Brücken). Auf den Docker-Brücken sah avahi
+sonst die eigenen Antworten und benannte den Server in `<server>-2.local` um; die Desktop-App
+fand ihn dann unter einem Namen, den das Zertifikat nicht enthielt. Meldet avahi trotzdem
+einen anderen Namen, kommt er zusätzlich ins Server-Zertifikat.
 
 Zertifikate (`domains`, Teil von `agent`):
 
