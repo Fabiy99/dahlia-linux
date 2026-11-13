@@ -13,7 +13,7 @@ import 'bloom.dart';
 import 'theme.dart';
 import 'widgets.dart';
 
-const _areas = [(Area.home, 'nav.overview'), (Area.apps, 'nav.apps')];
+const _areas = [(Area.home, 'nav.overview'), (Area.apps, 'nav.apps'), (Area.storage, 'nav.storage')];
 
 class TopBar extends StatelessWidget {
   const TopBar(this.c, {super.key});

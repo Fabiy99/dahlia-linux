@@ -7,6 +7,7 @@ import 'bloom.dart';
 import 'apps.dart';
 import 'home.dart';
 import 'pages.dart';
+import 'storage.dart';
 import 'theme.dart';
 
 const title = 'Dahlia, I love you ♥';
@@ -47,6 +48,7 @@ class DahliaApp extends StatelessWidget {
         Stage.home => switch (c.area) {
           Area.home => HomePage(c),
           Area.apps => AppsPage(c),
+          Area.storage => StoragePage(c),
         },
       };
 }

@@ -50,6 +50,7 @@
   "server_update.then_app": "Wenn der Server fertig ist, aktualisiert sich die App auf dieselbe Version.",
   "nav.overview": "Start",
   "nav.apps": "Apps",
+  "nav.storage": "Platten",
   "menu.other_server": "Anderer Server",
   "menu.logout": "Abmelden",
   "home.greeting_morning": "Guten Morgen, {name}",

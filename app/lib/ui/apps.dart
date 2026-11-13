@@ -10,15 +10,10 @@ import 'package:url_launcher/url_launcher.dart';
 import '../src/apps.dart';
 import '../src/controller.dart';
 import '../src/server.dart';
+import 'area.dart';
 import 'shell.dart';
 import 'theme.dart';
 import 'widgets.dart';
-
-/// Text of [prefix].[value], the value itself when the key is unknown.
-String _tv(Controller c, String prefix, Object? value) {
-  final key = '$prefix.$value';
-  return c.strings.has(key) ? c.t(key) : '${value ?? ''}';
-}
 
 class AppsPage extends StatefulWidget {
   const AppsPage(this.c, {super.key});
@@ -29,7 +24,7 @@ class AppsPage extends StatefulWidget {
   State<AppsPage> createState() => _AppsPageState();
 }
 
-class _AppsPageState extends State<AppsPage> {
+class _AppsPageState extends State<AppsPage> with AreaCalls {
   List<Map> installed = const [];
   List<Map> catalog = const [];
   String? refreshed;
@@ -44,8 +39,8 @@ class _AppsPageState extends State<AppsPage> {
   final busy = <String>{};
   Timer? _timer;
 
+  @override
   Controller get c => widget.c;
-  Server get s => c.server!;
 
   @override
   void initState() {
@@ -60,36 +55,10 @@ class _AppsPageState extends State<AppsPage> {
     super.dispose();
   }
 
-  void _say(ScaffoldMessengerState m, String text, {bool error = false}) {
-    m
-      ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(
-        content: Text(text),
-        backgroundColor: error ? context.palette.danger : null,
-      ));
-  }
-
-  /// Runs [f]; errors are shown as a message, a lost session leads back to
-  /// the login, a version change to the update page (Controller).
-  Future<T?> _call<T>(Future<T> Function() f, [ScaffoldMessengerState? m]) async {
-    try {
-      return await f();
-    } on VersionMismatch {
-      return null;
-    } on ApiError catch (e) {
-      if (e.status == 401) {
-        await c.sessionEnded();
-      } else if (m != null) {
-        _say(m, c.t(e.key), error: true);
-      }
-      return null;
-    }
-  }
-
   /// The catalog changes only with a refresh; otherwise only the installed
   /// apps are fetched and the "installed" marks of the catalog follow them.
   Future<void> _load({bool catalog = false}) async {
-    final r = await _call(() => s.get(catalog ? '/api/apps' : '/api/apps?catalog=false'));
+    final r = await call(() => s.get(catalog ? '/api/apps' : '/api/apps?catalog=false'));
     if (r is! Map || !mounted) return;
     final list = r['installed'] is List ? (r['installed'] as List).whereType<Map>().toList() : <Map>[];
     setState(() {
@@ -109,7 +78,7 @@ class _AppsPageState extends State<AppsPage> {
   Future<void> _refreshCatalog() async {
     final m = ScaffoldMessenger.of(context);
     setState(() => refreshing = true);
-    await _call(() => s.post('/api/apps/catalog/refresh'), m);
+    await call(() => s.post('/api/apps/catalog/refresh'), m);
     await _load(catalog: true);
     if (mounted) setState(() => refreshing = false);
   }
@@ -122,13 +91,13 @@ class _AppsPageState extends State<AppsPage> {
     final name = '${app['name'] ?? id}';
     setState(() => busy.add(id));
     try {
-      final started = await _call(() => s.post('/api/apps/$id/$op', body), m);
+      final started = await call(() => s.post('/api/apps/$id/$op', body), m);
       if (started == null) return;
-      _say(m, c.t('apps.${op}_running', {'name': name}));
+      say(m, c.t('apps.${op}_running', {'name': name}));
       await _load();
-      final job = await _call(() => waitForJob(s, id, tick: () => mounted ? _load() : null), m);
+      final job = await call(() => waitForJob(s, id, tick: () => mounted ? _load() : null), m);
       final (key, vars) = jobResult(job, op, id, name);
-      _say(m, c.t(key, vars), error: key != 'apps.${op}_done');
+      say(m, c.t(key, vars), error: key != 'apps.${op}_done');
     } finally {
       if (mounted) setState(() => busy.remove(id));
       if (mounted) await _load();
@@ -139,29 +108,9 @@ class _AppsPageState extends State<AppsPage> {
     final m = ScaffoldMessenger.of(context);
     final id = '${app['id']}';
     setState(() => busy.add(id));
-    await _call(() => s.post('/api/apps/$id/$op'), m);
+    await call(() => s.post('/api/apps/$id/$op'), m);
     await _load();
     if (mounted) setState(() => busy.remove(id));
-  }
-
-  Future<bool> _ask(String text, String action, {bool danger = false}) async {
-    final p = context.palette;
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        content: Text(text, style: const TextStyle(height: 1.45)),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: Text(c.t('common.cancel'))),
-          FilledButton(
-            autofocus: true,
-            style: danger ? FilledButton.styleFrom(backgroundColor: p.danger, foregroundColor: p.accentFg) : null,
-            onPressed: () => Navigator.pop(context, true),
-            child: Text(c.t(action)),
-          ),
-        ],
-      ),
-    );
-    return ok ?? false;
   }
 
   /// One dialog: confirm, and whether the app data goes too (kept unless ticked).
@@ -176,8 +125,8 @@ class _AppsPageState extends State<AppsPage> {
     );
     if (deleteData == null || !mounted) return;
     setState(() => busy.add(id));
-    final r = await _call(() => s.post('/api/apps/$id/remove', {'delete_data': deleteData}), m);
-    if (r != null) _say(m, c.t('apps.removed', {'name': name}));
+    final r = await call(() => s.post('/api/apps/$id/remove', {'delete_data': deleteData}), m);
+    if (r != null) say(m, c.t('apps.removed', {'name': name}));
     if (mounted) setState(() => busy.remove(id));
     await _load();
   }
@@ -199,18 +148,18 @@ class _AppsPageState extends State<AppsPage> {
 
   Future<void> _all(String op) async {
     final m = ScaffoldMessenger.of(context);
-    if (op == 'stop' && !await _ask(c.t('apps.stop_all_confirm'), 'apps.stop_all', danger: true)) return;
+    if (op == 'stop' && !await ask(c.t('apps.stop_all_confirm'), 'apps.stop_all', danger: true)) return;
     if (!mounted) return;
     setState(() => allRunning = true);
-    final r = await _call(() => s.post('/api/apps-all/$op'), m);
+    final r = await call(() => s.post('/api/apps-all/$op'), m);
     if (r != null) {
-      _say(m, c.t(op == 'start' ? 'apps.start_all_started' : 'apps.stop_all_started'));
+      say(m, c.t(op == 'start' ? 'apps.start_all_started' : 'apps.stop_all_started'));
       while (mounted) {
         await Future<void>.delayed(const Duration(seconds: 2));
-        final job = await _call(() => s.get('/api/apps-all'), m);
+        final job = await call(() => s.get('/api/apps-all'), m);
         if (jobRunning(job)) continue;
         final error = job is Map ? job['error'] : null;
-        if (error is String && error.isNotEmpty) _say(m, c.t('apps.all_failed', {'error': error}), error: true);
+        if (error is String && error.isNotEmpty) say(m, c.t('apps.all_failed', {'error': error}), error: true);
         break;
       }
     }
@@ -228,28 +177,13 @@ class _AppsPageState extends State<AppsPage> {
     final canStop = installed.any((a) => a['status'] == 'running');
     final shown = filterCatalog(catalog, query, category, c.settings.lang);
     final cats = categories(catalog).entries.toList()
-      ..sort((x, y) => _tv(c, 'category', x.key).compareTo(_tv(c, 'category', y.key)));
+      ..sort((x, y) => tv(c, 'category', x.key).compareTo(tv(c, 'category', y.key)));
     final when = refreshed == null ? null : DateTime.tryParse(refreshed!)?.toLocal();
-
-    Widget heading(String text, [List<Widget> side = const []]) => Padding(
-          padding: const EdgeInsets.only(top: 34, bottom: 14),
-          child: Wrap(spacing: 10, runSpacing: 10, crossAxisAlignment: WrapCrossAlignment.center, children: [
-            Text(text, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w700, letterSpacing: -.3)),
-            const SizedBox(width: 6),
-            ...side,
-          ]),
-        );
 
     return PageFrame(c: c, children: [
       const SizedBox(height: 40),
-      Rise(
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(c.t('apps.title'), style: const TextStyle(fontSize: 40, fontWeight: FontWeight.w700, letterSpacing: -1)),
-          const SizedBox(height: 8),
-          Text(c.t('apps.hint'), style: TextStyle(color: p.muted, height: 1.45)),
-        ]),
-      ),
-      heading(c.t('apps.installed'), [
+      Rise(child: AreaTitle(c.t('apps.title'), c.t('apps.hint'))),
+      Heading(c.t('apps.installed'), side: [
         if (pending.isNotEmpty)
           FilledButton(
             onPressed: busy.isEmpty ? () => _updateAll(pending) : null,
@@ -281,7 +215,7 @@ class _AppsPageState extends State<AppsPage> {
             ),
           ),
       ]),
-      heading(c.t('apps.catalog'), [
+      Heading(c.t('apps.catalog'), side: [
         OutlinedButton(onPressed: refreshing ? null : _refreshCatalog, child: Text(c.t('apps.refresh'))),
         if (refreshing) const SizedBox.square(dimension: 18, child: CircularProgressIndicator(strokeWidth: 2)),
       ]),
@@ -303,7 +237,7 @@ class _AppsPageState extends State<AppsPage> {
         _Chip(label: c.t('apps.all_categories'), on: category.isEmpty, onTap: () => setState(() => category = '')),
         for (final e in cats)
           _Chip(
-            label: '${_tv(c, 'category', e.key)} (${e.value})',
+            label: '${tv(c, 'category', e.key)} (${e.value})',
             on: category == e.key,
             onTap: () => setState(() => category = category == e.key ? '' : e.key),
           ),
@@ -397,21 +331,6 @@ class _Chip extends StatelessWidget {
   }
 }
 
-/// Small rounded label, like the dashboard's badge().
-class _Badge extends StatelessWidget {
-  const _Badge(this.text, this.color);
-
-  final String text;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
-        decoration: BoxDecoration(color: color.withValues(alpha: .14), borderRadius: BorderRadius.circular(999)),
-        child: Text(text, style: TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.w600)),
-      );
-}
-
 Color _statusColor(Palette p, String status) => switch (status) {
       'running' => p.ok,
       'partial' || 'restarting' => p.warn,
@@ -438,7 +357,7 @@ class _Head extends StatelessWidget {
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text('${app['name'] ?? app['id']}',
               maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16)),
-          Text('${_tv(c, 'category', app['category'])} · ${app['version'] ?? ''}',
+          Text('${tv(c, 'category', app['category'])} · ${app['version'] ?? ''}',
               maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: p.muted, fontSize: 13)),
           if (badges.isNotEmpty) ...[
             const SizedBox(height: 6),
@@ -480,9 +399,9 @@ class _InstalledCard extends StatelessWidget {
       padding: const EdgeInsets.all(18),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         _Head(c: c, app: app, badges: [
-          _Badge(_tv(c, 'app_status', status), _statusColor(p, status)),
-          if (app['gpu'] == true && gpu) _Badge('GPU', p.accent),
-          if (update is Map) _Badge(c.t('apps.update_available', {'version': update['version']}), p.warn),
+          Tag(tv(c, 'app_status', status), _statusColor(p, status)),
+          if (app['gpu'] == true && gpu) Tag('GPU', p.accent),
+          if (update is Map) Tag(c.t('apps.update_available', {'version': update['version']}), p.warn),
         ]),
         if (notes.isNotEmpty) ...[
           const SizedBox(height: 12),
@@ -605,7 +524,7 @@ class _CatalogCard extends StatelessWidget {
           if (busy)
             const SizedBox.square(dimension: 20, child: CircularProgressIndicator(strokeWidth: 2))
           else if (app['installed'] == true)
-            _Badge(c.t('apps.is_installed'), p.ok)
+            Tag(c.t('apps.is_installed'), p.ok)
           else
             FilledButton.icon(
               onPressed: onInstall,

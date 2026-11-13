@@ -48,6 +48,9 @@ class FakeDahlia {
         r.write(jsonEncode({'proof': proof('ABCDEFGHJK', nonce, pemToDer(fixture('ca.crt')))}));
       case final p when p.startsWith('/api/apps/') && p.endsWith('/job'):
         r.write(jsonEncode(jobs.length > 1 ? jobs.removeAt(0) : jobs.first));
+      case '/api/storage/remove':
+        r.statusCode = 422;
+        r.write('{"error":"error.agent","detail":"/mnt/cache still holds files, use --force"}');
       case '/app-icons/jellyfin.png':
         r.add([0x89, 0x50, 0x4e, 0x47]);
       default:
