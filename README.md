@@ -170,6 +170,7 @@ Nach 1.0 (1.x):
 50. Native App: Bereich Einstellungen mit Updates (Paket-Updates mit Fortschritt, automatische Sicherheitsupdates, System-Snapshots mit Rollback) und Hinweis bei anstehenden Updates
 51. Native App: Einstellungen, Unterseite Adressen (mDNS-Namen der Apps, lokale CA mit Fingerabdruck und Download)
 52. Native App: Bereich Terminal (Shell als eigenes Linux-Konto, Sitzung bleibt beim Wechsel der Bereiche offen)
+53. Native App: Einstellungen, Unterseite System (Servername, Zeit, Netzwerk und Netzwerk-Layout mit Wake-on-LAN, Spindown, Energiesparen, Remote-Syslog, Geräte)
 
 Später: USB-Creator für Windows, Installationsanleitung.
 
@@ -359,6 +360,7 @@ After 1.0 (1.x):
 50. Native app: Settings area with Updates (package updates with progress, automatic security updates, system snapshots with rollback) and a banner when updates are pending
 51. Native app: Settings, Addresses section (mDNS names of the apps, local CA with fingerprint and download)
 52. Native app: Terminal area (shell as your own Linux account, the session stays open while switching areas)
+53. Native app: Settings, System section (server name, time, network and network layout with Wake-on-LAN, spindown, power saving, remote syslog, devices)
 
 Later: USB creator for Windows, installation guide.
 

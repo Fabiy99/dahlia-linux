@@ -110,5 +110,6 @@
   "updates.banner": "{n} updates are available for the server.",
   "updates.banner_open": "Show updates",
   "terminal.copy_hint": "Copy: select the text, then Ctrl+Shift+C. Paste: Ctrl+Shift+V.",
-  "terminal.copy_hint_mac": "Copy: select the text, then Cmd+C. Paste: Cmd+V."
+  "terminal.copy_hint_mac": "Copy: select the text, then Cmd+C. Paste: Cmd+V.",
+  "settings.system": "System"
 }

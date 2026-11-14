@@ -12,6 +12,7 @@ import 'pairing.dart';
 import 'server.dart';
 import 'settings.dart';
 import 'strings.dart';
+import 'system.dart';
 
 enum Stage { starting, connect, fingerprint, connecting, login, update, home }
 
@@ -295,6 +296,30 @@ class Controller extends ChangeNotifier {
     user = null;
     await secrets.write(settings.host!, 'session', null);
     await _autoLogin();
+  }
+
+  /// The server got a new name. When the app reaches it by its old .local
+  /// name, it follows to the new one: saved login moved, connected again
+  /// once the name answers (avahi restarts, at most about 30 seconds).
+  Future<void> serverRenamed(String oldName, String newName) async {
+    final host = settings.host;
+    final next = host == null ? null : renamedHost(host, oldName, newName);
+    if (host == null || next == null) return;
+    for (final key in ['session', 'password']) {
+      await secrets.write(next, key, await secrets.read(host, key));
+      await secrets.write(host, key, null);
+    }
+    settings.host = next;
+    settings.save(settingsFile);
+    for (var i = 0; i < 10; i++) {
+      try {
+        await checkPaired(next, settings.pem!);
+        break;
+      } on PairingError {
+        await Future<void>.delayed(const Duration(seconds: 3));
+      }
+    }
+    await connect();
   }
 
   // --- pending updates ---------------------------------------------------------

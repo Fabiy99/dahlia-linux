@@ -7,14 +7,16 @@ import '../src/controller.dart';
 import 'shell.dart';
 import 'theme.dart';
 import 'addresses.dart';
+import 'system.dart';
 import 'updates.dart';
 import 'widgets.dart';
 import 'area.dart';
 
-enum SettingsSection { updates, addresses }
+enum SettingsSection { updates, system, addresses }
 
 const _sections = [
   (SettingsSection.updates, 'updates.title'),
+  (SettingsSection.system, 'settings.system'),
   (SettingsSection.addresses, 'nav.domains'),
 ];
 
@@ -53,6 +55,7 @@ class _SettingsPageState extends State<SettingsPage> {
       const SizedBox(height: 28),
       switch (section) {
         SettingsSection.updates => UpdatesSection(c, key: const ValueKey(SettingsSection.updates)),
+        SettingsSection.system => SystemSection(c, key: const ValueKey(SettingsSection.system)),
         SettingsSection.addresses => AddressesSection(c, key: const ValueKey(SettingsSection.addresses)),
       },
     ]);
