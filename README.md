@@ -162,6 +162,8 @@ Nach 1.0 (1.x):
 44. Native App: Bereich Dateien (Ordner, Suche, Pfad kopieren, Hoch- und Herunterladen,
     Kopieren, Verschieben, Umbenennen, Löschen)
 45. Native App: Bereich Freigaben (SMB/NFS-Freigaben, SMB-Benutzer, Freigaben anderer Geräte)
+46. Native App: Bereich Parity (Zustand, Sync, Prüfung, Platte wiederherstellen, Einstellungen,
+    Verlauf) und Menü „Mehr“ in der Leiste
 
 Später: USB-Creator für Windows, Installationsanleitung.
 
@@ -343,6 +345,8 @@ After 1.0 (1.x):
 44. Native app: Files area (folders, search, copy path, upload and download, copy, move,
     rename, delete)
 45. Native app: Shares area (SMB/NFS shares, SMB users, shares of other devices)
+46. Native app: Parity area (state, sync, scrub, restore a disk, settings, history) and a "More"
+    menu in the bar
 
 Later: USB creator for Windows, installation guide.
 

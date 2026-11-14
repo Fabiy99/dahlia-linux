@@ -53,6 +53,8 @@
   "nav.storage": "Platten",
   "nav.files": "Dateien",
   "nav.shares": "Freigaben",
+  "nav.parity": "Parity",
+  "nav.more": "Mehr",
   "menu.other_server": "Anderer Server",
   "menu.logout": "Abmelden",
   "home.greeting_morning": "Guten Morgen, {name}",

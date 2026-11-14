@@ -13,12 +13,17 @@ import 'bloom.dart';
 import 'theme.dart';
 import 'widgets.dart';
 
+/// Areas in the bar; the rest sit in the "More" menu.
 const _areas = [
   (Area.home, 'nav.overview'),
   (Area.apps, 'nav.apps'),
   (Area.storage, 'nav.storage'),
   (Area.files, 'nav.files'),
+];
+
+const _more = [
   (Area.shares, 'nav.shares'),
+  (Area.parity, 'nav.parity'),
 ];
 
 class TopBar extends StatelessWidget {
@@ -30,6 +35,17 @@ class TopBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final p = context.palette;
     final narrow = MediaQuery.of(context).size.width < 640;
+    Widget tab(String label, bool on, VoidCallback? onTap, {bool menu = false}) => Container(
+          height: 44,
+          padding: EdgeInsets.symmetric(horizontal: narrow ? 12 : 18),
+          decoration: BoxDecoration(color: on ? p.navActive : Colors.transparent, borderRadius: BorderRadius.circular(12)),
+          alignment: Alignment.center,
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            Text(label, style: TextStyle(color: on ? p.navActiveFg : p.fg, fontWeight: FontWeight.w500, fontSize: 14)),
+            if (menu) Icon(Icons.expand_more_rounded, size: 18, color: on ? p.navActiveFg : p.muted),
+          ]),
+        );
+    final inMore = _more.where((e) => e.$1 == c.area).firstOrNull;
     return Glass(
       radius: 18,
       padding: const EdgeInsets.fromLTRB(18, 8, 10, 8),
@@ -47,25 +63,28 @@ class TopBar extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.only(left: 4),
             child: Material(
-              color: c.area == view ? p.navActive : Colors.transparent,
-              borderRadius: BorderRadius.circular(12),
-              child: InkWell(
-                borderRadius: BorderRadius.circular(12),
-                onTap: () => c.go(view),
-                child: Container(
-                  height: 44,
-                  padding: EdgeInsets.symmetric(horizontal: narrow ? 12 : 18),
-                  alignment: Alignment.center,
-                  child: Text(c.t(key),
-                      style: TextStyle(
-                        color: c.area == view ? p.navActiveFg : p.fg,
-                        fontWeight: FontWeight.w500,
-                        fontSize: 14,
-                      )),
-                ),
-              ),
+              color: Colors.transparent,
+              child: InkWell(borderRadius: BorderRadius.circular(12), onTap: () => c.go(view), child: tab(c.t(key), c.area == view, null)),
             ),
           ),
+        // The chosen area of the menu takes its place in the bar.
+        Padding(
+          padding: const EdgeInsets.only(left: 4),
+          child: PopupMenuButton<Area>(
+            tooltip: '',
+            position: PopupMenuPosition.under,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            onSelected: c.go,
+            itemBuilder: (context) => [
+              for (final (view, key) in _more)
+                PopupMenuItem(
+                  value: view,
+                  child: Text(c.t(key), style: TextStyle(color: c.area == view ? p.navActiveFg : null, fontWeight: c.area == view ? FontWeight.w600 : null)),
+                ),
+            ],
+            child: tab(c.t(inMore?.$2 ?? 'nav.more'), inMore != null, null, menu: true),
+          ),
+        ),
         const SizedBox(width: 4),
         PopupMenuButton<String>(
           tooltip: '',

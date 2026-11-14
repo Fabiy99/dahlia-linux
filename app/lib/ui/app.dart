@@ -8,6 +8,7 @@ import 'apps.dart';
 import 'files.dart';
 import 'home.dart';
 import 'pages.dart';
+import 'parity.dart';
 import 'shares.dart';
 import 'storage.dart';
 import 'theme.dart';
@@ -53,6 +54,7 @@ class DahliaApp extends StatelessWidget {
           Area.storage => StoragePage(c),
           Area.files => FilesPage(c),
           Area.shares => SharesPage(c),
+          Area.parity => ParityPage(c),
         },
       };
 }
