@@ -219,7 +219,7 @@ class _StoragePageState extends State<StoragePage> with AreaCalls {
     final job = import_;
     return PageFrame(c: c, children: [
       const SizedBox(height: 40),
-      Rise(child: AreaTitle(c.t('storage.title'), c.t('storage.hint'))),
+      Rise(child: AreaTitle(c.t('storage.title'), hint: c.t('storage.hint'))),
       const SizedBox(height: 28),
       Wrap(spacing: 18, runSpacing: 18, children: [
         for (final (i, (mp, name, hint)) in pools.indexed)

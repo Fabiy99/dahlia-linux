@@ -51,6 +51,7 @@
   "nav.overview": "Home",
   "nav.apps": "Apps",
   "nav.storage": "Disks",
+  "nav.files": "Files",
   "menu.other_server": "Other server",
   "menu.logout": "Sign out",
   "home.greeting_morning": "Good morning, {name}",
@@ -97,5 +98,7 @@
   "error.update_checksum": "The download does not match the signed checksum. Nothing was installed.",
   "error.update_install": "The installation failed.",
   "error.update_platform": "There is no app for this system in Dahlia {version}.",
-  "update.server_too_old": "The server runs a Dahlia version from before the app. Update the server in the dashboard (on your phone or in a browser), then the app connects."
+  "update.server_too_old": "The server runs a Dahlia version from before the app. Update the server in the dashboard (on your phone or in a browser), then the app connects.",
+  "fm.downloading": "Downloading {name}: {done} / {total}",
+  "fm.downloaded": "Saved to {path}."
 }

@@ -182,7 +182,7 @@ class _AppsPageState extends State<AppsPage> with AreaCalls {
 
     return PageFrame(c: c, children: [
       const SizedBox(height: 40),
-      Rise(child: AreaTitle(c.t('apps.title'), c.t('apps.hint'))),
+      Rise(child: AreaTitle(c.t('apps.title'), hint: c.t('apps.hint'))),
       Heading(c.t('apps.installed'), side: [
         if (pending.isNotEmpty)
           FilledButton(
@@ -537,47 +537,6 @@ class _CatalogCard extends StatelessWidget {
   }
 }
 
-/// One button per location; the chosen one is highlighted.
-class _Places extends StatelessWidget {
-  const _Places({required this.c, required this.current, required this.available, required this.onPick, this.remotes = false});
-
-  final Controller c;
-  final String current;
-  final Map<String, bool> available;
-  final ValueChanged<String> onPick;
-  final bool remotes;
-
-  @override
-  Widget build(BuildContext context) {
-    final p = context.palette;
-    final roots = [('system', systemRoot), ('array', arrayRoot), if (remotes) ('remotes', remotesRoot)];
-    return Wrap(spacing: 10, runSpacing: 10, children: [
-      for (final (name, root) in roots)
-        Material(
-          color: root == current ? p.navActive : p.sub,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(14),
-            side: BorderSide(color: root == current ? p.accent : p.line),
-          ),
-          child: InkWell(
-            borderRadius: BorderRadius.circular(14),
-            onTap: available[root] == true ? () => onPick(root) : null,
-            child: Opacity(
-              opacity: available[root] == true ? 1 : .45,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text(c.t('location.$name'), style: const TextStyle(fontWeight: FontWeight.w600)),
-                  Text(root, style: TextStyle(color: p.muted, fontSize: 12, fontFamily: 'monospace')),
-                ]),
-              ),
-            ),
-          ),
-        ),
-    ]);
-  }
-}
-
 /// What the app needs and creates, where its data goes and its folders.
 /// Pops with the install body ({location, folders}) or null.
 class _InstallDialog extends StatefulWidget {
@@ -670,7 +629,7 @@ class _InstallDialogState extends State<_InstallDialog> {
                   if (extra.isNotEmpty) check(true, c.t('apps.confirm_services', {'services': extra})),
                   check(true, c.t('install.download')),
                   label(c.t('install.location')),
-                  _Places(
+                  Places(
                     c: c,
                     current: location,
                     available: {systemRoot: true, arrayRoot: pool},
@@ -822,7 +781,7 @@ class _FolderPickerState extends State<FolderPicker> {
         child: d == null
             ? (error == null ? Busy(c.t('common.loading')) : Text(c.t(error!), style: TextStyle(color: p.danger)))
             : Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                _Places(
+                Places(
                   c: c,
                   current: at.root,
                   available: available,

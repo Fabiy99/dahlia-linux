@@ -5,6 +5,7 @@ import 'package:material_ui/material_ui.dart';
 import '../src/controller.dart';
 import 'bloom.dart';
 import 'apps.dart';
+import 'files.dart';
 import 'home.dart';
 import 'pages.dart';
 import 'storage.dart';
@@ -49,6 +50,7 @@ class DahliaApp extends StatelessWidget {
           Area.home => HomePage(c),
           Area.apps => AppsPage(c),
           Area.storage => StoragePage(c),
+          Area.files => FilesPage(c),
         },
       };
 }
