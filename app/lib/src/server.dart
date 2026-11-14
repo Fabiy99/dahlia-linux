@@ -177,13 +177,18 @@ class Server {
 
   Future<dynamic> post(String path, [Object? body]) => _send('POST', path, body ?? const {});
 
+  Future<HttpClientRequest> _open(String method, String path) async {
+    final req = await _http.openUrl(method, _url(host, path));
+    req.headers.set('X-Dahlia-Request', '1');
+    if (session != null) req.cookies.add(Cookie(_cookie, session!));
+    return req;
+  }
+
   Future<dynamic> _send(String method, String path, Object? body) async {
     final HttpClientResponse resp;
     final String text;
     try {
-      final req = await _http.openUrl(method, _url(host, path));
-      req.headers.set('X-Dahlia-Request', '1');
-      if (session != null) req.cookies.add(Cookie(_cookie, session!));
+      final req = await _open(method, path);
       if (body != null) {
         req.headers.contentType = ContentType.json;
         req.write(jsonEncode(body));
@@ -197,6 +202,11 @@ class Server {
     } on PairingError {
       throw ApiError(0, 'error.unexpected');
     }
+    return _result(resp, text);
+  }
+
+  /// Session cookie, version check and JSON body (or the error) of [resp].
+  dynamic _result(HttpClientResponse resp, String text) {
     for (final c in resp.cookies) {
       if (c.name == _cookie) session = c.value.isEmpty ? null : c.value;
     }
@@ -220,6 +230,72 @@ class Server {
       throw ApiError(resp.statusCode, key, detail);
     }
     return data;
+  }
+
+  /// Streams [file] as the request body (file manager upload); [progress]
+  /// gets the bytes sent so far and the total.
+  Future<dynamic> upload(String path, File file, {void Function(int sent, int total)? progress}) async {
+    final HttpClientResponse resp;
+    final String text;
+    try {
+      final total = await file.length();
+      final req = await _open('POST', path);
+      req.headers.contentType = ContentType.binary;
+      req.contentLength = total;
+      var sent = 0;
+      await req.addStream(file.openRead().map((chunk) {
+        sent += chunk.length;
+        progress?.call(sent, total);
+        return chunk;
+      }));
+      resp = await req.close().timeout(const Duration(minutes: 5));
+      text = await _readText(resp, 1 << 20);
+    } on IOException {
+      throw ApiError(0, 'error.unreachable');
+    } on TimeoutException {
+      throw ApiError(0, 'error.unreachable');
+    } on PairingError {
+      throw ApiError(0, 'error.unexpected');
+    }
+    return _result(resp, text);
+  }
+
+  /// Saves the response body of [path] to [dest] (file manager download),
+  /// first as dest.part, renamed when complete.
+  Future<void> download(String path, File dest, {void Function(int got, int total)? progress}) async {
+    final part = File('${dest.path}.part');
+    try {
+      final req = await _open('GET', path);
+      final resp = await req.close().timeout(const Duration(seconds: 30));
+      if (resp.statusCode != 200) {
+        _result(resp, await _readText(resp, 1 << 20));
+        throw ApiError(resp.statusCode, 'error.unexpected');
+      }
+      _result(resp, '');
+      final sink = part.openWrite();
+      var got = 0;
+      try {
+        await for (final chunk in resp) {
+          sink.add(chunk);
+          got += chunk.length;
+          progress?.call(got, resp.contentLength);
+        }
+      } finally {
+        await sink.close();
+      }
+      if (resp.contentLength >= 0 && got != resp.contentLength) throw ApiError(0, 'error.unreachable');
+      await part.rename(dest.path);
+    } on IOException {
+      if (part.existsSync()) part.deleteSync();
+      throw ApiError(0, 'error.unreachable');
+    } on TimeoutException {
+      throw ApiError(0, 'error.unreachable');
+    } on PairingError {
+      throw ApiError(0, 'error.unexpected');
+    } on ApiError {
+      if (part.existsSync()) part.deleteSync();
+      rethrow;
+    }
   }
 
   /// Raw bytes of a static file (app icons); null when missing or unreachable.

@@ -14,6 +14,9 @@ class FakeDahlia {
   /// Answers of `/api/apps/<id>/job`, one per poll; the last one repeats.
   final jobs = <Map>[];
 
+  /// Body of the last file manager upload, served again by the download.
+  List<int> uploaded = const [];
+
   String get host => '127.0.0.1:${http.port}';
 
   Future<void> start() async {
@@ -48,6 +51,17 @@ class FakeDahlia {
         r.write(jsonEncode({'proof': proof('ABCDEFGHJK', nonce, pemToDer(fixture('ca.crt')))}));
       case final p when p.startsWith('/api/apps/') && p.endsWith('/job'):
         r.write(jsonEncode(jobs.length > 1 ? jobs.removeAt(0) : jobs.first));
+      case '/api/files/upload':
+        uploaded = await req.expand((c) => c).toList();
+        r.write(jsonEncode({'name': req.uri.queryParameters['name'], 'size': uploaded.length}));
+      case '/api/files/download':
+        if (req.uri.queryParameters['path'] == 'missing') {
+          r.statusCode = 404;
+          r.write('{"error":"error.not_found","detail":"no such file"}');
+        } else {
+          r.contentLength = uploaded.length;
+          r.add(uploaded);
+        }
       case '/api/storage/remove':
         r.statusCode = 422;
         r.write('{"error":"error.agent","detail":"/mnt/cache still holds files, use --force"}');

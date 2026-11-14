@@ -3,6 +3,7 @@
 
 import 'package:material_ui/material_ui.dart';
 
+import '../src/apps.dart';
 import '../src/controller.dart';
 import '../src/server.dart';
 import 'theme.dart';
@@ -89,7 +90,7 @@ class Tag extends StatelessWidget {
 
 /// Large page title with a hint below.
 class AreaTitle extends StatelessWidget {
-  const AreaTitle(this.title, this.hint, {super.key});
+  const AreaTitle(this.title, {super.key, this.hint = ''});
 
   final String title;
   final String hint;
@@ -97,8 +98,10 @@ class AreaTitle extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text(title, style: const TextStyle(fontSize: 40, fontWeight: FontWeight.w700, letterSpacing: -1)),
-        const SizedBox(height: 8),
-        Text(hint, style: TextStyle(color: context.palette.muted, height: 1.45)),
+        if (hint.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          Text(hint, style: TextStyle(color: context.palette.muted, height: 1.45)),
+        ],
       ]);
 }
 
@@ -119,3 +122,53 @@ class Heading extends StatelessWidget {
         ]),
       );
 }
+
+/// One button per location; the chosen one is highlighted.
+class Places extends StatelessWidget {
+  const Places({super.key, required this.c, required this.current, required this.available, required this.onPick, this.remotes = false, this.arrayFirst = false});
+
+  final Controller c;
+  final String current;
+  final Map<String, bool> available;
+  final ValueChanged<String> onPick;
+  final bool remotes;
+
+  /// The file manager lists the array first, the install dialog the SSD.
+  final bool arrayFirst;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+    final roots = [
+      if (arrayFirst) ('array', arrayRoot),
+      ('system', systemRoot),
+      if (!arrayFirst) ('array', arrayRoot),
+      if (remotes) ('remotes', remotesRoot),
+    ];
+    return Wrap(spacing: 10, runSpacing: 10, children: [
+      for (final (name, root) in roots)
+        Material(
+          color: root == current ? p.navActive : p.sub,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+            side: BorderSide(color: root == current ? p.accent : p.line),
+          ),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(14),
+            onTap: available[root] == true ? () => onPick(root) : null,
+            child: Opacity(
+              opacity: available[root] == true ? 1 : .45,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(c.t('location.$name'), style: const TextStyle(fontWeight: FontWeight.w600)),
+                  Text(root, style: TextStyle(color: p.muted, fontSize: 12, fontFamily: 'monospace')),
+                ]),
+              ),
+            ),
+          ),
+        ),
+    ]);
+  }
+}
+
