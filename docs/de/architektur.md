@@ -651,25 +651,12 @@ Dashboard-Konto existiert, steht dort auch der Einrichtungscode.
 
 Ohne Grafikgerät startet der Dienst nicht (`ExecCondition`), tty1 bleibt wie bisher.
 
-### Desktop-App (ab Meilenstein 39)
+### Desktop-App (Meilenstein 39 bis 55)
 
-`desktop/` enthält eine Tauri-2-App (Rust, System-Webview) für Windows, macOS und Linux. Sie
-zeigt dasselbe Dashboard wie der Browser, nur im eigenen Fenster.
-
-| Schritt | Umsetzung |
-| --- | --- |
-| Finden | mDNS-Dienst `_dahlia._tcp` (Port 443), von avahi aus `/etc/avahi/services/dahlia.service`; sonst Adresse eintippen |
-| Koppeln | Die App lädt `/dahlia-ca.crt` einmal ohne Prüfung und zeigt den SHA-256-Fingerabdruck. Derselbe steht auf dem Monitor am Server und im Dashboard unter Adressen (`GET /api/pairing`). Erst nach Bestätigung trägt die App die CA ein: Windows `certutil -user -addstore Root`, macOS Schlüsselbund (`security add-trusted-cert`), Linux über `pkexec` (`update-ca-certificates` bzw. `trust anchor`) |
-| Anzeigen | Hauptfenster lädt `https://<server>/`; Links mit `target=_blank` (App-Oberflächen) öffnen ein eigenes Fenster statt des Browsers |
-| Wechseln | Im Dashboard unter dem Handy-Symbol „Desktop-App mit anderem Server verbinden“ (nur in der App sichtbar): Der Link geht auf `https://dahlia-desktop.invalid/choose`, das Hauptfenster fängt ihn ab und zeigt die Kopplungsseite. Unter macOS zusätzlich Menü „Dahlia → Anderer Server …“ |
-| Fenster | Titel „Dahlia, I love you ♥“; unter Windows und Linux ohne Menüleiste, unter macOS mit Systemmenü (Kopieren, Einfügen, Neu laden) |
-| Starten | Die App öffnet zuerst die Kopplungsseite. Die prüft, ob der gekoppelte Server mit der gespeicherten CA antwortet, und lädt erst dann das Dashboard. Sonst sagt sie, ob der Server nicht erreichbar ist oder ein anderes Zertifikat zeigt (z. B. nach Neuinstallation) |
-
-Nur die mitgelieferte Kopplungsseite darf Tauri-Befehle aufrufen; das Dashboard im Fenster hat
-keinen Zugriff darauf. Gemerkt wird nur die Server-Adresse (`server.json` im
-Konfigurationsordner der App). Die CI (`.github/workflows/desktop.yml`) baut `.deb`/AppImage,
-`.exe`/`.msi` und `.dmg` und hängt sie bei einem Tag an das Release. Die Builds sind nicht
-signiert; Windows und macOS warnen beim ersten Start.
+Bis Meilenstein 55 lag unter `desktop/` eine Tauri-2-App, die das Dashboard im eigenen Fenster
+zeigte. Mit Meilenstein 56 ist sie entfernt; Nachfolger ist die native App (unten). Beide finden
+den Server über den mDNS-Dienst `_dahlia._tcp` (Port 443), den avahi aus
+`/etc/avahi/services/dahlia.service` veröffentlicht.
 
 ### Handy und neu koppeln (ab Meilenstein 40)
 
@@ -695,12 +682,13 @@ nur (dann neuen Code erzeugen).
 
 `app/` enthält die native App (Flutter, eine Codebasis für Windows, macOS und Linux). Sie zeigt
 keine Webseite, sondern eine eigene Oberfläche im Dahlia-Design und spricht mit der Dashboard-API.
-Bis alle Bereiche nativ sind, wird die Tauri-App (`desktop/`) weiter gebaut.
+Seit Meilenstein 56 deckt sie alle Bereiche des Dashboards ab; das Dashboard im Browser bleibt
+der Notzugang, etwa über das Handy.
 
 | Schritt | Umsetzung |
 | --- | --- |
 | Finden | mDNS `_dahlia._tcp` wie oben, sonst Adresse eintippen |
-| Koppeln | Fingerabdruck oder Kopplungscode wie bei der Tauri-App. Die App trägt nichts in den Zertifikatsspeicher des Systems ein: Sie speichert die CA in `settings.json` und vertraut bei jeder Verbindung nur ihr (`SecurityContext(withTrustedRoots: false)`) |
+| Koppeln | Fingerabdruck der CA aus `/dahlia-ca.crt` (steht auch auf dem Monitor am Server und unter Adressen) oder Kopplungscode wie oben. Die App trägt nichts in den Zertifikatsspeicher des Systems ein: Sie speichert die CA in `settings.json` und vertraut bei jeder Verbindung nur ihr (`SecurityContext(withTrustedRoots: false)`) |
 | Anmelden | `POST /api/login` mit `remember`; Sitzung und Passwort liegen im Schlüsselspeicher des Systems (Windows-Anmeldeinformationen, macOS-Schlüsselbund, unter Linux `secret-tool`). Ist die Sitzung abgelaufen, meldet die App sich mit dem gespeicherten Passwort an. „Abmelden“ löscht beides |
 | Sprache | Auswahl auf jeder Seite vor der Anmeldung und im Kontomenü, Standard Englisch. Eigene Texte aus `app/assets/locales/`, Fehlermeldungen des Servers aus dessen `locales/<lang>.json` |
 | Start | Begrüßung, Zustand, Apps, Speicher, System, Server-Update. Eine laufende App öffnet ihre Weboberfläche, jede andere führt zu Apps |
@@ -716,6 +704,8 @@ Bis alle Bereiche nativ sind, wird die Tauri-App (`desktop/`) weiter gebaut.
 | Einstellungen: Adressen (ab Meilenstein 51) | Wie die Seite Adressen im Dashboard, gleiche API: mDNS-Namen `<app>.local` ein- und ausschalten, Angaben zur lokalen CA und zum Serverzertifikat, CA-Zertifikat über einen Speichern-Dialog ablegen, Fingerabdruck für die App. Wird beim Speichern eine neue CA erzeugt, sagt die Meldung das; die App muss dann neu gekoppelt werden |
 | Terminal (ab Meilenstein 52) | Wie die Seite Terminal im Dashboard, gleicher WebSocket `/api/terminal`: Die App schickt das Sitzungs-Cookie und als Origin die Adresse des Servers, wie eine Seite des Servers es täte; der Dienst `terminal` startet `su -l` für das Linux-Konto mit dem Namen des Dashboard-Kontos, also fragt die Shell nach dessen Passwort. Terminal-Emulator ist das Paket xterm (MIT). Die Sitzung bleibt offen, wenn andere Bereiche gezeigt werden, und endet bei der Abmeldung. Kopieren und Einfügen mit Strg+Umschalt+C/V (macOS: Cmd+C/V), damit Strg+A, Strg+V usw. in der Shell ihre Bedeutung behalten |
 | Einstellungen: System (ab Meilenstein 53) | Wie die Karten Server, Zeit, Netzwerk, Netzwerk-Layout, Spindown, Energiesparen, Geräte und Remote-Syslog der Einstellungsseite im Dashboard, gleiche API; jede Karte lädt für sich. Netzwerk- und Layout-Änderungen fragen vorher nach; solange eine Änderung auf Bestätigung wartet, fragt die App alle 3 s nach und zeigt auf beiden Netzwerkkarten „Einstellungen behalten“. Wake-on-LAN wird je Port sofort geschaltet. Wird der Servername geändert und erreicht die App den Server über `<alter Name>.local`, wechselt sie auf `<neuer Name>.local`, nimmt gespeicherte Anmeldung und Sitzung mit und verbindet neu, sobald der Name antwortet |
+| Einstellungen: Sicherheit (ab Meilenstein 54) | Wie die Karten Firewall mit eigenen Regeln, WireGuard, Tailscale, Passwort, Zwei-Faktor-Login, Dashboard-Konten und API-Tokens im Dashboard, gleiche API. Konten und Tokens zeigt die App nur Administratoren (Rolle aus `/api/state`). QR-Codes (neues WireGuard-Gerät, TOTP) zeichnet sie aus dem SVG des Servers; die Konfiguration eines neuen Geräts lässt sich über einen Speichern-Dialog ablegen und wird nur einmal gezeigt. Solange Tailscale installiert wird oder auf die Anmeldung wartet, fragt die App alle 3 s nach; der Anmelde-Link öffnet sich im Browser. Ändert man das eigene Passwort in der App, ersetzt sie ein gespeichertes Passwort durch das neue |
+| Einstellungen: Dienste (ab Meilenstein 55) | Wie die Karten Zeitpläne, Benachrichtigungen, Export nach InfluxDB, USV und der Handy-Dialog im Dashboard, gleiche API. Gespeicherte Geheimnisse (SMTP-Passwort, Tokens, NUT-Passwort) schickt der Server nicht zurück; ein leeres Feld behält sie. Die Karte Handy zeigt QR-Code und Adresse für das Handy und erzeugt einen Kopplungscode für eine weitere Desktop-App, mit Restzeit |
 
 **Versionsbindung.** App und Server haben immer dieselbe Version. Jede Antwort der API trägt
 `X-Dahlia-Version` (`dahlia_dashboard/version.py`, von `tools/build-packages.sh` gesetzt). Weicht

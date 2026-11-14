@@ -1292,7 +1292,6 @@
   "phone.code_valid": "noch {min}:{sec} gültig",
   "phone.code_expired": "abgelaufen",
   "error.pairing_code": "Kein gültiger Kopplungscode. Erzeuge im Dashboard einen neuen.",
-  "phone.other_server": "Desktop-App mit anderem Server verbinden",
   "nav.more": "Mehr",
   "nav.phone": "Handy",
   "overview.details": "Details",

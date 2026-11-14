@@ -111,5 +111,7 @@
   "updates.banner_open": "Updates anzeigen",
   "terminal.copy_hint": "Kopieren: Text markieren, dann Strg+Umschalt+C. Einfügen: Strg+Umschalt+V.",
   "terminal.copy_hint_mac": "Kopieren: Text markieren, dann Cmd+C. Einfügen: Cmd+V.",
-  "settings.system": "System"
+  "settings.system": "System",
+  "settings.security": "Sicherheit",
+  "settings.services": "Dienste"
 }
