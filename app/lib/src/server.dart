@@ -175,7 +175,9 @@ class Server {
 
   Future<dynamic> get(String path) => _send('GET', path, null);
 
-  Future<dynamic> post(String path, [Object? body]) => _send('POST', path, body ?? const {});
+  /// [wait] is how long the answer may take; a few actions (the diagnostics
+  /// bundle) need longer than the default.
+  Future<dynamic> post(String path, [Object? body, Duration wait = const Duration(seconds: 30)]) => _send('POST', path, body ?? const {}, wait);
 
   Future<HttpClientRequest> _open(String method, String path) async {
     final req = await _http.openUrl(method, _url(host, path));
@@ -184,7 +186,7 @@ class Server {
     return req;
   }
 
-  Future<dynamic> _send(String method, String path, Object? body) async {
+  Future<dynamic> _send(String method, String path, Object? body, [Duration wait = const Duration(seconds: 30)]) async {
     final HttpClientResponse resp;
     final String text;
     try {
@@ -193,7 +195,7 @@ class Server {
         req.headers.contentType = ContentType.json;
         req.write(jsonEncode(body));
       }
-      resp = await req.close().timeout(const Duration(seconds: 30));
+      resp = await req.close().timeout(wait);
       text = await _readText(resp, 32 << 20);
     } on IOException {
       throw ApiError(0, 'error.unreachable');

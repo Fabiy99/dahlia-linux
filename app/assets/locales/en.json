@@ -105,5 +105,6 @@
   "error.update_platform": "There is no app for this system in Dahlia {version}.",
   "update.server_too_old": "The server runs a Dahlia version from before the app. Update the server in the dashboard (on your phone or in a browser), then the app connects.",
   "fm.downloading": "Downloading {name}: {done} / {total}",
-  "fm.downloaded": "Saved to {path}."
+  "fm.downloaded": "Saved to {path}.",
+  "log.unit_invalid": "Not a valid service name."
 }
