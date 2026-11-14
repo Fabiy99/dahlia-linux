@@ -55,6 +55,8 @@
   "nav.shares": "Freigaben",
   "nav.parity": "Parity",
   "nav.more": "Mehr",
+  "nav.backup": "Backup",
+  "backup.copy_key": "Passwort kopieren",
   "menu.other_server": "Anderer Server",
   "menu.logout": "Abmelden",
   "home.greeting_morning": "Guten Morgen, {name}",

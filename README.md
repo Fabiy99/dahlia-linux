@@ -164,6 +164,7 @@ Nach 1.0 (1.x):
 45. Native App: Bereich Freigaben (SMB/NFS-Freigaben, SMB-Benutzer, Freigaben anderer Geräte)
 46. Native App: Bereich Parity (Zustand, Sync, Prüfung, Platte wiederherstellen, Einstellungen,
     Verlauf) und Menü „Mehr“ in der Leiste
+47. Native App: Bereich Backup (Ziel Platte oder SFTP, Backup starten, Passwort, Wiederherstellen)
 
 Später: USB-Creator für Windows, Installationsanleitung.
 
@@ -347,6 +348,7 @@ After 1.0 (1.x):
 45. Native app: Shares area (SMB/NFS shares, SMB users, shares of other devices)
 46. Native app: Parity area (state, sync, scrub, restore a disk, settings, history) and a "More"
     menu in the bar
+47. Native app: Backup area (target disk or SFTP, start a backup, password, restore)
 
 Later: USB creator for Windows, installation guide.
 
