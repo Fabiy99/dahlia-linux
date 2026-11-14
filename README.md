@@ -159,6 +159,8 @@ Nach 1.0 (1.x):
 42. Native App: Bereich Apps (installierte Apps, Katalog, Installieren mit Ort und Ordnerwahl)
 43. Native App: Bereich Platten (Pools, SMART, Selbsttests, Burn-in, Import, Formatieren,
     Verschlüsselung, Einstellungen)
+44. Native App: Bereich Dateien (Ordner, Suche, Pfad kopieren, Hoch- und Herunterladen,
+    Kopieren, Verschieben, Umbenennen, Löschen)
 
 Später: USB-Creator für Windows, Installationsanleitung.
 
@@ -337,6 +339,8 @@ After 1.0 (1.x):
 42. Native app: Apps area (installed apps, catalog, install with location and folder picker)
 43. Native app: Disks area (pools, SMART, self-tests, burn-in, import, format, encryption,
     settings)
+44. Native app: Files area (folders, search, copy path, upload and download, copy, move,
+    rename, delete)
 
 Later: USB creator for Windows, installation guide.
 

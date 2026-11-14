@@ -51,6 +51,7 @@
   "nav.overview": "Start",
   "nav.apps": "Apps",
   "nav.storage": "Platten",
+  "nav.files": "Dateien",
   "menu.other_server": "Anderer Server",
   "menu.logout": "Abmelden",
   "home.greeting_morning": "Guten Morgen, {name}",
@@ -97,5 +98,7 @@
   "error.update_checksum": "Der Download passt nicht zur signierten Prüfsumme. Es wurde nichts installiert.",
   "error.update_install": "Die Installation ist fehlgeschlagen.",
   "error.update_platform": "In Dahlia {version} gibt es keine App für dieses System.",
-  "update.server_too_old": "Der Server läuft mit einer Dahlia-Version von vor der App. Aktualisiere den Server im Dashboard (auf dem Handy oder im Browser), danach verbindet sich die App."
+  "update.server_too_old": "Der Server läuft mit einer Dahlia-Version von vor der App. Aktualisiere den Server im Dashboard (auf dem Handy oder im Browser), danach verbindet sich die App.",
+  "fm.downloading": "Lade {name} herunter: {done} / {total}",
+  "fm.downloaded": "Gespeichert unter {path}."
 }
