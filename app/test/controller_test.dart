@@ -96,6 +96,28 @@ void main() {
     again.dispose();
   });
 
+  test('pending updates show a banner; closed, it returns with more updates', () async {
+    fake.pending = ['libc6', 'base'];
+    final c = make();
+    await c.start();
+    await c.choose(fake.host);
+    await c.confirmFingerprint();
+    await c.login('fabian', 'pw', save: false);
+    await c.checkPendingUpdates();
+    expect(c.pendingUpdates, 2);
+    c.closeUpdateBanner();
+    expect(c.updateBannerClosed, isTrue);
+    await c.checkPendingUpdates();
+    expect(c.updateBannerClosed, isTrue);
+    fake.pending = ['libc6', 'base', 'agent'];
+    await c.checkPendingUpdates();
+    expect([c.pendingUpdates, c.updateBannerClosed], [3, false]);
+    fake.pending = const [];
+    await c.checkPendingUpdates();
+    expect(c.pendingUpdates, 0);
+    c.dispose();
+  });
+
   test('areas of the top bar; signing out goes back to the start page', () async {
     final c = make();
     await c.start();

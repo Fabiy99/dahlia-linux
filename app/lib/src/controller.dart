@@ -16,7 +16,7 @@ import 'strings.dart';
 enum Stage { starting, connect, fingerprint, connecting, login, update, home }
 
 /// Area shown in Stage.home, picked in the top bar.
-enum Area { home, apps, storage, files, shares, parity, backup, docker, jobs, log }
+enum Area { home, apps, storage, files, shares, parity, backup, docker, jobs, log, settings }
 
 typedef Assets = Future<String> Function(String path);
 
@@ -54,6 +54,13 @@ class Controller extends ChangeNotifier {
   /// Server version that made the app stop (Stage.update); "" = too old to say.
   String? serverVersion;
 
+  /// Packages the server could upgrade (from its package lists), for the banner.
+  int pendingUpdates = 0;
+
+  /// The banner was closed; it comes back when more updates are pending.
+  bool updateBannerClosed = false;
+  Timer? _pendingTimer;
+
   /// Login needs the second factor.
   bool needsCode = false;
   bool busy = false;
@@ -66,6 +73,15 @@ class Controller extends ChangeNotifier {
   String t(String key, [Map<String, Object?> vars = const {}]) => strings.t(key, vars);
 
   void _set(Stage s, {String? err, Map<String, Object?> vars = const {}}) {
+    if (s == Stage.home && stage != Stage.home) {
+      // Signed in: ask for pending updates now and then every hour.
+      _pendingTimer?.cancel();
+      _pendingTimer = Timer.periodic(const Duration(hours: 1), (_) => checkPendingUpdates());
+      unawaited(checkPendingUpdates());
+    } else if (s != Stage.home) {
+      _pendingTimer?.cancel();
+      _pendingTimer = null;
+    }
     stage = s;
     error = err;
     errorVars = vars;
@@ -281,6 +297,31 @@ class Controller extends ChangeNotifier {
     await _autoLogin();
   }
 
+  // --- pending updates ---------------------------------------------------------
+
+  /// Asks the server how many updates are pending; failures leave the banner as it is.
+  Future<void> checkPendingUpdates() async {
+    final s = server;
+    if (s == null) return;
+    try {
+      final r = await s.get('/api/updates/pending');
+      final n = r is Map && r['packages'] is List ? (r['packages'] as List).length : 0;
+      if (n == pendingUpdates) return;
+      if (n > pendingUpdates) updateBannerClosed = false;
+      pendingUpdates = n;
+      notifyListeners();
+    } on VersionMismatch {
+      return;
+    } on ApiError {
+      return;
+    }
+  }
+
+  void closeUpdateBanner() {
+    updateBannerClosed = true;
+    notifyListeners();
+  }
+
   // --- version binding ---------------------------------------------------------
 
   void _mismatch(String server) {
@@ -290,6 +331,7 @@ class Controller extends ChangeNotifier {
 
   @override
   void dispose() {
+    _pendingTimer?.cancel();
     server?.close();
     super.dispose();
   }

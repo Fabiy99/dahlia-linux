@@ -12,6 +12,7 @@ import 'home.dart';
 import 'jobs.dart';
 import 'pages.dart';
 import 'parity.dart';
+import 'settings.dart';
 import 'shares.dart';
 import 'storage.dart';
 import 'theme.dart';
@@ -62,6 +63,7 @@ class DahliaApp extends StatelessWidget {
           Area.docker => DockerPage(c),
           Area.jobs => JobsPage(c),
           Area.log => LogPage(c),
+          Area.settings => SettingsPage(c),
         },
       };
 }

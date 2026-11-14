@@ -251,6 +251,7 @@ def test_actions_go_to_agent(env):
     client.post("/api/jobs/mover/start", headers=CSRF)
     client.post("/api/updates/apply", headers=CSRF)
     client.get("/api/updates/progress")
+    client.get("/api/updates/pending")
     client.post("/api/system/hostname", json={"hostname": "nas"}, headers=CSRF)
     assert agent.calls == [
         ("storage.add", {"uuid": "1234-ABCD", "role": "data"}),
@@ -261,6 +262,7 @@ def test_actions_go_to_agent(env):
         ("job.start", {"job": "mover"}),
         ("updates.apply", {}),
         ("updates.progress", {}),
+        ("updates.pending", {}),
         ("system.set_hostname", {"hostname": "nas"}),
     ]
 

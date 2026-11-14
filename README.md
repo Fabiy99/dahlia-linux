@@ -167,6 +167,7 @@ Nach 1.0 (1.x):
 47. Native App: Bereich Backup (Ziel Platte oder SFTP, Backup starten, Passwort, Wiederherstellen)
 48. Native App: Bereich Docker (Platzbedarf, alle Container mit CPU/RAM, Starten/Stoppen/Neustarten, Logs, Aufräumen)
 49. Native App: Bereiche Jobs und Systemprotokoll (Jobs starten, Journal mit Filtern, Diagnosepaket speichern)
+50. Native App: Bereich Einstellungen mit Updates (Paket-Updates mit Fortschritt, automatische Sicherheitsupdates, System-Snapshots mit Rollback) und Hinweis bei anstehenden Updates
 
 Später: USB-Creator für Windows, Installationsanleitung.
 
@@ -353,6 +354,7 @@ After 1.0 (1.x):
 47. Native app: Backup area (target disk or SFTP, start a backup, password, restore)
 48. Native app: Docker area (disk usage, all containers with CPU/RAM, start/stop/restart, logs, clean up)
 49. Native app: Jobs and System log areas (start jobs, journal with filters, save the diagnostics bundle)
+50. Native app: Settings area with Updates (package updates with progress, automatic security updates, system snapshots with rollback) and a banner when updates are pending
 
 Later: USB creator for Windows, installation guide.
 
