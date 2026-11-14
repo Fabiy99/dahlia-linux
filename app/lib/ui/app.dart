@@ -6,6 +6,7 @@ import '../src/controller.dart';
 import 'bloom.dart';
 import 'apps.dart';
 import 'backup.dart';
+import 'docker.dart';
 import 'files.dart';
 import 'home.dart';
 import 'pages.dart';
@@ -57,6 +58,7 @@ class DahliaApp extends StatelessWidget {
           Area.shares => SharesPage(c),
           Area.parity => ParityPage(c),
           Area.backup => BackupPage(c),
+          Area.docker => DockerPage(c),
         },
       };
 }
