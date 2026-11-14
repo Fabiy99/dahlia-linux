@@ -16,7 +16,7 @@ Kein Abo, keine Lizenzschlüssel. Lizenz: GPLv3.
 
 ### Stand
 
-Aktuelle Version: 1.3.0. Die ISO und die Desktop-App (Windows, macOS, Linux) hängen am jeweiligen
+Aktuelle Version: 1.4.0. Die ISO und die Desktop-App (Windows, macOS, Linux) hängen am jeweiligen
 [GitHub-Release](https://github.com/Fabiy99/dahlia-linux/releases). Installierte Server holen
 Updates über das apt-Repo, im Dashboard unter "Updates".
 
@@ -213,7 +213,7 @@ No subscription, no license keys. License: GPLv3.
 
 ### Status
 
-Current version: 1.3.0. The ISO and the desktop app (Windows, macOS, Linux) are attached to each
+Current version: 1.4.0. The ISO and the desktop app (Windows, macOS, Linux) are attached to each
 [GitHub release](https://github.com/Fabiy99/dahlia-linux/releases). Installed servers get
 updates from the apt repository, in the dashboard under "Updates".
 
