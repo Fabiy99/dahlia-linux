@@ -60,6 +60,9 @@ HttpClient pinnedClient(String pem) {
 
 Uri _url(String host, String path) => Uri.parse('https://$host$path');
 
+/// Address of the terminal socket with the starting size.
+String terminalUrl(String host, {required int cols, required int rows}) => 'wss://$host/api/terminal?cols=$cols&rows=$rows';
+
 Future<String> _readText(HttpClientResponse resp, int max) async {
   final out = BytesBuilder(copy: false);
   await for (final chunk in resp) {
@@ -319,6 +322,26 @@ class Server {
       return null;
     } on TimeoutException {
       return null;
+    }
+  }
+
+  /// WebSocket of the terminal (`/api/terminal`). The dashboard only accepts
+  /// one whose Origin names this server, as a browser page of it would.
+  Future<WebSocket> terminal({required int cols, required int rows}) async {
+    try {
+      return await WebSocket.connect(
+        terminalUrl(host, cols: cols, rows: rows),
+        headers: {
+          'Origin': 'https://$host',
+          'X-Dahlia-Request': '1',
+          if (session != null) 'Cookie': '$_cookie=$session',
+        },
+        customClient: _http,
+      ).timeout(_timeout);
+    } on IOException {
+      throw ApiError(0, 'error.unreachable');
+    } on TimeoutException {
+      throw ApiError(0, 'error.unreachable');
     }
   }
 
