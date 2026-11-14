@@ -17,6 +17,9 @@ class FakeDahlia {
   /// Body of the last file manager upload, served again by the download.
   List<int> uploaded = const [];
 
+  /// Package names /api/updates/pending offers.
+  List<String> pending = const [];
+
   String get host => '127.0.0.1:${http.port}';
 
   Future<void> start() async {
@@ -73,6 +76,8 @@ class FakeDahlia {
           r.statusCode = 422;
           r.write('{"error":"error.agent","detail":"used by apps: jellyfin, sonarr; remove with --force"}');
         }
+      case '/api/updates/pending':
+        r.write(jsonEncode({'packages': [for (final n in pending) {'name': n}], 'running': false}));
       case '/app-icons/jellyfin.png':
         r.add([0x89, 0x50, 0x4e, 0x47]);
       default:

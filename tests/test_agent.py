@@ -491,6 +491,14 @@ def test_updates_check(ctx):
     assert ["apt-get", "update", "-q"] in ctx.runner.calls
 
 
+def test_updates_pending_reads_the_lists_as_they_are(ctx):
+    ctx.runner.answers[("apt-get", "-s")] = (0, SIMULATION, "")
+    result = run(ctx, "updates.pending")["result"]
+    assert [p["name"] for p in result["packages"]] == ["libc6", "dahlia-base", "newpkg"]
+    assert result["running"] is False
+    assert not any(c[:2] == ["apt-get", "update"] for c in ctx.runner.calls)
+
+
 OLD_RUN = "0" * 31 + "1"
 NEW_RUN = "0" * 31 + "2"
 UPDATE_LOG = """\
@@ -727,6 +735,7 @@ def test_action_list_is_fixed():
         "updates.apply",
         "updates.auto",
         "updates.check",
+        "updates.pending",
         "updates.progress",
         "updates.set_auto",
         "ups.get",

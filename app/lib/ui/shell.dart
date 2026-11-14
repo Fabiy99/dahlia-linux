@@ -28,6 +28,7 @@ const _more = [
   (Area.docker, 'nav.docker'),
   (Area.jobs, 'jobs.title'),
   (Area.log, 'nav.log'),
+  (Area.settings, 'nav.account'),
 ];
 
 class TopBar extends StatelessWidget {
@@ -147,8 +148,44 @@ class PageFrame extends StatelessWidget {
         alignment: Alignment.topCenter,
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 1240),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [TopBar(c), ...children]),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [TopBar(c), UpdateBanner(c), ...children]),
         ),
+      ),
+    );
+  }
+}
+
+/// Notice below the top bar while the server has updates pending; it leads
+/// to the Updates section of the settings and can be closed.
+class UpdateBanner extends StatelessWidget {
+  const UpdateBanner(this.c, {super.key});
+
+  final Controller c;
+
+  @override
+  Widget build(BuildContext context) {
+    if (c.pendingUpdates == 0 || c.updateBannerClosed || c.area == Area.settings) return const SizedBox.shrink();
+    final p = context.palette;
+    return Padding(
+      padding: const EdgeInsets.only(top: 14),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(18, 8, 8, 8),
+        decoration: BoxDecoration(
+          color: p.accent.withValues(alpha: .10),
+          border: Border.all(color: p.accent.withValues(alpha: .35)),
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Row(children: [
+          Icon(Icons.system_update_alt_rounded, color: p.accent, size: 20),
+          const SizedBox(width: 12),
+          Expanded(child: Text(c.t('updates.banner', {'n': c.pendingUpdates}), style: const TextStyle(fontWeight: FontWeight.w500))),
+          TextButton(onPressed: () => c.go(Area.settings), child: Text(c.t('updates.banner_open'))),
+          IconButton(
+            tooltip: c.t('common.close'),
+            onPressed: c.closeUpdateBanner,
+            icon: Icon(Icons.close_rounded, size: 18, color: p.muted),
+          ),
+        ]),
       ),
     );
   }

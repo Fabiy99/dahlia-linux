@@ -746,6 +746,19 @@ def updates_check(ctx: Context):
     return {"packages": parse_simulation(out.stdout)}
 
 
+@action("updates.pending", mutating=False)
+def updates_pending(ctx: Context):
+    """Pending upgrades from the package lists as they are, without refreshing them.
+
+    apt-daily.timer refreshes the lists every day (APT::Periodic, set by base),
+    so this is cheap enough for the app to ask regularly.
+    """
+    if is_running(ctx, JOBS["update"]):
+        return {"packages": [], "running": True}
+    out = ctx.runner.run(["apt-get", "-s", "-q", "full-upgrade"], timeout=120, env=APT_ENV)
+    return {"packages": parse_simulation(out.stdout), "running": False}
+
+
 # update.service is a static unit, so its last run stays visible in
 # systemctl show (a transient unit would be gone after it finished).
 UPDATE_CMD = ["systemctl", "start", "--no-block", "update.service"]
