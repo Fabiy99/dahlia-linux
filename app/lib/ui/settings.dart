@@ -6,14 +6,16 @@ import 'package:material_ui/material_ui.dart';
 import '../src/controller.dart';
 import 'shell.dart';
 import 'theme.dart';
+import 'addresses.dart';
 import 'updates.dart';
 import 'widgets.dart';
 import 'area.dart';
 
-enum SettingsSection { updates }
+enum SettingsSection { updates, addresses }
 
 const _sections = [
   (SettingsSection.updates, 'updates.title'),
+  (SettingsSection.addresses, 'nav.domains'),
 ];
 
 class SettingsPage extends StatefulWidget {
@@ -51,6 +53,7 @@ class _SettingsPageState extends State<SettingsPage> {
       const SizedBox(height: 28),
       switch (section) {
         SettingsSection.updates => UpdatesSection(c, key: const ValueKey(SettingsSection.updates)),
+        SettingsSection.addresses => AddressesSection(c, key: const ValueKey(SettingsSection.addresses)),
       },
     ]);
   }
