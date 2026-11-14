@@ -24,6 +24,7 @@ const _areas = [
 const _more = [
   (Area.shares, 'nav.shares'),
   (Area.parity, 'nav.parity'),
+  (Area.backup, 'nav.backup'),
 ];
 
 class TopBar extends StatelessWidget {
