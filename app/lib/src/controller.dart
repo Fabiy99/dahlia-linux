@@ -16,7 +16,7 @@ import 'strings.dart';
 enum Stage { starting, connect, fingerprint, connecting, login, update, home }
 
 /// Area shown in Stage.home, picked in the top bar.
-enum Area { home, apps, storage, files, shares }
+enum Area { home, apps, storage, files, shares, parity }
 
 typedef Assets = Future<String> Function(String path);
 
