@@ -15,6 +15,7 @@ import 'parity.dart';
 import 'settings.dart';
 import 'shares.dart';
 import 'storage.dart';
+import 'terminal.dart';
 import 'theme.dart';
 
 const title = 'Dahlia, I love you ♥';
@@ -64,6 +65,7 @@ class DahliaApp extends StatelessWidget {
           Area.jobs => JobsPage(c),
           Area.log => LogPage(c),
           Area.settings => SettingsPage(c),
+          Area.terminal => TerminalPage(c),
         },
       };
 }
