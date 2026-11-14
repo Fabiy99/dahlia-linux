@@ -298,6 +298,13 @@ class Controller extends ChangeNotifier {
     await _autoLogin();
   }
 
+  /// The account's password was changed in the app; a saved password follows.
+  Future<void> passwordChanged(String password) async {
+    final host = settings.host;
+    if (host == null || await secrets.read(host, 'password') == null) return;
+    await secrets.write(host, 'password', password);
+  }
+
   /// The server got a new name. When the app reaches it by its old .local
   /// name, it follows to the new one: saved login moved, connected again
   /// once the name answers (avahi restarts, at most about 30 seconds).

@@ -44,7 +44,7 @@ def test_new_code_replaces_old():
 
 
 def test_proof_matches_desktop_app():
-    # Same construction as desktop/src-tauri/src/pairing.rs (proof()).
+    # Same construction as app/lib/src/pairing.dart (proof()).
     msg = b"dahlia-pairing\0" + NONCE + hashlib.sha256(DER).digest()
     expected = hmac.new(b"ABCDEFGHJK", msg, hashlib.sha256).hexdigest()
     assert expected == "f613c2eb6eadd6c08d622c35bb99c8980791618551b1d44c250fed92c5e47a46"

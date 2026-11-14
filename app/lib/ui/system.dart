@@ -11,6 +11,7 @@ import '../src/controller.dart';
 import '../src/server.dart';
 import '../src/system.dart';
 import 'area.dart';
+import 'cards.dart';
 import 'shell.dart';
 import 'theme.dart';
 import 'widgets.dart';
@@ -58,99 +59,6 @@ class _SystemSectionState extends State<SystemSection> {
   }
 }
 
-// --- pieces ---------------------------------------------------------------------
-
-class _Card extends StatelessWidget {
-  const _Card(this.title, this.children);
-
-  final String title;
-  final List<Widget> children;
-
-  @override
-  Widget build(BuildContext context) => Glass(
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
-          const SizedBox(height: 14),
-          ...children,
-        ]),
-      );
-}
-
-Widget _hint(BuildContext context, String text) => Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Text(text, style: TextStyle(color: context.palette.muted, fontSize: 13, height: 1.4)),
-    );
-
-Widget _field(TextEditingController t, String label, {String? hint, List<TextInputFormatter>? formatters, ValueChanged<String>? onChanged}) => Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: TextField(
-        controller: t,
-        autocorrect: false,
-        inputFormatters: formatters ?? [LengthLimitingTextInputFormatter(255)],
-        decoration: InputDecoration(labelText: label, hintText: hint),
-        onChanged: onChanged,
-      ),
-    );
-
-Widget _check(String label, bool value, ValueChanged<bool>? onChanged) => CheckboxListTile(
-      value: value,
-      dense: true,
-      contentPadding: EdgeInsets.zero,
-      controlAffinity: ListTileControlAffinity.leading,
-      title: Text(label),
-      onChanged: onChanged == null ? null : (v) => onChanged(v ?? false),
-    );
-
-Widget _select<T>(String label, T? value, List<(T, String)> items, ValueChanged<T>? onChanged) => Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: DropdownButtonFormField<T>(
-        key: ValueKey('$label ${items.map((e) => e.$1).join(',')} $value'),
-        initialValue: items.any((e) => e.$1 == value) ? value : null,
-        isExpanded: true,
-        decoration: InputDecoration(labelText: label),
-        borderRadius: BorderRadius.circular(12),
-        items: [for (final (v, text) in items) DropdownMenuItem(value: v, child: Text(text, overflow: TextOverflow.ellipsis))],
-        onChanged: onChanged == null ? null : (v) => v == null ? null : onChanged(v),
-      ),
-    );
-
-/// Shared by the cards: the first load, then reloads that keep the form.
-mixin _CardLoad<T extends StatefulWidget> on State<T>, AreaCalls<T> {
-  Map? d;
-  bool busy = false;
-
-  String get path;
-
-  /// Takes the server's values into the form fields.
-  void fill(Map data);
-
-  @override
-  void initState() {
-    super.initState();
-    load(fill: true);
-  }
-
-  Future<void> load({bool fill = false}) async {
-    final m = ScaffoldMessenger.of(context);
-    final r = await call(() => s.get(path), m);
-    if (r is! Map || !mounted) return;
-    setState(() {
-      d = r;
-      if (fill) this.fill(r);
-    });
-  }
-
-  /// Runs a change with the save button disabled, then loads again.
-  Future<void> save(Future<Object?> Function() f, String done) async {
-    final m = ScaffoldMessenger.of(context);
-    setState(() => busy = true);
-    final r = await call(f, m);
-    if (r != null && done.isNotEmpty) say(m, c.t(done));
-    if (mounted) setState(() => busy = false);
-    if (r != null) await load(fill: true);
-  }
-}
-
 // --- server name ----------------------------------------------------------------
 
 class _ServerCard extends StatefulWidget {
@@ -162,7 +70,7 @@ class _ServerCard extends StatefulWidget {
   State<_ServerCard> createState() => _ServerCardState();
 }
 
-class _ServerCardState extends State<_ServerCard> with AreaCalls, _CardLoad {
+class _ServerCardState extends State<_ServerCard> with AreaCalls, CardLoad {
   final _name = TextEditingController();
 
   @override
@@ -195,15 +103,15 @@ class _ServerCardState extends State<_ServerCard> with AreaCalls, _CardLoad {
 
   @override
   Widget build(BuildContext context) {
-    if (d == null) return _Card(c.t('account.server_title'), [Busy(c.t('common.loading'))]);
+    if (d == null) return SettingsCard(c.t('account.server_title'), [Busy(c.t('common.loading'))]);
     final name = _name.text.trim().toLowerCase();
     final ok = hostnameRe.hasMatch(name) && name != '${d!['hostname']}';
-    return _Card(c.t('account.server_title'), [
-      _field(_name, c.t('field.hostname'), formatters: [
+    return SettingsCard(c.t('account.server_title'), [
+      cardField(_name, c.t('field.hostname'), formatters: [
           LengthLimitingTextInputFormatter(63),
           TextInputFormatter.withFunction((old, v) => v.copyWith(text: v.text.toLowerCase())),
         ], onChanged: (_) => setState(() {})),
-      _hint(context, c.t('account.hostname_hint')),
+      cardHint(context, c.t('account.hostname_hint')),
       FilledButton(onPressed: busy || !ok ? null : _rename, child: Text(c.t('overview.set_hostname'))),
     ]);
   }
@@ -220,7 +128,7 @@ class _TimeCard extends StatefulWidget {
   State<_TimeCard> createState() => _TimeCardState();
 }
 
-class _TimeCardState extends State<_TimeCard> with AreaCalls, _CardLoad {
+class _TimeCardState extends State<_TimeCard> with AreaCalls, CardLoad {
   String zone = '';
   bool ntp = true;
 
@@ -239,9 +147,9 @@ class _TimeCardState extends State<_TimeCard> with AreaCalls, _CardLoad {
   @override
   Widget build(BuildContext context) {
     final data = d;
-    if (data == null) return _Card(c.t('settings.time_title'), [Busy(c.t('common.loading'))]);
+    if (data == null) return SettingsCard(c.t('settings.time_title'), [Busy(c.t('common.loading'))]);
     final zones = textList(data['timezones']);
-    return _Card(c.t('settings.time_title'), [
+    return SettingsCard(c.t('settings.time_title'), [
       Padding(
         padding: const EdgeInsets.only(bottom: 12),
         child: DropdownMenu<String>(
@@ -256,8 +164,8 @@ class _TimeCardState extends State<_TimeCard> with AreaCalls, _CardLoad {
           onSelected: (v) => setState(() => zone = v ?? zone),
         ),
       ),
-      _check(c.t('settings.ntp'), ntp, (v) => setState(() => ntp = v)),
-      _hint(context, timeState(data, c.t)),
+      cardCheck(c.t('settings.ntp'), ntp, (v) => setState(() => ntp = v)),
+      cardHint(context, timeState(data, c.t)),
       FilledButton(
         onPressed: busy || !zones.contains(zone)
             ? null
@@ -391,20 +299,20 @@ class _NetworkCardState extends State<_NetworkCard> with AreaCalls {
   @override
   Widget build(BuildContext context) {
     final d = net.network;
-    if (d == null) return _Card(c.t('settings.network_title'), [Busy(c.t('common.loading'))]);
+    if (d == null) return SettingsCard(c.t('settings.network_title'), [Busy(c.t('common.loading'))]);
     if (_filled != net.generation) _fill(d);
     final pending = netPending(d);
     final static = mode == 'static';
-    return _Card(c.t('settings.network_title'), [
+    return SettingsCard(c.t('settings.network_title'), [
       _PendingBox(c, net),
-      _hint(context, netCurrent(d, c.t)),
-      _select(c.t('settings.net_mode'), mode, [('dhcp', c.t('settings.net_dhcp')), ('static', c.t('settings.net_static'))], (v) => setState(() => mode = v)),
+      cardHint(context, netCurrent(d, c.t)),
+      cardSelect(c.t('settings.net_mode'), mode, [('dhcp', c.t('settings.net_dhcp')), ('static', c.t('settings.net_static'))], (v) => setState(() => mode = v)),
       if (static) ...[
-        _field(_address, c.t('settings.net_address'), hint: c.t('settings.net_address_hint'), onChanged: (_) => setState(() {})),
-        _field(_gateway, c.t('settings.net_gateway'), hint: c.t('settings.net_gateway_hint'), onChanged: (_) => setState(() {})),
-        _field(_dns, c.t('settings.net_dns'), hint: c.t('settings.net_dns_hint'), onChanged: (_) => setState(() {})),
+        cardField(_address, c.t('settings.net_address'), hint: c.t('settings.net_address_hint'), onChanged: (_) => setState(() {})),
+        cardField(_gateway, c.t('settings.net_gateway'), hint: c.t('settings.net_gateway_hint'), onChanged: (_) => setState(() {})),
+        cardField(_dns, c.t('settings.net_dns'), hint: c.t('settings.net_dns_hint'), onChanged: (_) => setState(() {})),
       ],
-      _hint(context, c.t('settings.net_hint')),
+      cardHint(context, c.t('settings.net_hint')),
       FilledButton(
         onPressed: busy || pending != null || networkBody(mode: mode, address: _address.text, gateway: _gateway.text, dns: _dns.text) == null ? null : _apply,
         child: Text(c.t('common.save')),
@@ -571,15 +479,15 @@ class _LayoutCardState extends State<_LayoutCard> with AreaCalls {
   Widget build(BuildContext context) {
     final p = context.palette;
     final d = net.layout;
-    if (d == null) return _Card(c.t('netlayout.title'), [Busy(c.t('common.loading'))]);
+    if (d == null) return SettingsCard(c.t('netlayout.title'), [Busy(c.t('common.loading'))]);
     if (_filled != net.generation) _fill(d);
     final ports = d['ports'] is List ? (d['ports'] as List).whereType<Map>().toList() : <Map>[];
     final order = [for (final port in ports) '${port['name']}'];
     final head = TextStyle(color: p.muted, fontSize: 12.5, fontWeight: FontWeight.w600);
     final pending = net.network == null ? null : netPending(net.network!);
-    return _Card(c.t('netlayout.title'), [
+    return SettingsCard(c.t('netlayout.title'), [
       _PendingBox(c, net),
-      _hint(context, layoutSummary(d, c.t)),
+      cardHint(context, layoutSummary(d, c.t)),
       SingleChildScrollView(
         scrollDirection: Axis.horizontal,
         child: DataTable(
@@ -612,8 +520,8 @@ class _LayoutCardState extends State<_LayoutCard> with AreaCalls {
       ),
       const SizedBox(height: 14),
       if (used.length > 1)
-        _select(c.t('netlayout.bond_mode'), bondMode, [for (final m in textList(d['bond_modes'])) (m, c.t('netlayout.mode_$m'))], (v) => setState(() => bondMode = v)),
-      _check(c.t('netlayout.bridge'), bridge, (v) => setState(() => bridge = v)),
+        cardSelect(c.t('netlayout.bond_mode'), bondMode, [for (final m in textList(d['bond_modes'])) (m, c.t('netlayout.mode_$m'))], (v) => setState(() => bondMode = v)),
+      cardCheck(c.t('netlayout.bridge'), bridge, (v) => setState(() => bridge = v)),
       const SizedBox(height: 10),
       Text(c.t('netlayout.vlans'), style: const TextStyle(fontWeight: FontWeight.w600)),
       const SizedBox(height: 10),
@@ -623,14 +531,14 @@ class _LayoutCardState extends State<_LayoutCard> with AreaCalls {
           child: Wrap(spacing: 12, crossAxisAlignment: WrapCrossAlignment.center, children: [
             SizedBox(
               width: 120,
-              child: _field(v.id, c.t('netlayout.vlan_id'), formatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(4)]),
+              child: cardField(v.id, c.t('netlayout.vlan_id'), formatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(4)]),
             ),
             SizedBox(
               width: 200,
-              child: _select(c.t('netlayout.vlan_mode'), v.mode, [for (final m in ['static', 'manual']) (m, c.t('netlayout.vlan_$m'))], (m) => setState(() => v.mode = m)),
+              child: cardSelect(c.t('netlayout.vlan_mode'), v.mode, [for (final m in ['static', 'manual']) (m, c.t('netlayout.vlan_$m'))], (m) => setState(() => v.mode = m)),
             ),
             if (v.mode == 'static')
-              SizedBox(width: 220, child: _field(v.address, c.t('netlayout.vlan_address'), hint: '10.0.20.5/24', formatters: [LengthLimitingTextInputFormatter(18)])),
+              SizedBox(width: 220, child: cardField(v.address, c.t('netlayout.vlan_address'), hint: '10.0.20.5/24', formatters: [LengthLimitingTextInputFormatter(18)])),
             Padding(
               padding: const EdgeInsets.only(bottom: 12),
               child: TextButton(
@@ -648,8 +556,8 @@ class _LayoutCardState extends State<_LayoutCard> with AreaCalls {
         child: OutlinedButton(onPressed: () => setState(() => vlans.add(_VlanEdit(Vlan()))), child: Text(c.t('netlayout.vlan_add'))),
       ),
       const SizedBox(height: 14),
-      _hint(context, c.t('netlayout.hint')),
-      _hint(context, c.t('netlayout.wol_hint')),
+      cardHint(context, c.t('netlayout.hint')),
+      cardHint(context, c.t('netlayout.wol_hint')),
       FilledButton(onPressed: busy || pending != null ? null : () => _apply(order), child: Text(c.t('netlayout.apply'))),
     ]);
   }
@@ -666,7 +574,7 @@ class _SpindownCard extends StatefulWidget {
   State<_SpindownCard> createState() => _SpindownCardState();
 }
 
-class _SpindownCardState extends State<_SpindownCard> with AreaCalls, _CardLoad {
+class _SpindownCardState extends State<_SpindownCard> with AreaCalls, CardLoad {
   int fallback = 0;
   final disks = <String, int>{};
 
@@ -701,20 +609,20 @@ class _SpindownCardState extends State<_SpindownCard> with AreaCalls, _CardLoad 
   @override
   Widget build(BuildContext context) {
     final data = d;
-    if (data == null) return _Card(c.t('settings.spindown_title'), [Busy(c.t('common.loading'))]);
+    if (data == null) return SettingsCard(c.t('settings.spindown_title'), [Busy(c.t('common.loading'))]);
     final choices = intList(data['choices']);
     final list = data['disks'] is List ? (data['disks'] as List).whereType<Map>().toList() : <Map>[];
-    return _Card(c.t('settings.spindown_title'), [
-      _select(c.t('settings.spindown_default'), fallback, [for (final m in choices) (m, spindownLabel(m, c.t))], (v) => setState(() => fallback = v)),
-      if (list.isEmpty) _hint(context, c.t('settings.spindown_none')),
+    return SettingsCard(c.t('settings.spindown_title'), [
+      cardSelect(c.t('settings.spindown_default'), fallback, [for (final m in choices) (m, spindownLabel(m, c.t))], (v) => setState(() => fallback = v)),
+      if (list.isEmpty) cardHint(context, c.t('settings.spindown_none')),
       for (final disk in list)
-        _select<int>(
+        cardSelect<int>(
           diskLabel(disk, c.t),
           disks['${disk['serial'] ?? ''}'] ?? -1,
           [for (final m in [-1, ...choices]) (m, spindownLabel(m, c.t))],
           '${disk['serial'] ?? ''}'.isEmpty ? null : (v) => setState(() => disks['${disk['serial']}'] = v),
         ),
-      _hint(context, c.t('settings.spindown_hint')),
+      cardHint(context, c.t('settings.spindown_hint')),
       FilledButton(onPressed: busy ? null : _save, child: Text(c.t('common.save'))),
     ]);
   }
@@ -731,7 +639,7 @@ class _PowerCard extends StatefulWidget {
   State<_PowerCard> createState() => _PowerCardState();
 }
 
-class _PowerCardState extends State<_PowerCard> with AreaCalls, _CardLoad {
+class _PowerCardState extends State<_PowerCard> with AreaCalls, CardLoad {
   String governor = '';
 
   @override
@@ -746,13 +654,13 @@ class _PowerCardState extends State<_PowerCard> with AreaCalls, _CardLoad {
   @override
   Widget build(BuildContext context) {
     final data = d;
-    if (data == null) return _Card(c.t('power.title'), [Busy(c.t('common.loading'))]);
+    if (data == null) return SettingsCard(c.t('power.title'), [Busy(c.t('common.loading'))]);
     final available = textList(data['available']);
-    if (available.isEmpty) return _Card(c.t('power.title'), [_hint(context, c.t('power.none'))]);
-    return _Card(c.t('power.title'), [
-      _select(c.t('power.governor'), governor, [for (final g in available) (g, governorLabel(g, c.t))], (v) => setState(() => governor = v)),
-      _hint(context, powerState(data, c.t)),
-      _hint(context, c.t('power.hint')),
+    if (available.isEmpty) return SettingsCard(c.t('power.title'), [cardHint(context, c.t('power.none'))]);
+    return SettingsCard(c.t('power.title'), [
+      cardSelect(c.t('power.governor'), governor, [for (final g in available) (g, governorLabel(g, c.t))], (v) => setState(() => governor = v)),
+      cardHint(context, powerState(data, c.t)),
+      cardHint(context, c.t('power.hint')),
       FilledButton(
         onPressed: busy || governor.isEmpty ? null : () => save(() => s.post('/api/settings/power', {'governor': governor}), 'power.saved'),
         child: Text(c.t('common.save')),
@@ -772,7 +680,7 @@ class _SyslogCard extends StatefulWidget {
   State<_SyslogCard> createState() => _SyslogCardState();
 }
 
-class _SyslogCardState extends State<_SyslogCard> with AreaCalls, _CardLoad {
+class _SyslogCardState extends State<_SyslogCard> with AreaCalls, CardLoad {
   bool enabled = false;
   String protocol = 'udp';
   String severity = 'info';
@@ -804,19 +712,19 @@ class _SyslogCardState extends State<_SyslogCard> with AreaCalls, _CardLoad {
   @override
   Widget build(BuildContext context) {
     final data = d;
-    if (data == null) return _Card(c.t('syslog.title'), [Busy(c.t('common.loading'))]);
-    return _Card(c.t('syslog.title'), [
-      _check(c.t('syslog.enabled'), enabled, (v) => setState(() => enabled = v)),
+    if (data == null) return SettingsCard(c.t('syslog.title'), [Busy(c.t('common.loading'))]);
+    return SettingsCard(c.t('syslog.title'), [
+      cardCheck(c.t('syslog.enabled'), enabled, (v) => setState(() => enabled = v)),
       const SizedBox(height: 6),
-      _field(_host, c.t('syslog.host'), hint: c.t('syslog.host_hint')),
+      cardField(_host, c.t('syslog.host'), hint: c.t('syslog.host_hint')),
       Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Expanded(child: _field(_port, c.t('syslog.port'), formatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(5)])),
+        Expanded(child: cardField(_port, c.t('syslog.port'), formatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(5)])),
         const SizedBox(width: 12),
-        Expanded(child: _select(c.t('syslog.protocol'), protocol, [('udp', c.t('syslog.udp')), ('tcp', c.t('syslog.tcp'))], (v) => setState(() => protocol = v))),
+        Expanded(child: cardSelect(c.t('syslog.protocol'), protocol, [('udp', c.t('syslog.udp')), ('tcp', c.t('syslog.tcp'))], (v) => setState(() => protocol = v))),
       ]),
-      _select(c.t('syslog.severity'), severity, [for (final v in syslogSeverities) (v, c.t('syslog.sev_$v'))], (v) => setState(() => severity = v)),
-      _hint(context, syslogState(data, c.t)),
-      _hint(context, c.t('syslog.hint')),
+      cardSelect(c.t('syslog.severity'), severity, [for (final v in syslogSeverities) (v, c.t('syslog.sev_$v'))], (v) => setState(() => severity = v)),
+      cardHint(context, syslogState(data, c.t)),
+      cardHint(context, c.t('syslog.hint')),
       FilledButton(
         onPressed: busy
             ? null
@@ -842,7 +750,7 @@ class _DevicesCard extends StatefulWidget {
   State<_DevicesCard> createState() => _DevicesCardState();
 }
 
-class _DevicesCardState extends State<_DevicesCard> with AreaCalls, _CardLoad {
+class _DevicesCardState extends State<_DevicesCard> with AreaCalls, CardLoad {
   @override
   Controller get c => widget.c;
 
@@ -854,7 +762,7 @@ class _DevicesCardState extends State<_DevicesCard> with AreaCalls, _CardLoad {
 
   Widget _table(List<String> heads, List<List<String>> rows) {
     final p = context.palette;
-    if (rows.isEmpty) return _hint(context, c.t('devices.none'));
+    if (rows.isEmpty) return cardHint(context, c.t('devices.none'));
     final head = TextStyle(color: p.muted, fontSize: 12.5, fontWeight: FontWeight.w600);
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
@@ -873,15 +781,15 @@ class _DevicesCardState extends State<_DevicesCard> with AreaCalls, _CardLoad {
   @override
   Widget build(BuildContext context) {
     final data = d;
-    if (data == null) return _Card(c.t('devices.title'), [Busy(c.t('common.loading'))]);
-    return _Card(c.t('devices.title'), [
+    if (data == null) return SettingsCard(c.t('devices.title'), [Busy(c.t('common.loading'))]);
+    return SettingsCard(c.t('devices.title'), [
       Text(c.t('devices.pci'), style: const TextStyle(fontWeight: FontWeight.w600)),
       _table(['slot', 'class', 'device', 'id', 'driver', 'iommu'], pciRows(data)),
       const SizedBox(height: 18),
       Text(c.t('devices.usb'), style: const TextStyle(fontWeight: FontWeight.w600)),
       _table(['bus', 'device', 'id'], usbRows(data)),
       const SizedBox(height: 14),
-      _hint(context, c.t(data['iommu'] == true ? 'devices.iommu_on' : 'devices.iommu_off')),
+      cardHint(context, c.t(data['iommu'] == true ? 'devices.iommu_on' : 'devices.iommu_off')),
       OutlinedButton(onPressed: busy ? null : () => load(), child: Text(c.t('common.refresh'))),
     ]);
   }

@@ -42,9 +42,9 @@ Updates über das apt-Repo, im Dashboard unter "Updates".
   Widgets ein- und ausblenden, Wetter für mehrere Orte (Open-Meteo); der Hintergrund folgt dem
   Wetter. Ein Monitor am Server zeigt denselben Startbildschirm mit Uhr, Adresse und QR-Code,
   vor der Einrichtung auch den Einrichtungscode.
-- **Desktop-App:** für Windows, macOS und Linux (`desktop/`). Findet den Server im Netz, koppelt
-  sich über den Fingerabdruck der lokalen CA und zeigt das Dashboard im eigenen Fenster; Apps wie
-  Jellyfin öffnen sich per Klick in einem App-Fenster, ohne IP-Adressen.
+- **Desktop-App:** native App für Windows, macOS und Linux (`app/`, Flutter). Findet den Server im
+  Netz, koppelt sich über den Fingerabdruck der lokalen CA und bietet alle Bereiche des Dashboards
+  in eigener Oberfläche; sie hat immer dieselbe Version wie der Server und aktualisiert sich selbst.
 - **Handy:** das Handy-Symbol im Dashboard zeigt einen QR-Code; das Handy öffnet dasselbe
   Dashboard im Browser und legt es als Lesezeichen ab. Darüber bleibt der Server immer erreichbar
   und die Desktop-App lässt sich mit einem kurzen Kopplungscode neu koppeln.
@@ -171,6 +171,9 @@ Nach 1.0 (1.x):
 51. Native App: Einstellungen, Unterseite Adressen (mDNS-Namen der Apps, lokale CA mit Fingerabdruck und Download)
 52. Native App: Bereich Terminal (Shell als eigenes Linux-Konto, Sitzung bleibt beim Wechsel der Bereiche offen)
 53. Native App: Einstellungen, Unterseite System (Servername, Zeit, Netzwerk und Netzwerk-Layout mit Wake-on-LAN, Spindown, Energiesparen, Remote-Syslog, Geräte)
+54. Native App: Einstellungen, Unterseite Sicherheit (Firewall mit eigenen Regeln, WireGuard, Tailscale, Passwort, Zwei-Faktor-Login, Dashboard-Konten, API-Tokens)
+55. Native App: Einstellungen, Unterseite Dienste (Zeitpläne, Benachrichtigungen, Export nach InfluxDB, USV, Handy und Kopplungscode)
+56. Tauri-App (`desktop/`) entfernt; die native App deckt alle Bereiche ab
 
 Später: USB-Creator für Windows, Installationsanleitung.
 
@@ -188,7 +191,7 @@ pytest
 
 ### Code-Signierung
 
-Die Windows-Pakete der Desktop-App (`.exe`, `.msi`) werden ab dem nächsten Release signiert:
+Der Windows-Installer der Desktop-App (`.exe`) wird ab dem nächsten Release signiert:
 kostenlose Code-Signierung über [SignPath.io](https://about.signpath.io/), Zertifikat der
 [SignPath Foundation](https://signpath.org/). Signiert werden nur Dateien, die GitHub Actions aus
 diesem Repo baut; jede Signierung gibt der Maintainer einzeln frei.
@@ -234,9 +237,9 @@ updates from the apt repository, in the dashboard under "Updates".
   widgets can be shown or hidden, weather for several places (Open-Meteo); the background follows
   the weather. A monitor attached to the server shows the same start screen with clock, address and
   QR code, before setup also the setup code.
-- **Desktop app:** for Windows, macOS and Linux (`desktop/`). Finds the server in the network,
-  pairs via the fingerprint of the local CA and shows the dashboard in its own window; apps such as
-  Jellyfin open in an app window with one click, no IP addresses.
+- **Desktop app:** native app for Windows, macOS and Linux (`app/`, Flutter). Finds the server in
+  the network, pairs via the fingerprint of the local CA and offers every area of the dashboard in
+  its own interface; it always has the server's version and updates itself.
 - **Phone:** the phone icon in the dashboard shows a QR code; the phone opens the same dashboard in
   the browser and keeps it as a bookmark. That way the server stays reachable, and the desktop app
   can be paired again with a short pairing code.
@@ -361,6 +364,9 @@ After 1.0 (1.x):
 51. Native app: Settings, Addresses section (mDNS names of the apps, local CA with fingerprint and download)
 52. Native app: Terminal area (shell as your own Linux account, the session stays open while switching areas)
 53. Native app: Settings, System section (server name, time, network and network layout with Wake-on-LAN, spindown, power saving, remote syslog, devices)
+54. Native app: Settings, Security section (firewall with own rules, WireGuard, Tailscale, password, two-factor login, dashboard accounts, API tokens)
+55. Native app: Settings, Services section (schedules, notifications, export to InfluxDB, UPS, phone and pairing code)
+56. Tauri app (`desktop/`) removed; the native app covers every area
 
 Later: USB creator for Windows, installation guide.
 
@@ -378,7 +384,7 @@ pytest
 
 ### Code signing
 
-The Windows packages of the desktop app (`.exe`, `.msi`) are signed from the next release on:
+The Windows installer of the desktop app (`.exe`) is signed from the next release on:
 free code signing provided by [SignPath.io](https://about.signpath.io/), certificate by
 [SignPath Foundation](https://signpath.org/). Only files built by GitHub Actions from this
 repository are signed; the maintainer approves every signing request.
