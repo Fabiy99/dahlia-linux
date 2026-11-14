@@ -253,7 +253,7 @@ class _StoragePageState extends State<StoragePage> with AreaCalls {
         Row(children: [
           Text(c.t(name), style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600)),
           const Spacer(),
-          Text(mp, style: TextStyle(color: p.muted, fontSize: 12, fontFamily: 'monospace')),
+          Text(mp, style: TextStyle(color: p.muted, fontSize: 12, fontFamily: monoFont, fontFamilyFallback: monoFallback)),
         ]),
         const SizedBox(height: 14),
         if (f != null) ...[
@@ -458,7 +458,7 @@ class _StoragePageState extends State<StoragePage> with AreaCalls {
       decoration: BoxDecoration(border: Border(top: BorderSide(color: p.line))),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Wrap(spacing: 10, runSpacing: 6, crossAxisAlignment: WrapCrossAlignment.center, children: [
-          Text('${d['path']}', style: const TextStyle(fontFamily: 'monospace', fontWeight: FontWeight.w600, fontSize: 13)),
+          Text('${d['path']}', style: const TextStyle(fontFamily: monoFont, fontFamilyFallback: monoFallback, fontWeight: FontWeight.w600, fontSize: 13)),
           Text('${d['fstype'] ?? c.t('storage.no_fs')}', style: TextStyle(color: p.muted, fontSize: 13)),
           Text(bytes((d['size'] as num?) ?? 0, c.t), style: TextStyle(color: p.muted, fontSize: 13)),
           Tag(tv(c, 'disk_status', status), kind, tooltip: '${d['reason'] ?? ''}'),
@@ -850,7 +850,7 @@ class _CryptCard extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.only(bottom: 8),
             child: Wrap(spacing: 10, crossAxisAlignment: WrapCrossAlignment.center, children: [
-              Text('${d['mountpoint']}', style: const TextStyle(fontFamily: 'monospace', fontWeight: FontWeight.w600)),
+              Text('${d['mountpoint']}', style: const TextStyle(fontFamily: monoFont, fontFamilyFallback: monoFallback, fontWeight: FontWeight.w600)),
               Text(tv(c, 'role', d['role']), style: TextStyle(color: p.muted, fontSize: 13)),
               if (d['present'] != true)
                 Tag(c.t('crypt.missing'), p.warn)

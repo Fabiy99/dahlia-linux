@@ -289,7 +289,7 @@ class _RemoveDialogState extends State<_RemoveDialog> {
           contentPadding: EdgeInsets.zero,
           controlAffinity: ListTileControlAffinity.leading,
           title: Text(c.t('apps.delete_data')),
-          subtitle: Text(widget.path, style: TextStyle(color: p.muted, fontFamily: 'monospace', fontSize: 12)),
+          subtitle: Text(widget.path, style: TextStyle(color: p.muted, fontFamily: monoFont, fontFamilyFallback: monoFallback, fontSize: 12)),
           onChanged: (v) => setState(() => deleteData = v ?? false),
         ),
       ),
@@ -481,7 +481,7 @@ class _LoginState extends State<_Login> {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
             decoration: BoxDecoration(color: p.sub, borderRadius: BorderRadius.circular(8)),
-            child: SelectableText(text, style: const TextStyle(fontFamily: 'monospace', fontSize: 13)),
+            child: SelectableText(text, style: const TextStyle(fontFamily: monoFont, fontFamilyFallback: monoFallback, fontSize: 13)),
           ),
       ]),
     );
@@ -682,7 +682,7 @@ class _InstallDialogState extends State<_InstallDialog> {
                   style: TextStyle(color: p.muted, fontSize: 12)),
             ]),
             const SizedBox(height: 2),
-            Text(_place(name).full, style: const TextStyle(fontFamily: 'monospace', fontSize: 13)),
+            Text(_place(name).full, style: const TextStyle(fontFamily: monoFont, fontFamilyFallback: monoFallback, fontSize: 13)),
           ]),
         ),
         TextButton(onPressed: () => _change(name), child: Text(c.t('install.change'))),
