@@ -50,6 +50,7 @@
   "server_update.then_app": "When the server is done, the app updates itself to the same version.",
   "nav.overview": "Home",
   "nav.apps": "Apps",
+  "nav.storage": "Disks",
   "menu.other_server": "Other server",
   "menu.logout": "Sign out",
   "home.greeting_morning": "Good morning, {name}",

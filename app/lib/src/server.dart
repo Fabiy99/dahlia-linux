@@ -19,7 +19,7 @@ const _cookie = 'dahlia_session';
 const _timeout = Duration(seconds: 8);
 
 class ApiError implements Exception {
-  ApiError(this.status, this.key);
+  ApiError(this.status, this.key, [this.detail = '']);
 
   /// HTTP status; 0 when the server could not be reached.
   final int status;
@@ -27,8 +27,11 @@ class ApiError implements Exception {
   /// Locale key from the server ("error.login_required") or of the app.
   final String key;
 
+  /// The server's explanation (agent message), may be empty.
+  final String detail;
+
   @override
-  String toString() => 'ApiError($status, $key)';
+  String toString() => 'ApiError($status, $key, $detail)';
 }
 
 /// Thrown instead of a result when the server runs another version.
@@ -213,7 +216,8 @@ class Server {
     }
     if (resp.statusCode >= 400) {
       final key = data is Map && data['error'] is String ? data['error'] as String : 'error.unexpected';
-      throw ApiError(resp.statusCode, key);
+      final detail = data is Map && data['detail'] is String ? data['detail'] as String : '';
+      throw ApiError(resp.statusCode, key, detail);
     }
     return data;
   }
