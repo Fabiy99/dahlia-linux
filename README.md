@@ -161,6 +161,7 @@ Nach 1.0 (1.x):
     Verschlüsselung, Einstellungen)
 44. Native App: Bereich Dateien (Ordner, Suche, Pfad kopieren, Hoch- und Herunterladen,
     Kopieren, Verschieben, Umbenennen, Löschen)
+45. Native App: Bereich Freigaben (SMB/NFS-Freigaben, SMB-Benutzer, Freigaben anderer Geräte)
 
 Später: USB-Creator für Windows, Installationsanleitung.
 
@@ -341,6 +342,7 @@ After 1.0 (1.x):
     settings)
 44. Native app: Files area (folders, search, copy path, upload and download, copy, move,
     rename, delete)
+45. Native app: Shares area (SMB/NFS shares, SMB users, shares of other devices)
 
 Later: USB creator for Windows, installation guide.
 

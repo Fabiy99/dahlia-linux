@@ -277,7 +277,7 @@ class _FilesPageState extends State<FilesPage> with AreaCalls {
           alignment: Alignment.centerLeft,
           padding: const EdgeInsets.symmetric(horizontal: 14),
           decoration: BoxDecoration(color: p.sub, borderRadius: BorderRadius.circular(12), border: Border.all(color: p.line)),
-          child: SelectableText(fullPath(root, path), maxLines: 1, style: const TextStyle(fontFamily: 'monospace', fontSize: 13)),
+          child: SelectableText(fullPath(root, path), maxLines: 1, style: const TextStyle(fontFamily: monoFont, fontFamilyFallback: monoFallback, fontSize: 13)),
         ),
       ),
       const SizedBox(width: 8),

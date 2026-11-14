@@ -52,6 +52,7 @@
   "nav.apps": "Apps",
   "nav.storage": "Disks",
   "nav.files": "Files",
+  "nav.shares": "Shares",
   "menu.other_server": "Other server",
   "menu.logout": "Sign out",
   "home.greeting_morning": "Good morning, {name}",

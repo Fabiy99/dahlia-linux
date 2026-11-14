@@ -18,6 +18,7 @@ const _areas = [
   (Area.apps, 'nav.apps'),
   (Area.storage, 'nav.storage'),
   (Area.files, 'nav.files'),
+  (Area.shares, 'nav.shares'),
 ];
 
 class TopBar extends StatelessWidget {

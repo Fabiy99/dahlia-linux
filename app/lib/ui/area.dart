@@ -162,7 +162,7 @@ class Places extends StatelessWidget {
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Text(c.t('location.$name'), style: const TextStyle(fontWeight: FontWeight.w600)),
-                  Text(root, style: TextStyle(color: p.muted, fontSize: 12, fontFamily: 'monospace')),
+                  Text(root, style: TextStyle(color: p.muted, fontSize: 12, fontFamily: monoFont, fontFamilyFallback: monoFallback)),
                 ]),
               ),
             ),

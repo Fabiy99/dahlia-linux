@@ -129,7 +129,7 @@ class _FingerprintPageState extends State<FingerprintPage> {
         decoration: BoxDecoration(color: p.sub, borderRadius: BorderRadius.circular(14)),
         child: SelectableText(
           '${c.pendingHost}\n${c.pendingFingerprint}',
-          style: const TextStyle(fontFamily: 'monospace', fontSize: 13, height: 1.5),
+          style: const TextStyle(fontFamily: monoFont, fontFamilyFallback: monoFallback, fontSize: 13, height: 1.5),
         ),
       ),
       const SizedBox(height: 12),

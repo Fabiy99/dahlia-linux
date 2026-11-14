@@ -65,6 +65,14 @@ class FakeDahlia {
       case '/api/storage/remove':
         r.statusCode = 422;
         r.write('{"error":"error.agent","detail":"/mnt/cache still holds files, use --force"}');
+      case '/api/remotes/nas/remove':
+        final body = jsonDecode(await utf8.decoder.bind(req).join());
+        if (body['force'] == true) {
+          r.write('{"name":"nas"}');
+        } else {
+          r.statusCode = 422;
+          r.write('{"error":"error.agent","detail":"used by apps: jellyfin, sonarr; remove with --force"}');
+        }
       case '/app-icons/jellyfin.png':
         r.add([0x89, 0x50, 0x4e, 0x47]);
       default:

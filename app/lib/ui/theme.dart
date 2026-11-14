@@ -159,3 +159,9 @@ ThemeData dahliaTheme(Brightness b) {
     progressIndicatorTheme: ProgressIndicatorThemeData(color: p.accent, linearTrackColor: p.track),
   );
 }
+
+/// Monospaced text: the system's mono font, like the dashboard's
+/// ui-monospace stack. The bare name "monospace" can resolve to a CJK font
+/// that draws the backslash as a yen sign, so it comes last.
+const monoFont = 'Menlo';
+const monoFallback = ['Consolas', 'Cascadia Mono', 'DejaVu Sans Mono', 'Liberation Mono', 'Noto Sans Mono', 'monospace'];
