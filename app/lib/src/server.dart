@@ -12,6 +12,7 @@ import 'dart:io';
 import 'dart:typed_data';
 import 'dart:math';
 
+import 'anchor.dart';
 import 'pairing.dart';
 
 const versionHeader = 'x-dahlia-version';
@@ -50,7 +51,7 @@ HttpClient _insecure() => HttpClient()
 
 HttpClient pinnedClient(String pem) {
   final ctx = SecurityContext(withTrustedRoots: false)
-    ..setTrustedCertificatesBytes(utf8.encode(pem));
+    ..setTrustedCertificatesBytes(trustAnchor(pem));
   return HttpClient(context: ctx)
     ..connectionTimeout = _timeout
     // Below the server's keep-alive (uvicorn 5 s, nginx 75 s), so a request
@@ -128,9 +129,10 @@ Future<String> requestProof(String host, List<int> nonce) async {
   }
 }
 
-/// Is the server there, with the CA we paired? Throws "unreachable", or
-/// "changed" when it answers with another certificate (reinstalled server,
-/// or someone else at that address).
+/// Is the server there, with the CA we paired? Throws "unreachable",
+/// "changed" when it answers with another CA (reinstalled server, or someone
+/// else at that address), or "cert_address" when the CA is the paired one but its
+/// certificate does not name this address.
 Future<void> checkPaired(String host, String pem) async {
   final pinned = pinnedClient(pem);
   try {
@@ -146,7 +148,13 @@ Future<void> checkPaired(String host, String pem) async {
   } finally {
     pinned.close(force: true);
   }
-  throw PairingError('changed');
+  String current;
+  try {
+    current = await fetchCa(host);
+  } on PairingError {
+    throw PairingError('changed');
+  }
+  throw PairingError(fingerprint(pemToDer(current)) == fingerprint(pemToDer(pem)) ? 'cert_address' : 'changed');
 }
 
 /// API client for one paired server.

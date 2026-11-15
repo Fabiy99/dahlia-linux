@@ -92,6 +92,7 @@
   "error.not_dahlia": "No Dahlia server runs at this address.",
   "error.certificate": "Invalid certificate.",
   "error.changed": "The server answers with a different certificate, for example after a reinstall. Pair again, easiest with a pairing code from the dashboard on your phone.",
+  "error.cert_address": "The server's certificate does not cover this address. Use the server's name (for example dahlia.local) or its current IP.",
   "error.code": "Not a valid pairing code. Create a new one in the dashboard.",
   "error.proof": "The code does not belong to this server. Do not connect if you do not know the address.",
   "error.unexpected": "Something went wrong.",

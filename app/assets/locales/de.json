@@ -92,6 +92,7 @@
   "error.not_dahlia": "Unter dieser Adresse läuft kein Dahlia-Server.",
   "error.certificate": "Ungültiges Zertifikat.",
   "error.changed": "Der Server meldet sich mit einem anderen Zertifikat, etwa nach einer Neuinstallation. Koppel neu, am einfachsten mit einem Kopplungscode aus dem Dashboard auf dem Handy.",
+  "error.cert_address": "Das Zertifikat des Servers gilt nicht für diese Adresse. Nimm den Namen des Servers (etwa dahlia.local) oder seine aktuelle IP.",
   "error.code": "Kein gültiger Kopplungscode. Erzeuge im Dashboard einen neuen.",
   "error.proof": "Der Code passt nicht zu diesem Server. Nicht verbinden, wenn du die Adresse nicht kennst.",
   "error.unexpected": "Da ist etwas schiefgegangen.",
