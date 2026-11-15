@@ -671,7 +671,7 @@ from the phone.
 | Step | Implementation |
 | --- | --- |
 | Find | mDNS `_dahlia._tcp` as above, or type the address |
-| Pair | Fingerprint of the CA from `/dahlia-ca.crt` (also shown on the server's monitor and under Addresses) or a pairing code as above. The app adds nothing to the system's certificate store: it keeps the CA in `settings.json` and trusts only that CA on every connection (`SecurityContext(withTrustedRoots: false)`) |
+| Pair | Fingerprint of the CA from `/dahlia-ca.crt` (also shown on the server's monitor and under Addresses) or a pairing code as above. The app adds nothing to the system's certificate store: it keeps the CA in `settings.json` and trusts only that CA on every connection (`SecurityContext(withTrustedRoots: false)`). Dart's BoringSSL does not support the CA's IP name constraints (only `local` and private IPv4 ranges); the app uses the same CA without that extension as its trust anchor (`app/lib/src/anchor.dart`). When the known CA answers but its certificate does not name the address, the app says so separately from a changed CA |
 | Sign in | `POST /api/login` with `remember`; session and password live in the system's secret store (Windows Credential Manager, macOS Keychain, `secret-tool` on Linux). When the session has expired, the app signs in with the saved password. "Sign out" deletes both |
 | Language | Picker on every page before sign-in and in the account menu, English by default. Own texts from `app/assets/locales/`, server error messages from its `locales/<lang>.json` |
 | Home | Greeting, health, apps, storage, system, server update. A running app opens its web interface, any other leads to Apps |
