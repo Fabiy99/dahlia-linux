@@ -631,8 +631,27 @@ ohne API-Schlüssel), 15 Minuten Cache pro Ort. Der Browser spricht nie mit eine
 Der Hintergrund folgt dem Wetter des gewählten Orts: Regen, Schnee, Wolken, Gewitter, Sonne,
 nachts Sterne.
 
-Endpunkte: `GET /api/home`, `POST /api/home` (`widgets`, `places`, höchstens 6 Orte),
+Endpunkte: `GET /api/home`, `POST /api/home` (`tiles`, `look`, `places`, höchstens 6 Orte;
+fehlende Teile bleiben, wie sie sind), `POST /api/home/reset` (Standard, Orte bleiben),
 `GET /api/weather`, `GET /api/weather/search?q=<Name>&lang=de` (nur `admin`).
+
+### Startbildschirm selbst gestalten (ab Meilenstein 57)
+
+`home.json` (Layout 3) speichert die Kacheln als Liste in ihrer Reihenfolge, je Kachel Größe
+(`s`, `m`, `l`, `xl` = ganze Zeile) und sichtbar oder nicht, dazu das Aussehen (`look`):
+Farbschema (`auto`, `light`, `dark`), Akzentfarbe (`dahlia`, `violet`, `blue`, `teal`, `amber`),
+Hintergrund (`bloom` bewegt, `still` ruhig, `off` ohne Dahlie) und Wettereffekte an/aus.
+Unter „Anpassen“ lassen sich Kacheln ziehen oder mit Pfeilen verschieben, in der Größe ändern
+und ausblenden. Die Datei liegt im Zustandsverzeichnis, Pakete fassen sie nie an: Ein Update
+ändert nichts an der Anordnung. Dateien mit Layout 2 werden übernommen (sichtbare Widgets
+bleiben sichtbar). Kacheln, die eine spätere Version neu mitbringt, hängt Dahlia ausgeschaltet
+hinten an.
+
+Die Desktop-App zeigt denselben Startbildschirm: gleiche Kacheln, gleiche Zeilenumbrüche
+(Flex-Wrap wie im CSS nachgerechnet), gleiche Farben, Dahlie und Wettereffekte, gleicher
+Anpassen-Modus. Was in der App geändert wird, sieht der Browser sofort und umgekehrt.
+Der Browser ist damit Notzugang: Am PC zeigt er über der Übersicht einen Hinweis auf die App
+mit Download-Link (lässt sich ausblenden, auf dem Handy nicht sichtbar).
 
 ### Bildschirm am Server (ab Meilenstein 38)
 

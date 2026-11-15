@@ -394,6 +394,8 @@ class _HomePageState extends State<HomePage> {
         return Draggable<String>(
           key: _boxes.putIfAbsent(tile.id, GlobalKey.new),
           data: tile.id,
+          // The feedback hangs at the pointer, so the drop offset is where the pointer is.
+          dragAnchorStrategy: pointerDragAnchorStrategy,
           feedback: Material(
             color: Colors.transparent,
             child: Opacity(

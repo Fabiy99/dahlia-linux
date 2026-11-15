@@ -174,6 +174,7 @@ Nach 1.0 (1.x):
 54. Native App: Einstellungen, Unterseite Sicherheit (Firewall mit eigenen Regeln, WireGuard, Tailscale, Passwort, Zwei-Faktor-Login, Dashboard-Konten, API-Tokens)
 55. Native App: Einstellungen, Unterseite Dienste (Zeitpläne, Benachrichtigungen, Export nach InfluxDB, USV, Handy und Kopplungscode)
 56. Tauri-App (`desktop/`) entfernt; die native App deckt alle Bereiche ab
+57. Startbildschirm selbst gestalten (Kacheln verschieben, Größe, ein/aus, Farbschema, Akzentfarbe, Hintergrund; bleibt bei Updates erhalten), App zeigt ihn wie der Browser, Browser als Notzugang
 
 Später: USB-Creator für Windows, Installationsanleitung.
 
@@ -367,6 +368,7 @@ After 1.0 (1.x):
 54. Native app: Settings, Security section (firewall with own rules, WireGuard, Tailscale, password, two-factor login, dashboard accounts, API tokens)
 55. Native app: Settings, Services section (schedules, notifications, export to InfluxDB, UPS, phone and pairing code)
 56. Tauri app (`desktop/`) removed; the native app covers every area
+57. Arrange the start screen yourself (move tiles, size, on/off, colour scheme, accent colour, background; kept across updates), the app shows it like the browser, browser as emergency access
 
 Later: USB creator for Windows, installation guide.
 

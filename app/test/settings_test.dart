@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:dahlia/src/home_layout.dart';
 import 'package:dahlia/src/settings.dart';
 import 'package:dahlia/src/strings.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -15,6 +16,9 @@ void main() {
     final s = Settings.load(f);
     expect([s.host, s.pem, s.username, s.lang, s.autoLogin, s.paired],
         ['dahlia.local', 'PEM', 'fabian', 'de', true, true]);
+    expect(s.look, const Look());
+    Settings(host: 'h', pem: 'P', look: const Look(theme: 'light', accent: 'amber')).save(f);
+    expect(Settings.load(f).look, const Look(theme: 'light', accent: 'amber'));
     f.writeAsStringSync('{broken');
     expect(Settings.load(f).host, isNull);
     expect(Settings.fromJson({'lang': 'fr'}).lang, 'en');

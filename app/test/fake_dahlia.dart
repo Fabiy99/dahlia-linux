@@ -20,6 +20,17 @@ class FakeDahlia {
   /// Package names /api/updates/pending offers.
   List<String> pending = const [];
 
+  /// Start screen as /api/home answers it; POST merges the sent parts.
+  Map<String, Object?> home = {
+    'tiles': [
+      {'id': 'weather', 'size': 'm', 'on': true},
+      {'id': 'apps', 'size': 'l', 'on': true},
+      {'id': 'cpu', 'size': 's', 'on': false},
+    ],
+    'look': {'theme': 'dark', 'accent': 'teal', 'background': 'still', 'weather_fx': false},
+    'places': [],
+  };
+
   String get host => '127.0.0.1:${http.port}';
 
   Future<void> start() async {
@@ -76,6 +87,12 @@ class FakeDahlia {
           r.statusCode = 422;
           r.write('{"error":"error.agent","detail":"used by apps: jellyfin, sonarr; remove with --force"}');
         }
+      case '/api/home':
+        if (req.method == 'POST') home = {...home, ...jsonDecode(await utf8.decoder.bind(req).join()) as Map<String, Object?>};
+        r.write(jsonEncode(home));
+      case '/api/home/reset':
+        home = {...home, 'look': {'theme': 'auto', 'accent': 'dahlia', 'background': 'bloom', 'weather_fx': true}};
+        r.write(jsonEncode(home));
       case '/api/updates/pending':
         r.write(jsonEncode({'packages': [for (final n in pending) {'name': n}], 'running': false}));
       case '/app-icons/jellyfin.png':

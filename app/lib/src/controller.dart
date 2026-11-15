@@ -340,6 +340,8 @@ class Controller extends ChangeNotifier {
   // --- start screen -----------------------------------------------------------
 
   void _home(Object? j) {
+    // The start screen is loaded in the background; the app may be closed by then.
+    if (_disposed) return;
     home = HomeConfig.fromJson(j);
     if (home.look != settings.look) {
       settings.look = home.look;
@@ -413,8 +415,11 @@ class Controller extends ChangeNotifier {
     _set(Stage.update);
   }
 
+  bool _disposed = false;
+
   @override
   void dispose() {
+    _disposed = true;
     _pendingTimer?.cancel();
     server?.close();
     super.dispose();

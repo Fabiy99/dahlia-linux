@@ -616,8 +616,26 @@ fetches the weather from Open-Meteo (`api.open-meteo.com`, place search via
 talks to a third-party service. The background follows the weather of the selected place: rain,
 snow, clouds, thunderstorm, sun, stars at night.
 
-Endpoints: `GET /api/home`, `POST /api/home` (`widgets`, `places`, at most 6 places),
+Endpoints: `GET /api/home`, `POST /api/home` (`tiles`, `look`, `places`, at most 6 places;
+parts left out stay as they are), `POST /api/home/reset` (default, places are kept),
 `GET /api/weather`, `GET /api/weather/search?q=<name>&lang=en` (`admin` only).
+
+### Arranging the start screen (from milestone 57)
+
+`home.json` (layout 3) stores the tiles as a list in their order, each with a size (`s`, `m`, `l`,
+`xl` = full row) and whether it is shown, plus the look (`look`): colour scheme (`auto`,
+`light`, `dark`), accent colour (`dahlia`, `violet`, `blue`, `teal`, `amber`), background
+(`bloom` moving, `still`, `off` without the dahlia) and weather effects on/off. Under
+"Customize" tiles can be dragged or moved with arrows, resized and hidden. The file lives in the
+state directory and packages never touch it: an update does not change the layout. Files with
+layout 2 are taken over (visible widgets stay visible). Tiles that a later version adds are
+appended switched off.
+
+The desktop app shows the same start screen: same tiles, same row breaks (CSS flex-wrap
+recomputed), same colours, dahlia and weather effects, same customize mode. A change in the app
+shows up in the browser right away and the other way round. The browser is the emergency access:
+on a PC it shows a note about the app with a download link above the overview (can be hidden,
+not shown on phones).
 
 ### Screen on the server (from milestone 38)
 
