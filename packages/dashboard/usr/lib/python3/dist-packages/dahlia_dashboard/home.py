@@ -20,8 +20,23 @@ WIDGETS = ("weather", "apps", "storage", "system", "jobs", "network", "disks", "
 # Start screen of the design: weather, apps, storage, system, recently done.
 WIDGETS_OFF = ("network", "disks", "health", "cpu", "memory", "history")
 DEFAULT_WIDGETS = {w: w not in WIDGETS_OFF for w in WIDGETS}
-# Files from before the layout of version 2 keep their places, widgets start from the defaults.
-LAYOUT = 2
+# Tile widths: s small, m medium, l large, xl full row.
+SIZES = ("s", "m", "l", "xl")
+DEFAULT_SIZES = {"weather": "m", "apps": "l", "storage": "s", "system": "s", "jobs": "s",
+                 "network": "s", "disks": "s", "health": "l", "cpu": "s", "memory": "s",
+                 "history": "l"}
+# Appearance: colour scheme, accent colour, backdrop, weather effects.
+LOOK_CHOICES = {
+    "theme": ("auto", "light", "dark"),
+    "accent": ("dahlia", "violet", "blue", "teal", "amber"),
+    "background": ("bloom", "still", "off"),
+}
+DEFAULT_LOOK = {"theme": "auto", "accent": "dahlia", "background": "bloom", "weather_fx": True}
+# Layout 2 stored only on/off per widget; layout 3 stores order, size and look.
+# Files from before layout 2 keep their places, widgets start from the defaults.
+# Widgets that a later version adds are appended switched off, so an update
+# never changes a start screen the user arranged.
+LAYOUT = 3
 MAX_PLACES = 6
 NAME_MAX = 80
 
@@ -70,44 +85,125 @@ def clean_place(p: dict) -> dict:
     return out
 
 
+def default_tiles() -> list[dict]:
+    return [{"id": w, "size": DEFAULT_SIZES[w], "on": DEFAULT_WIDGETS[w]} for w in WIDGETS]
+
+
+def clean_tiles(tiles: list[dict], strict: bool) -> list[dict]:
+    """Order, size and visibility of the tiles.
+
+    strict raises ValueError on unknown widgets, sizes and duplicates (requests);
+    otherwise broken entries are dropped (stored file). Widgets missing from the
+    list are appended switched off.
+    """
+    out, seen = [], set()
+    for t in tiles:
+        if not isinstance(t, dict):
+            if strict:
+                raise ValueError("tiles")
+            continue
+        w, size, on = t.get("id"), t.get("size"), t.get("on")
+        if w not in WIDGETS or w in seen:
+            if strict:
+                raise ValueError("tiles")
+            continue
+        if size not in SIZES:
+            if strict:
+                raise ValueError("size")
+            size = DEFAULT_SIZES[w]
+        if not isinstance(on, bool):
+            if strict:
+                raise ValueError("tiles")
+            on = False
+        seen.add(w)
+        out.append({"id": w, "size": size, "on": on})
+    out += [{"id": w, "size": DEFAULT_SIZES[w], "on": False} for w in WIDGETS if w not in seen]
+    return out
+
+
+def clean_look(look: dict, strict: bool) -> dict:
+    out = dict(DEFAULT_LOOK)
+    for k, v in look.items():
+        if k in LOOK_CHOICES:
+            ok = isinstance(v, str) and v in LOOK_CHOICES[k]
+        else:
+            ok = k == "weather_fx" and isinstance(v, bool)
+        if ok:
+            out[k] = v
+        elif strict:
+            raise ValueError("look")
+    return out
+
+
 class HomeStore:
     def __init__(self, path: Path):
         self.path = path
         self.lock = threading.Lock()
+
+    @staticmethod
+    def view(tiles: list[dict], look: dict, places: list[dict]) -> dict:
+        return {"tiles": tiles, "look": look, "places": places,
+                "widgets": {t["id"]: t["on"] for t in tiles}}
 
     def get(self) -> dict:
         try:
             data = json.loads(self.path.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             data = {}
-        widgets = dict(DEFAULT_WIDGETS)
-        stored = data.get("widgets") if data.get("layout") == LAYOUT else None
-        for k, v in (stored or {}).items():
-            if k in widgets and isinstance(v, bool):
-                widgets[k] = v
+        if not isinstance(data, dict):
+            data = {}
+        layout = data.get("layout")
+        if layout == LAYOUT and isinstance(data.get("tiles"), list):
+            tiles = clean_tiles(data["tiles"], strict=False)
+        else:
+            tiles = default_tiles()
+            stored = data.get("widgets") if layout == 2 else None
+            if isinstance(stored, dict):
+                for t in tiles:
+                    if isinstance(stored.get(t["id"]), bool):
+                        t["on"] = stored[t["id"]]
+        look = data.get("look")
+        look = clean_look(look, strict=False) if isinstance(look, dict) else dict(DEFAULT_LOOK)
         places = []
         for p in data.get("places") or []:
             try:
                 places.append(clean_place(p))
             except (ValueError, AttributeError):
                 continue
-        return {"widgets": widgets, "places": places[:MAX_PLACES]}
+        return self.view(tiles, look, places[:MAX_PLACES])
 
-    def set(self, widgets: dict[str, bool], places: list[dict]) -> dict:
-        unknown = set(widgets) - set(WIDGETS)
-        if unknown:
-            raise ValueError("widgets")
-        if len(places) > MAX_PLACES:
+    def set(self, tiles: list[dict] | None = None, places: list[dict] | None = None,
+            look: dict | None = None, widgets: dict[str, bool] | None = None) -> dict:
+        """Changes the given parts; None keeps the stored value."""
+        if places is not None and len(places) > MAX_PLACES:
             raise ValueError("places")
-        data = {"layout": LAYOUT, "widgets": {**DEFAULT_WIDGETS, **widgets},
-                "places": [clean_place(p) for p in places]}
+        if widgets is not None and set(widgets) - set(WIDGETS):
+            raise ValueError("widgets")
         with self.lock:
-            tmp = self.path.with_name(self.path.name + ".tmp")
-            fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o644)
-            with os.fdopen(fd, "w", encoding="utf-8") as f:
-                json.dump(data, f, ensure_ascii=False, indent=1)
-            tmp.replace(self.path)
-        return {"widgets": data["widgets"], "places": data["places"]}
+            cur = self.get()
+            new_tiles = clean_tiles(tiles, strict=True) if tiles is not None else cur["tiles"]
+            if widgets is not None:
+                new_tiles = [{**t, "on": widgets.get(t["id"], t["on"])} for t in new_tiles]
+            new_look = clean_look(look, strict=True) if look is not None else cur["look"]
+            new_places = [clean_place(p) for p in places] if places is not None else cur["places"]
+            data = {"layout": LAYOUT, "tiles": new_tiles, "look": new_look, "places": new_places}
+            self._write(data)
+        return self.view(data["tiles"], data["look"], data["places"])
+
+    def reset(self) -> dict:
+        """Back to the standard start screen; weather places are kept."""
+        with self.lock:
+            data = {"layout": LAYOUT, "tiles": default_tiles(), "look": dict(DEFAULT_LOOK),
+                    "places": self.get()["places"]}
+            self._write(data)
+        return self.view(data["tiles"], data["look"], data["places"])
+
+    def _write(self, data: dict) -> None:
+        tmp = self.path.with_name(self.path.name + ".tmp")
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o644)
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=1)
+        tmp.replace(self.path)
 
 
 def search(query: str, lang: str, fetch: Fetch = http_fetch) -> list[dict]:

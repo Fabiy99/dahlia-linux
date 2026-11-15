@@ -10,6 +10,7 @@ import 'package:material_ui/material_ui.dart';
 import '../src/controller.dart';
 import '../src/format.dart';
 import 'bloom.dart';
+import 'services.dart';
 import 'theme.dart';
 import 'widgets.dart';
 
@@ -41,20 +42,28 @@ class TopBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final p = context.palette;
     final narrow = MediaQuery.of(context).size.width < 640;
-    Widget tab(String label, bool on, VoidCallback? onTap, {bool menu = false}) => Container(
+    Widget tab(String label, bool on, VoidCallback? onTap, {bool menu = false, int count = 0}) => Container(
           height: 44,
           padding: EdgeInsets.symmetric(horizontal: narrow ? 12 : 18),
           decoration: BoxDecoration(color: on ? p.navActive : Colors.transparent, borderRadius: BorderRadius.circular(12)),
           alignment: Alignment.center,
           child: Row(mainAxisSize: MainAxisSize.min, children: [
             Text(label, style: TextStyle(color: on ? p.navActiveFg : p.fg, fontWeight: FontWeight.w500, fontSize: 14)),
+            if (count > 0)
+              Container(
+                margin: const EdgeInsets.only(left: 7),
+                constraints: const BoxConstraints(minWidth: 22),
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                decoration: BoxDecoration(color: p.accent, borderRadius: BorderRadius.circular(999)),
+                child: Text('$count', textAlign: TextAlign.center, style: TextStyle(color: p.accentFg, fontSize: 11.25)),
+              ),
             if (menu) Icon(Icons.expand_more_rounded, size: 18, color: on ? p.navActiveFg : p.muted),
           ]),
         );
     final inMore = _more.where((e) => e.$1 == c.area).firstOrNull;
     return Glass(
       radius: 18,
-      padding: const EdgeInsets.fromLTRB(18, 8, 10, 8),
+      padding: const EdgeInsets.fromLTRB(18, 10, 12, 10),
       child: Row(children: [
         const DahliaMark(size: 28),
         const SizedBox(width: 12),
@@ -70,7 +79,7 @@ class TopBar extends StatelessWidget {
             padding: const EdgeInsets.only(left: 4),
             child: Material(
               color: Colors.transparent,
-              child: InkWell(borderRadius: BorderRadius.circular(12), onTap: () => c.go(view), child: tab(c.t(key), c.area == view, null)),
+              child: InkWell(borderRadius: BorderRadius.circular(12), onTap: () => c.go(view), child: tab(c.t(key), c.area == view, null, count: view == Area.apps ? c.appUpdates : 0)),
             ),
           ),
         // The chosen area of the menu takes its place in the bar.
@@ -89,6 +98,39 @@ class TopBar extends StatelessWidget {
                 ),
             ],
             child: tab(c.t(inMore?.$2 ?? 'nav.more'), inMore != null, null, menu: true),
+          ),
+        ),
+        const SizedBox(width: 12),
+        // Phone and pairing of other desktop apps, like the dashboard's "Phone" button.
+        Tooltip(
+          message: c.t('phone.open'),
+          child: Material(
+            color: Colors.transparent,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+              side: BorderSide(color: p.accent.withValues(alpha: .35)),
+            ),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(12),
+              onTap: () => showDialog<void>(
+                context: context,
+                builder: (context) => Dialog(
+                  backgroundColor: Colors.transparent,
+                  child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 820), child: SingleChildScrollView(child: PhoneCard(c))),
+                ),
+              ),
+              child: Container(
+                height: 44,
+                padding: EdgeInsets.symmetric(horizontal: narrow ? 12 : 14),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  Icon(Icons.smartphone_rounded, size: 17, color: p.navActiveFg),
+                  if (!narrow) ...[
+                    const SizedBox(width: 7),
+                    Text(c.t('nav.phone'), style: TextStyle(color: p.navActiveFg, fontWeight: FontWeight.w500, fontSize: 14)),
+                  ],
+                ]),
+              ),
+            ),
           ),
         ),
         const SizedBox(width: 4),
@@ -125,10 +167,14 @@ class TopBar extends StatelessWidget {
 /// Side padding of the content, as in the dashboard (clamp(16px, 4vw, 48px)).
 double pagePad(double width) => math.max(16.0, math.min(48.0, width * .04));
 
+/// Width of the content: the dashboard's .content is at most 1240 px
+/// including its side padding.
+double pageContent(double width) => math.min(1240.0, width) - 2 * pagePad(width);
+
 /// Column width of the page grid: three, two or one columns like the
 /// dashboard's tiles, with 18 px between them.
 ({double unit, int cols}) pageGrid(double width) {
-  final content = math.min(1240.0, width - 2 * pagePad(width));
+  final content = pageContent(width);
   final cols = content > 980 ? 3 : (content > 640 ? 2 : 1);
   return (unit: (content - 18 * (cols - 1)) / cols, cols: cols);
 }
@@ -142,13 +188,14 @@ class PageFrame extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final pad = pagePad(MediaQuery.of(context).size.width);
+    final width = MediaQuery.of(context).size.width;
+    final pad = pagePad(width);
     return SingleChildScrollView(
-      padding: EdgeInsets.fromLTRB(pad, 16, pad, 56),
+      padding: EdgeInsets.fromLTRB(pad, 24, pad, 56),
       child: Align(
         alignment: Alignment.topCenter,
         child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 1240),
+          constraints: BoxConstraints(maxWidth: pageContent(width)),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [TopBar(c), UpdateBanner(c), ...children]),
         ),
       ),

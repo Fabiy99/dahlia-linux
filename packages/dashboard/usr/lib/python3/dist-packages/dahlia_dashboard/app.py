@@ -521,9 +521,18 @@ class PairingProofBody(BaseModel):
     nonce: str
 
 
+class TileBody(BaseModel):
+    id: str
+    size: str
+    on: bool
+
+
 class HomeBody(BaseModel):
-    widgets: dict[str, bool]
-    places: list[PlaceBody]
+    # Each part is optional; a missing part keeps what is stored.
+    tiles: list[TileBody] | None = None
+    look: dict[str, str | bool] | None = None
+    places: list[PlaceBody] | None = None
+    widgets: dict[str, bool] | None = None
 
 
 def create_app(cfg: Config | None = None) -> FastAPI:
@@ -828,9 +837,16 @@ def create_app(cfg: Config | None = None) -> FastAPI:
     @app.post("/api/home", dependencies=changing)
     def home_set(body: HomeBody):
         try:
-            return home_store.set(body.widgets, [p.model_dump() for p in body.places])
+            return home_store.set(
+                tiles=[t.model_dump() for t in body.tiles] if body.tiles is not None else None,
+                places=[p.model_dump() for p in body.places] if body.places is not None else None,
+                look=body.look, widgets=body.widgets)
         except ValueError as e:
             raise ApiError(400, "error.request", str(e)) from None
+
+    @app.post("/api/home/reset", dependencies=changing)
+    def home_reset():
+        return home_store.reset()
 
     @app.get("/api/weather", dependencies=readable)
     def weather_get():

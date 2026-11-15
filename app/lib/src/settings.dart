@@ -8,8 +8,10 @@ import 'dart:io';
 
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
+import 'home_layout.dart';
+
 class Settings {
-  Settings({this.host, this.pem, this.username, this.lang = 'en', this.autoLogin = true});
+  Settings({this.host, this.pem, this.username, this.lang = 'en', this.autoLogin = true, this.look = const Look()});
 
   /// Paired server ("dahlia.local" or "host:port"); null before pairing.
   String? host;
@@ -24,10 +26,14 @@ class Settings {
   /// Log in with the saved password when the session has ended.
   bool autoLogin;
 
+  /// Last look of the server's start screen, so the next start shows its
+  /// colours before the server answers.
+  Look look;
+
   bool get paired => host != null && pem != null;
 
   Map<String, Object?> toJson() =>
-      {'host': host, 'pem': pem, 'username': username, 'lang': lang, 'auto_login': autoLogin};
+      {'host': host, 'pem': pem, 'username': username, 'lang': lang, 'auto_login': autoLogin, 'look': look.toJson()};
 
   factory Settings.fromJson(Object? j) {
     if (j is! Map) return Settings();
@@ -39,6 +45,7 @@ class Settings {
       username: s('username'),
       lang: lang == 'de' ? 'de' : 'en',
       autoLogin: j['auto_login'] != false,
+      look: Look.fromJson(j['look']),
     );
   }
 

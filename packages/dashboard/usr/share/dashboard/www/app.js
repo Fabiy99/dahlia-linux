@@ -11,6 +11,13 @@ let current = null;
 let statsTimer = null;
 let lastStats = null;
 const history = { cpu: [], mem: [] };
+const RELEASES = "https://github.com/Fabiy99/dahlia-linux/releases";
+
+// Last look of the start screen until the server answers (applyLook).
+try {
+  const saved = JSON.parse(localStorage.getItem("dahlia-look") || "null");
+  if (saved) applyLook(saved);
+} catch (_) { /* storage blocked or broken */ }
 
 // --- i18n ---------------------------------------------------------------------
 
@@ -714,6 +721,7 @@ async function loadOverview() {
   loadHome().catch(sayError);
   const [info, stats] = await Promise.all([api("GET", "system"), api("GET", "stats")]);
   setSidebar(info);
+  showBackdoorNotice(info.version);
   const dl = document.getElementById("system-info");
   dl.replaceChildren();
   fact(dl, "overview.hostname", `${info.hostname}.local`);
@@ -745,9 +753,16 @@ async function loadOverview() {
 
 // --- start screen: greeting, widgets, weather -----------------------------------
 
-const WIDGETS = ["weather", "apps", "storage", "system", "jobs", "network", "disks", "health",
-                 "cpu", "memory", "history"];
-let homeCfg = { widgets: {}, places: [] };
+let homeCfg = { tiles: [], look: {}, places: [], widgets: {} };
+let homeEditing = false;
+const TILE_SIZES = ["s", "m", "l", "xl"];
+// Choices of home.py LOOK_CHOICES; colours of the accent swatches as in style.css.
+const LOOK = {
+  theme: ["auto", "light", "dark"],
+  accent: ["dahlia", "violet", "blue", "teal", "amber"],
+  background: ["bloom", "still", "off"],
+};
+const ACCENT_SWATCH = { dahlia: "#d873b8", violet: "#8e6be0", blue: "#4f8fdc", teal: "#2fa79c", amber: "#e0952a" };
 
 // The server sends every widget with its default (home.py).
 function widgetOn(w) {
@@ -783,16 +798,147 @@ function renderHeroStatus(data) {
   document.body.classList.toggle("attention", Boolean(top));
 }
 
-function applyWidgets() {
-  for (const card of document.querySelectorAll("#view-overview [data-widget]")) {
-    card.hidden = !widgetOn(card.dataset.widget);
-  }
+// The look applies to every view; the last one is kept in the browser so the
+// next start does not flash the default colours.
+function applyLook(look) {
+  const root = document.documentElement;
+  const l = { theme: "auto", accent: "dahlia", background: "bloom", weather_fx: true, ...look };
+  if (l.theme === "auto") delete root.dataset.theme;
+  else root.dataset.theme = l.theme;
+  root.dataset.accent = l.accent;
+  root.dataset.background = l.background;
+  root.dataset.weatherFx = l.weather_fx ? "on" : "off";
+  try { localStorage.setItem("dahlia-look", JSON.stringify(l)); } catch (_) { /* storage blocked */ }
 }
 
-async function saveHome() {
-  homeCfg = await api("POST", "home", homeCfg);
+// Order, size and visibility of the start screen tiles from home.json.
+function applyWidgets() {
+  const box = document.querySelector("#view-overview .home-tiles");
+  const cards = new Map([...box.querySelectorAll(":scope > [data-widget]")].map((c) => [c.dataset.widget, c]));
+  const shown = homeCfg.tiles.filter((x) => x.on && cards.has(x.id));
+  for (const tile of homeCfg.tiles) {
+    const card = cards.get(tile.id);
+    if (!card) continue;
+    box.append(card);
+    card.hidden = !tile.on;
+    for (const size of TILE_SIZES) card.classList.toggle(`size-${size}`, tile.size === size);
+    card.draggable = homeEditing;
+    tileToolbar(card, tile, shown.indexOf(tile), shown.length);
+  }
+  box.classList.toggle("editing", homeEditing);
+}
+
+function smallButton(iconName, key, onClick, cls) {
+  const b = el("button", `icon-btn ${cls || ""}`);
+  b.type = "button";
+  b.title = t(key);
+  b.setAttribute("aria-label", t(key));
+  b.append(icon(iconName));
+  b.addEventListener("click", () => guarded(b, onClick));
+  return b;
+}
+
+// Moves a shown tile by one place among the shown tiles.
+async function moveTile(id, step) {
+  const shown = homeCfg.tiles.filter((x) => x.on);
+  const i = shown.findIndex((x) => x.id === id);
+  const other = shown[i + step];
+  if (!other) return;
+  await placeTile(id, other.id, step > 0);
+}
+
+// Puts tile id directly before (or after) tile target.
+async function placeTile(id, target, after) {
+  const tiles = homeCfg.tiles.slice();
+  const tile = tiles.splice(tiles.findIndex((x) => x.id === id), 1)[0];
+  const at = tiles.findIndex((x) => x.id === target);
+  tiles.splice(after ? at + 1 : at, 0, tile);
+  await saveHome({ tiles });
+}
+
+async function changeTile(id, change) {
+  await saveHome({ tiles: homeCfg.tiles.map((x) => (x.id === id ? { ...x, ...change } : x)) });
+}
+
+function tileToolbar(card, tile, pos, count) {
+  let bar = card.querySelector(":scope > .tile-edit");
+  if (!homeEditing) { if (bar) bar.remove(); return; }
+  if (!bar) {
+    bar = el("div", "tile-edit");
+    card.prepend(bar);
+  }
+  const grip = el("span", "grip");
+  grip.title = t("home.drag");
+  grip.append(icon("grip"));
+  const back = smallButton("left", "home.move_back", () => moveTile(tile.id, -1));
+  back.disabled = pos <= 0;
+  const fwd = smallButton("right", "home.move_forward", () => moveTile(tile.id, 1));
+  fwd.disabled = pos < 0 || pos >= count - 1;
+  const sizes = el("div", "sizes");
+  sizes.setAttribute("role", "group");
+  sizes.setAttribute("aria-label", t("home.size"));
+  for (const size of TILE_SIZES) {
+    const b = el("button", "", t(`home.size_${size}`));
+    b.type = "button";
+    b.title = t(`home.size_${size}_title`);
+    b.setAttribute("aria-pressed", String(tile.size === size));
+    b.addEventListener("click", () => guarded(b, () => changeTile(tile.id, { size })));
+    sizes.append(b);
+  }
+  const hide = smallButton("hide", "home.hide", () => changeTile(tile.id, { on: false }), "hide");
+  bar.replaceChildren(grip, back, fwd, sizes, hide);
+}
+
+// Drag and drop in edit mode: the tile lands before or after the one under the pointer.
+function bindTileDrag() {
+  const box = document.querySelector("#view-overview .home-tiles");
+  let dragged = null;
+  const clear = () => box.querySelectorAll(".drop-before, .drop-after")
+    .forEach((c) => c.classList.remove("drop-before", "drop-after"));
+  const after = (card, e) => {
+    const r = card.getBoundingClientRect();
+    return e.clientX > r.left + r.width / 2;
+  };
+  box.addEventListener("dragstart", (e) => {
+    const card = e.target.closest?.("[data-widget]");
+    if (!homeEditing || !card) return;
+    dragged = card.dataset.widget;
+    card.classList.add("dragging");
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/plain", dragged);
+  });
+  box.addEventListener("dragover", (e) => {
+    const card = e.target.closest("[data-widget]");
+    if (!dragged || !card || card.dataset.widget === dragged) return;
+    e.preventDefault();
+    clear();
+    card.classList.add(after(card, e) ? "drop-after" : "drop-before");
+  });
+  box.addEventListener("dragleave", (e) => { if (e.target === box) clear(); });
+  box.addEventListener("drop", (e) => {
+    const card = e.target.closest("[data-widget]");
+    e.preventDefault();
+    clear();
+    if (dragged && card && card.dataset.widget !== dragged) {
+      const id = dragged;
+      guarded(null, () => placeTile(id, card.dataset.widget, after(card, e)));
+    }
+  });
+  box.addEventListener("dragend", () => {
+    clear();
+    box.querySelectorAll(".dragging").forEach((c) => c.classList.remove("dragging"));
+    dragged = null;
+  });
+}
+
+// Sends only the changed part; the server keeps the rest (home.py).
+async function saveHome(change) {
+  const before = homeCfg.widgets.weather;
+  homeCfg = await api("POST", "home", change);
+  applyLook(homeCfg.look);
   applyWidgets();
   renderHomePanel();
+  if (change.places || before !== homeCfg.widgets.weather) await loadWeather();
 }
 
 function chip(text, pressed, onClick) {
@@ -804,20 +950,37 @@ function chip(text, pressed, onClick) {
 }
 
 function renderHomePanel() {
-  document.getElementById("home-widgets").replaceChildren(...WIDGETS.map((w) => {
-    const on = widgetOn(w);
-    return chip(t(`home.widget_${w}`), on, async () => {
-      homeCfg.widgets[w] = !on;
-      await saveHome();
-    });
-  }));
+  document.getElementById("home-widgets").replaceChildren(...homeCfg.tiles.map((tile) =>
+    chip(t(`home.widget_${tile.id}`), tile.on, () => changeTile(tile.id, { on: !tile.on }))));
+  const look = homeCfg.look;
+  const row = (key, choices) => {
+    const r = el("div", "look-row");
+    const chips = el("div", "chip-row small");
+    chips.setAttribute("role", "group");
+    chips.append(...choices);
+    r.append(el("span", "", t(key)), chips);
+    return r;
+  };
+  const pick = (part, value) => saveHome({ look: { ...look, [part]: value } });
+  const choices = (part) => LOOK[part].map((v) => {
+    const c = chip(t(`home.${part}_${v}`), look[part] === v, () => pick(part, v));
+    if (part === "accent") {
+      const dot = el("span", "swatch");
+      dot.style.background = ACCENT_SWATCH[v];
+      c.prepend(dot);
+    }
+    return c;
+  });
+  document.getElementById("home-look").replaceChildren(
+    row("home.look_theme", choices("theme")),
+    row("home.look_accent", choices("accent")),
+    row("home.look_background", choices("background")),
+    row("home.look_weather_fx", [true, false].map((v) =>
+      chip(t(v ? "home.on" : "home.off"), look.weather_fx === v, () => pick("weather_fx", v)))),
+  );
   const places = document.getElementById("home-places");
   places.replaceChildren(...homeCfg.places.map((p, i) => {
-    const c = chip(p.name, true, async () => {
-      homeCfg.places.splice(i, 1);
-      await saveHome();
-      await loadWeather();
-    });
+    const c = chip(p.name, true, () => saveHome({ places: homeCfg.places.filter((_, j) => j !== i) }));
     c.title = t("weather.remove_place");
     c.append(el("span", "x", "×"));
     return c;
@@ -838,12 +1001,10 @@ async function searchPlaces(q) {
     b.type = "button";
     if (p.country) b.append(el("small", "", p.country));
     b.addEventListener("click", () => guarded(b, async () => {
-      homeCfg.places.push(p);
-      activePlace = homeCfg.places.length - 1;
+      activePlace = homeCfg.places.length;
       list.replaceChildren();
       document.querySelector("#place-search [name=q]").value = "";
-      await saveHome();
-      await loadWeather();
+      await saveHome({ places: [...homeCfg.places, p] });
     }));
     li.append(b);
     return li;
@@ -913,20 +1074,47 @@ async function loadHome() {
   const status = document.getElementById("hero-status");
   if (!status.lastElementChild.textContent) status.lastElementChild.textContent = t("check.running");
   homeCfg = await api("GET", "home");
+  applyLook(homeCfg.look);
   applyWidgets();
   renderHomePanel();
   await loadWeather();
+}
+
+// The browser is the emergency access; everyday use is the desktop app.
+// Phones have no app and keep the browser, so the note shows only on wide screens.
+function showBackdoorNotice(version) {
+  const box = document.getElementById("backdoor-notice");
+  let closed = false;
+  try { closed = localStorage.getItem("dahlia-backdoor-closed") === "1"; } catch (_) { /* storage blocked */ }
+  box.hidden = closed || !matchMedia("(min-width: 64rem) and (pointer: fine)").matches;
+  if (version) document.getElementById("backdoor-download").href = `${RELEASES}/tag/v${version}`;
 }
 
 function bindHome() {
   const btn = document.getElementById("home-customize");
   const panel = document.getElementById("home-panel");
   const toggle = () => {
-    panel.hidden = !panel.hidden;
-    btn.setAttribute("aria-pressed", String(!panel.hidden));
+    homeEditing = panel.hidden;
+    panel.hidden = !homeEditing;
+    btn.setAttribute("aria-pressed", String(homeEditing));
+    applyWidgets();
   };
   btn.addEventListener("click", toggle);
   document.getElementById("home-done").addEventListener("click", toggle);
+  const reset = document.getElementById("home-reset");
+  reset.addEventListener("click", () => guarded(reset, async () => {
+    if (!(await ask(t("home.reset_ask"), "home.reset"))) return;
+    homeCfg = await api("POST", "home/reset");
+    applyLook(homeCfg.look);
+    applyWidgets();
+    renderHomePanel();
+    await loadWeather();
+  }));
+  bindTileDrag();
+  document.getElementById("backdoor-close").addEventListener("click", () => {
+    document.getElementById("backdoor-notice").hidden = true;
+    try { localStorage.setItem("dahlia-backdoor-closed", "1"); } catch (_) { /* storage blocked */ }
+  });
   document.getElementById("place-search").addEventListener("submit", (e) => {
     e.preventDefault();
     const q = e.target.elements.q.value.trim();
