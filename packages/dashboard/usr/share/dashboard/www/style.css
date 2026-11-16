@@ -937,3 +937,7 @@ body.home main { padding-top: 28px; }
 .notice.backdoor[hidden] { display: none; }
 .notice.backdoor a { color: var(--accent); font-weight: 600; }
 .notice.backdoor .link-btn { margin-left: auto; }
+
+/* Way back after an app update */
+.app-card .rollback { display: flex; align-items: center; justify-content: space-between; gap: .6rem; flex-wrap: wrap; }
+.app-card .rollback small { color: var(--muted); }

@@ -1911,6 +1911,19 @@ function renderInstalled(installed) {
       b.append(badge(t("apps.update_available", { version: app.update.version }), "accent"));
       card.append(b);
     }
+    if (app.rollback) {
+      // Copy of the data from before the last update: one click goes back.
+      const back = el("div", "rollback");
+      back.append(el("small", "", t("apps.rollback_kept", {
+        version: app.rollback.version,
+        date: new Date(app.rollback.time).toLocaleString(lang, { dateStyle: "medium", timeStyle: "short" }) })));
+      back.append(button("apps.rollback", async () => {
+        if (!await ask(t("apps.confirm_rollback", { name: app.name, version: app.rollback.version }),
+                       "apps.rollback", true)) return;
+        await appJob(app.id, "rollback", app.name);
+      }));
+      card.append(back);
+    }
     card.append(appLinks(app));
     if (app.login) {
       const d = el("details");

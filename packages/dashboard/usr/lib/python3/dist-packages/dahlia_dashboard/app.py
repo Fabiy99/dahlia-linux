@@ -53,7 +53,7 @@ JOBS = ("mover", "snapraid-sync", "snapraid-scrub", "update", "backup", "smart-s
         "smart-long")
 STARTABLE_JOBS = ("mover", "snapraid-sync", "snapraid-scrub", "backup", "smart-short",
                   "smart-long")
-APP_OPS = ("install", "update", "start", "stop", "remove")
+APP_OPS = ("install", "update", "rollback", "start", "stop", "remove")
 CONTAINER_OPS = ("start", "stop", "restart")
 
 # Agent error code -> HTTP status.

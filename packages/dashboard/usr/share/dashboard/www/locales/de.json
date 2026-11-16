@@ -1342,5 +1342,10 @@
   "home.apps_running": "{n} von {total} laufen",
   "home.yesterday": "gestern",
   "home.parity_synced": "Parity zuletzt synchronisiert: {when}",
-  "login.remember": "Angemeldet bleiben (30 Tage)"
+  "login.remember": "Angemeldet bleiben (30 Tage)",
+  "apps.rollback": "Zurück zur alten Version",
+  "apps.rollback_kept": "Vor dem Update gesichert: Version {version}, {date}",
+  "apps.confirm_rollback": "{name} auf Version {version} zurücksetzen? Die Daten von vor dem Update ersetzen die jetzigen, alles seit dem Update geht verloren.",
+  "apps.rollback_running": "{name} wird zurückgesetzt …",
+  "apps.rollback_done": "{name} läuft wieder mit der alten Version."
 }

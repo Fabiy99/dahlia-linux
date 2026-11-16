@@ -65,6 +65,9 @@ class FakeDocker:
         self.calls.append(("ps", tuple(names)))
         return {n: self.states.get(n, "running") for n in names}
 
+    def pull(self, image):
+        self.calls.append(("pull", image))
+
     def remove_image(self, image):
         self.removed.append(image)
 
@@ -411,7 +414,8 @@ def test_update_uses_catalog_template(env):
     env.docker.calls.clear()
     env.update("whoami")
     assert "v1.12.0" in (env.paths.apps / "whoami/app.yaml").read_text()
-    assert env.docker.calls == [("whoami", ("pull",)), ("whoami", ("up", "-d", "--remove-orphans"))]
+    assert env.docker.calls == [("pull", "traefik/whoami:v1.12.0"), ("whoami", ("stop",)),
+                                ("whoami", ("up", "-d", "--remove-orphans"))]
     assert json.loads((env.paths.apps / "whoami/state.json").read_text())["host_port"] == 41000
 
 
@@ -643,6 +647,10 @@ def test_install_stack_keeps_secrets_across_updates(stack_env):
     assert len(sec2["SECRET_KEY"]) == 32
     compose_env = json.loads((d / "compose.json").read_text())["services"]["app"]["environment"]
     assert compose_env["KEY"] == sec2["SECRET_KEY"]
+    # The old image stays for the way back until the next update replaces the copy.
+    assert env.docker.removed == []
+    (env.paths.catalog / "notes.yaml").write_text(newer.replace("2.2.0", "2.3.0"))
+    env.update("notes")
     assert env.docker.removed == ["example/notes:2.1.0"]
 
 
@@ -1063,8 +1071,10 @@ def test_custom_install_list_and_edit(env):
     assert json.loads((d / "state.json").read_text())["folders"] == {
         "folder1": f"{env.paths.pool}/Serien"}
     assert json.loads((d / "custom.json").read_text()) == edited
-    assert env.docker.removed == ["louislam/uptime-kuma:1.23.16"]
-    assert env.docker.calls[0] == ("kuma", ("pull",))
+    # Kept for the way back.
+    assert env.docker.removed == []
+    assert env.rollback_info("kuma")["version"] == "1.23.16"
+    assert env.docker.calls[0] == ("pull", "louislam/uptime-kuma:1.23.17")
 
     env.remove("kuma")
     assert not d.exists()
@@ -1119,3 +1129,88 @@ def test_refresh_waits_for_other_refresh(env, tmp_path):
         assert done == []
     t.join(10)
     assert done and (env.paths.catalog / "whoami.yaml").exists()
+
+
+# --- way back after an update -------------------------------------------------
+
+
+def test_update_keeps_copy_and_rollback_restores_it(env):
+    env.install("whoami")
+    data = env.paths.pool / "appdata/whoami/config"
+    (data / "settings.txt").write_text("old")
+    (env.paths.catalog / "whoami.yaml").write_text(WHOAMI.replace("v1.11.0", "v1.12.0"))
+    result = env.update("whoami")
+    assert result["rollback"]["version"] == "v1.11.0"
+    # The old image stays for the way back.
+    assert "traefik/whoami:v1.11.0" not in env.docker.removed
+    copy = env.paths.pool / "appdata/.rollback/whoami"
+    assert (copy / "data/config/settings.txt").read_text() == "old"
+    assert "v1.11.0" in (copy / "app/app.yaml").read_text()
+    (data / "settings.txt").write_text("migrated by v1.12")
+    listed = env.list()[0]
+    assert listed["rollback"]["version"] == "v1.11.0"
+    assert listed["update"] is None
+
+    env.docker.calls.clear()
+    back = env.rollback("whoami")
+    assert back["version"] == "v1.11.0"
+    assert (data / "settings.txt").read_text() == "old"
+    assert "v1.11.0" in (env.paths.apps / "whoami/app.yaml").read_text()
+    assert env.docker.calls == [("whoami", ("stop",)),
+                                ("whoami", ("up", "-d", "--pull", "missing", "--remove-orphans"))]
+    assert env.docker.removed == ["traefik/whoami:v1.12.0"]
+    assert not copy.exists()
+    listed = env.list()[0]
+    assert listed["rollback"] is None
+    assert listed["update"]["version"] == "v1.12.0"
+
+
+def test_rollback_keeps_app_stopped(env):
+    env.install("whoami")
+    (env.paths.catalog / "whoami.yaml").write_text(WHOAMI.replace("v1.11.0", "v1.12.0"))
+    env.update("whoami")
+    env.stop("whoami")
+    env.docker.calls.clear()
+    env.rollback("whoami")
+    assert env.docker.calls[-1] == ("whoami", ("up", "--no-start", "--pull", "missing",
+                                               "--remove-orphans"))
+    assert json.loads((env.paths.apps / "whoami/state.json").read_text())["enabled"] is False
+
+
+def test_update_without_space_skips_copy(env, monkeypatch):
+    env.install("whoami")
+    (env.paths.catalog / "whoami.yaml").write_text(WHOAMI.replace("v1.11.0", "v1.12.0"))
+    monkeypatch.setattr(apps.shutil, "disk_usage", lambda p: shutil_usage(0))
+    result = env.update("whoami")
+    assert result["rollback"]["skipped"] == "space"
+    assert env.docker.removed == ["traefik/whoami:v1.11.0"]
+    assert env.rollback_info("whoami") is None
+    with pytest.raises(AppError, match="no copy"):
+        env.precheck("rollback", "whoami")
+    with pytest.raises(AppError, match="no copy"):
+        env.rollback("whoami")
+
+
+def test_second_update_replaces_copy(env):
+    env.install("whoami")
+    for version in ("v1.12.0", "v1.13.0"):
+        (env.paths.catalog / "whoami.yaml").write_text(WHOAMI.replace("v1.11.0", version))
+        env.update("whoami")
+    assert env.rollback_info("whoami")["version"] == "v1.12.0"
+    assert sorted(p.name for p in (env.paths.pool / "appdata/.rollback").iterdir()) == ["whoami"]
+
+
+def test_remove_drops_copy(env):
+    env.install("whoami")
+    (env.paths.catalog / "whoami.yaml").write_text(WHOAMI.replace("v1.11.0", "v1.12.0"))
+    env.update("whoami")
+    env.remove("whoami")
+    assert not (env.paths.pool / "appdata/.rollback/whoami").exists()
+    assert sorted(env.docker.removed) == ["traefik/whoami:v1.11.0", "traefik/whoami:v1.12.0"]
+    assert (env.paths.pool / "appdata/whoami").exists()
+
+
+def shutil_usage(free):
+    import collections
+
+    return collections.namedtuple("usage", "total used free")(100, 100 - free, free)

@@ -63,6 +63,12 @@ Updates: the catalog is downloaded again by apps-catalog.timer.
 An installed app has an update when its template differs from the
 catalog's; tags are pinned, so a new version is a new template.
 
+Safe updates: before an update the app is stopped and its app data and
+files are copied to <location>/appdata/.rollback/<id>/ (cp --reflink=auto,
+cheap on Btrfs and XFS). "apps rollback" puts that copy back with the old
+template and images. There is one copy per app, the one before the last
+update; it is skipped when the disk has too little free space.
+
 Custom containers: an image the user fills in on a form (custom_template)
 becomes a template with only the main service and is checked the same way.
 state.json marks it "custom"; it never takes a template from the catalog,
@@ -77,6 +83,8 @@ Layout:
     /var/lib/dahlia/apps/<id>/state.json     host port, enabled flag, location, folders
     /var/lib/dahlia/apps/<id>/secrets.json   generated secrets (0600)
     /var/lib/dahlia/apps/<id>/custom.json    form of a custom container (0600)
+    <location>/appdata/.rollback/<id>/       copy before the last update:
+                                             data/, app/ (the files above), meta.json
 """
 
 import argparse
@@ -821,6 +829,36 @@ def write_file(path: Path, text: str, mode: int = 0o644) -> None:
 
 
 APP_FILES = ("compose.json", "app.yaml", "state.json", "secrets.json", "custom.json")
+ROLLBACK_DIR = ".rollback"
+# Free space a data copy must leave on the disk, on top of its own size.
+ROLLBACK_SPARE = 1024**3
+
+
+def dir_size(path: Path) -> int:
+    """Bytes below path, as du counts them (0 if it does not exist)."""
+    if not path.exists():
+        return 0
+    proc = subprocess.run(["du", "-sb", "--one-file-system", "--", str(path)],
+                          capture_output=True, text=True, timeout=3600, stdin=subprocess.DEVNULL)
+    try:
+        return int(proc.stdout.split()[0])
+    except (IndexError, ValueError):
+        raise AppError(f"cannot measure {path}: {proc.stderr.strip()}") from None
+
+
+def copy_tree(src: Path, dst: Path) -> None:
+    """cp -a with reflinks where the filesystem has them."""
+    proc = subprocess.run(["cp", "-a", "--reflink=auto", "--", str(src), str(dst)],
+                          capture_output=True, text=True, timeout=6 * 3600,
+                          stdin=subprocess.DEVNULL)
+    if proc.returncode != 0:
+        raise AppError(f"copy of {src} failed: {proc.stderr.strip()[-300:]}")
+
+
+def remove_tree(path: Path) -> None:
+    if path.exists():
+        subprocess.run(["rm", "-rf", "--one-file-system", "--", str(path)], check=True,
+                       stdin=subprocess.DEVNULL)
 
 
 def installed(paths: Paths) -> list[str]:
@@ -1204,6 +1242,13 @@ class Docker:
                 found[name] = state.strip()
         return {n: found.get(n, "missing") for n in names}
 
+    def pull(self, image: str) -> None:
+        proc = subprocess.run(["docker", "pull", "--quiet", image], capture_output=True,
+                              text=True, timeout=3600, stdin=subprocess.DEVNULL)
+        if proc.returncode != 0:
+            lines = [ln for ln in proc.stderr.splitlines() if ln.strip()]
+            raise AppError(f"docker pull {image}: {lines[-1] if lines else proc.returncode}")
+
     def remove_image(self, image: str) -> None:
         """Best effort: an image another app still uses stays."""
         subprocess.run(["docker", "image", "rm", image], capture_output=True, timeout=120,
@@ -1353,6 +1398,12 @@ class Apps:
         elif op == "update":
             _, t, loc, kept = self._update_template(app_id, spec)
             self._require(locations_used(t, kept, loc, self.paths))
+        elif op == "rollback":
+            t, state = load_installed(self.paths, app_id)
+            loc, kept = self._placement(t, state)
+            self._require(locations_used(t, kept, loc, self.paths))
+            if self.rollback_info(app_id) is None:
+                raise AppError(f"{app_id} has no copy from before an update")
         else:
             raise AppError(f"no precheck for {op}")
         return {"id": app_id, "ok": True}
@@ -1432,6 +1483,11 @@ class Apps:
         if not t.web_port:
             host_port = None
         self._require(locations_used(t, folders, location, self.paths))
+        # Pull while the old version still runs; it is stopped only for the copy.
+        for image in dict.fromkeys(s.image for s in t.services.values()):
+            self.docker.pull(image)
+        self.docker.compose(self.paths.app_dir(app_id), "stop")
+        rollback = self._snapshot(app_id, t_old, state)
         self._prepare_dirs(t, folders, location)
         d = self.paths.app_dir(app_id)
         self._write_app(t, text, host_port, new_secrets(t, self._secrets(app_id)), folders,
@@ -1444,18 +1500,114 @@ class Apps:
             if spec is not None:
                 write_file(d / "custom.json", json.dumps(spec), mode=0o600)
         write_file(d / "state.json", json.dumps(state))
-        self.docker.compose(d, "pull")
         if state.get("enabled", True):
             self.docker.compose(d, "up", "-d", "--remove-orphans")
         else:
             # Containers of removed services go even while the app is stopped.
             self.docker.compose(d, "up", "--no-start", "--remove-orphans")
         new_images = {s.image for s in t.services.values()}
-        for s in t_old.services.values():
-            if s.image not in new_images:
-                self.docker.remove_image(s.image)
+        if rollback.get("skipped"):
+            # Without a copy the old images are not needed for a way back.
+            for s in t_old.services.values():
+                if s.image not in new_images:
+                    self.docker.remove_image(s.image)
         self._apply_proxies()
-        return {"id": app_id, **state}
+        return {"id": app_id, **state, "rollback": rollback}
+
+    # --- way back after an update ---------------------------------------------
+
+    def _rollback_dir(self, app_id: str, location: str) -> Path:
+        return self.paths.root(location) / "appdata" / ROLLBACK_DIR / app_id
+
+    def _find_rollback(self, app_id: str) -> Path | None:
+        self.paths.app_dir(app_id)  # checks the id
+        for root in (self.paths.system, self.paths.pool):
+            d = root / "appdata" / ROLLBACK_DIR / app_id
+            if (d / "meta.json").is_file() and (d / "app" / "state.json").is_file():
+                return d
+        return None
+
+    def rollback_info(self, app_id: str) -> dict | None:
+        """Version and time of the copy before the last update, or None."""
+        d = self._find_rollback(app_id)
+        meta = read_json(d / "meta.json") if d else None
+        if not isinstance(meta, dict):
+            return None
+        return {"version": meta.get("version"), "time": meta.get("time")}
+
+    def _drop_rollback(self, copy: Path, keep: set[str]) -> None:
+        """Delete a copy and the images only it still needed."""
+        meta = read_json(copy / "meta.json") or {}
+        for image in meta.get("images", []):
+            if isinstance(image, str) and image not in keep:
+                self.docker.remove_image(image)
+        remove_tree(copy)
+
+    def _snapshot(self, app_id: str, t: Template, state: dict) -> dict:
+        """Copy app data and files of the stopped app; {"skipped": reason} if not possible."""
+        location, _ = self._placement(t, state)
+        app = self.paths.app_dir(app_id)
+        data = self.paths.root(location) / "appdata" / app_id
+        target = self._rollback_dir(app_id, location)
+        old = self._find_rollback(app_id)
+        if old is not None:
+            self._drop_rollback(old, keep={s.image for s in t.services.values()})
+        size = dir_size(data)
+        root = self.paths.root(location)
+        if shutil.disk_usage(root).free < size + ROLLBACK_SPARE:
+            print(f"apps: {app_id}: no copy before the update, {root} has too little free space",
+                  file=sys.stderr)
+            return {"skipped": "space", "size": size}
+        tmp = target.with_name(target.name + ".tmp")
+        remove_tree(tmp)
+        (tmp / "app").mkdir(parents=True)
+        for name in APP_FILES:
+            if (app / name).is_file():
+                shutil.copy2(app / name, tmp / "app" / name)
+        if data.is_dir():
+            copy_tree(data, tmp / "data")
+        now = datetime.datetime.now(datetime.UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+        meta = {"version": t.version, "time": now, "size": size,
+                "images": sorted({s.image for s in t.services.values()})}
+        write_file(tmp / "meta.json", json.dumps(meta))
+        tmp.rename(target)
+        return {"version": t.version, "time": now, "size": size}
+
+    def rollback(self, app_id: str) -> dict:
+        """Put back app data, template and images from before the last update."""
+        t_now, state_now = load_installed(self.paths, app_id)
+        src = self._find_rollback(app_id)
+        if src is None:
+            raise AppError(f"{app_id} has no copy from before an update")
+        meta = read_json(src / "meta.json") or {}
+        old_state = read_json(src / "app" / "state.json") or {}
+        location = old_state.get("location", str(self.paths.pool))
+        self._require({location})
+        app = self.paths.app_dir(app_id)
+        self.docker.compose(app, "stop")
+        data = self.paths.root(location) / "appdata" / app_id
+        if (src / "data").is_dir():
+            remove_tree(data)
+            shutil.move(src / "data", data)
+        for name in APP_FILES:
+            if (src / "app" / name).is_file():
+                shutil.copy2(src / "app" / name, app / name)
+            else:
+                (app / name).unlink(missing_ok=True)
+        t_old, state = load_installed(self.paths, app_id)
+        state["enabled"] = state_now.get("enabled", True)
+        write_file(app / "state.json", json.dumps(state))
+        if state["enabled"]:
+            self.docker.compose(app, "up", "-d", "--pull", "missing", "--remove-orphans")
+        else:
+            self.docker.compose(app, "up", "--no-start", "--pull", "missing", "--remove-orphans")
+        old_images = {s.image for s in t_old.services.values()}
+        for s in t_now.services.values():
+            if s.image not in old_images:
+                self.docker.remove_image(s.image)
+        remove_tree(src)
+        self._apply_proxies()
+        return {"id": app_id, "version": meta.get("version", t_old.version), **state}
 
     def _set_enabled(self, app_id: str, enabled: bool) -> dict:
         _, state = load_installed(self.paths, app_id)
@@ -1487,6 +1639,11 @@ class Apps:
         with contextlib.suppress(OSError):
             d.rmdir()
         self._apply_proxies()
+        on_pool = location == str(self.paths.pool)
+        if not on_pool or self.mounted(self.paths.pool):
+            copy = self._find_rollback(app_id)
+            if copy is not None:
+                self._drop_rollback(copy, keep=set())
         if delete_data:
             data = self.paths.root(location) / "appdata" / app_id
             on_pool = location == str(self.paths.pool)
@@ -1519,6 +1676,7 @@ class Apps:
                 "urls": domains.app_urls(app_id, t.public_port, settings, host)
                 if t.public_port else None,
                 "update": None if custom else update_info(t, cached_template(self.paths, app_id)),
+                "rollback": self.rollback_info(app_id),
                 "login": login or None,
                 "icon": icons.get(app_id),
             })
@@ -1603,6 +1761,8 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("updates", help="installed apps with a newer template in the catalog")
     for name in ("start", "stop"):
         sub.add_parser(name).add_argument("id")
+    sub.add_parser("rollback", help="go back to the version before the last update").add_argument(
+        "id")
     folder_help = "use PATH (below /mnt/user or /srv) for SHARE instead of <location>/SHARE"
     location_help = "/mnt/user or /srv for app data; default /mnt/user if mounted"
     spec_help = "custom container: JSON file with the form fields (see custom_template)"
@@ -1615,7 +1775,7 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("--location", help=location_help)
     s.add_argument("--spec", help=spec_help)
     s = sub.add_parser("precheck", help="fail early if install/update cannot work")
-    s.add_argument("op", choices=("install", "update"))
+    s.add_argument("op", choices=("install", "update", "rollback"))
     s.add_argument("id")
     s.add_argument("--folder", action="append", default=[], metavar="SHARE=PATH", help=folder_help)
     s.add_argument("--location", help=location_help)

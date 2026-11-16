@@ -627,6 +627,7 @@ def test_action_list_is_fixed():
         "apps.job",
         "apps.list",
         "apps.remove",
+        "apps.rollback",
         "apps.start",
         "apps.stop",
         "apps.update",

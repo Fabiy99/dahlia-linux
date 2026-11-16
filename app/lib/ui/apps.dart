@@ -104,6 +104,18 @@ class _AppsPageState extends State<AppsPage> with AreaCalls {
     }
   }
 
+  /// Back to the copy from before the last update, after a question.
+  Future<void> _rollback(Map app) async {
+    final back = app['rollback'];
+    if (back is! Map) return;
+    final name = '${app['name'] ?? app['id']}';
+    if (!await ask(c.t('apps.confirm_rollback', {'name': name, 'version': back['version']}), 'apps.rollback',
+        danger: true)) {
+      return;
+    }
+    if (mounted) await _job(app, 'rollback');
+  }
+
   Future<void> _startStop(Map app, String op) async {
     final m = ScaffoldMessenger.of(context);
     final id = '${app['id']}';
@@ -210,6 +222,7 @@ class _AppsPageState extends State<AppsPage> with AreaCalls {
                 onStart: () => _startStop(a, 'start'),
                 onStop: () => _startStop(a, 'stop'),
                 onUpdate: () => _job(a, 'update'),
+                onRollback: () => _rollback(a),
                 onRemove: () => _remove(a),
               ),
             ),
@@ -378,13 +391,14 @@ class _InstalledCard extends StatelessWidget {
     required this.onStart,
     required this.onStop,
     required this.onUpdate,
+    required this.onRollback,
     required this.onRemove,
   });
 
   final Controller c;
   final Map app;
   final bool gpu, busy;
-  final VoidCallback onStart, onStop, onUpdate, onRemove;
+  final VoidCallback onStart, onStop, onUpdate, onRollback, onRemove;
 
   @override
   Widget build(BuildContext context) {
@@ -394,6 +408,7 @@ class _InstalledCard extends StatelessWidget {
     final notes = localized(app['notes'], c.settings.lang);
     final link = appUrl(c, app);
     final login = app['login'];
+    final back = app['rollback'];
     final running = status == 'running';
     return Glass(
       padding: const EdgeInsets.all(18),
@@ -408,6 +423,18 @@ class _InstalledCard extends StatelessWidget {
           Text(notes, style: TextStyle(color: p.muted, fontSize: 13, height: 1.45)),
         ],
         if (login is Map) _Login(c: c, login: login),
+        if (back is Map) ...[
+          const SizedBox(height: 12),
+          Wrap(spacing: 10, runSpacing: 6, crossAxisAlignment: WrapCrossAlignment.center, children: [
+            Text(
+                c.t('apps.rollback_kept', {
+                  'version': back['version'],
+                  'date': _stamp(context, back['time']),
+                }),
+                style: TextStyle(color: p.muted, fontSize: 13)),
+            OutlinedButton(onPressed: busy ? null : onRollback, child: Text(c.t('apps.rollback'))),
+          ]),
+        ],
         const SizedBox(height: 14),
         Row(children: [
           if (busy)
@@ -448,6 +475,14 @@ class _InstalledCard extends StatelessWidget {
       ]),
     );
   }
+}
+
+/// Date and time of a UTC stamp in the local time zone.
+String _stamp(BuildContext context, Object? iso) {
+  final t = DateTime.tryParse('$iso')?.toLocal();
+  if (t == null) return '';
+  final l = MaterialLocalizations.of(context);
+  return '${l.formatMediumDate(t)}, ${l.formatTimeOfDay(TimeOfDay.fromDateTime(t), alwaysUse24HourFormat: true)}';
 }
 
 /// Default login of an app, hidden until asked for.

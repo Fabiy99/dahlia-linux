@@ -1342,5 +1342,10 @@
   "home.apps_running": "{n} of {total} running",
   "home.yesterday": "yesterday",
   "home.parity_synced": "Parity last synced: {when}",
-  "login.remember": "Stay signed in (30 days)"
+  "login.remember": "Stay signed in (30 days)",
+  "apps.rollback": "Back to the old version",
+  "apps.rollback_kept": "Saved before the update: version {version}, {date}",
+  "apps.confirm_rollback": "Take {name} back to version {version}? The data from before the update replaces the current data; everything since the update is lost.",
+  "apps.rollback_running": "Taking {name} back …",
+  "apps.rollback_done": "{name} runs the old version again."
 }
