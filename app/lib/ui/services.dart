@@ -33,7 +33,7 @@ class ServicesSection extends StatelessWidget {
       SizedBox(width: full, child: _NotifyCard(c)),
       SizedBox(width: half, child: _InfluxCard(c)),
       SizedBox(width: half, child: _UpsCard(c)),
-      SizedBox(width: full, child: _PhoneCard(c)),
+      SizedBox(width: full, child: PhoneCard(c)),
     ]);
   }
 }
@@ -506,16 +506,16 @@ class _UpsCardState extends State<_UpsCard> with AreaCalls, CardLoad {
 
 // --- phone and other desktop apps -----------------------------------------------
 
-class _PhoneCard extends StatefulWidget {
-  const _PhoneCard(this.c);
+class PhoneCard extends StatefulWidget {
+  const PhoneCard(this.c, {super.key});
 
   final Controller c;
 
   @override
-  State<_PhoneCard> createState() => _PhoneCardState();
+  State<PhoneCard> createState() => _PhoneCardState();
 }
 
-class _PhoneCardState extends State<_PhoneCard> with AreaCalls, CardLoad {
+class _PhoneCardState extends State<PhoneCard> with AreaCalls, CardLoad {
   String? code;
   DateTime? until;
   Timer? _tick;

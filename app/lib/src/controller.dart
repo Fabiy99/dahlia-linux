@@ -7,6 +7,7 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 
+import 'home_layout.dart';
 import 'manifest.dart';
 import 'pairing.dart';
 import 'server.dart';
@@ -62,6 +63,12 @@ class Controller extends ChangeNotifier {
   bool updateBannerClosed = false;
   Timer? _pendingTimer;
 
+  /// Start screen of the server (home.json); empty until loaded.
+  HomeConfig home = const HomeConfig();
+
+  /// Weather of the selected place, for the backdrop: kind and day/night.
+  ({String kind, bool day})? mood;
+
   /// Login needs the second factor.
   bool needsCode = false;
   bool busy = false;
@@ -79,6 +86,7 @@ class Controller extends ChangeNotifier {
       _pendingTimer?.cancel();
       _pendingTimer = Timer.periodic(const Duration(hours: 1), (_) => checkPendingUpdates());
       unawaited(checkPendingUpdates());
+      unawaited(loadHome());
     } else if (s != Stage.home) {
       _pendingTimer?.cancel();
       _pendingTimer = null;
@@ -329,6 +337,52 @@ class Controller extends ChangeNotifier {
     await connect();
   }
 
+  // --- start screen -----------------------------------------------------------
+
+  void _home(Object? j) {
+    // The start screen is loaded in the background; the app may be closed by then.
+    if (_disposed) return;
+    home = HomeConfig.fromJson(j);
+    if (home.look != settings.look) {
+      settings.look = home.look;
+      settings.save(settingsFile);
+    }
+    notifyListeners();
+  }
+
+  /// Loads the start screen; failures keep the last one.
+  Future<void> loadHome() async {
+    final s = server;
+    if (s == null) return;
+    try {
+      _home(await s.get('/api/home'));
+    } on VersionMismatch {
+      return;
+    } on ApiError {
+      return;
+    }
+  }
+
+  /// Sends the changed parts (tiles, look, places); the server keeps the rest.
+  Future<void> saveHome(Map<String, Object> change) async => _home(await server!.post('/api/home', change));
+
+  Future<void> resetHome() async => _home(await server!.post('/api/home/reset'));
+
+  /// Installed apps with an update, for the count next to "Apps" in the top bar.
+  int appUpdates = 0;
+
+  void setAppUpdates(int n) {
+    if (n == appUpdates) return;
+    appUpdates = n;
+    notifyListeners();
+  }
+
+  void setMood(({String kind, bool day})? m) {
+    if (m == mood) return;
+    mood = m;
+    notifyListeners();
+  }
+
   // --- pending updates ---------------------------------------------------------
 
   /// Asks the server how many updates are pending; failures leave the banner as it is.
@@ -361,8 +415,11 @@ class Controller extends ChangeNotifier {
     _set(Stage.update);
   }
 
+  bool _disposed = false;
+
   @override
   void dispose() {
+    _disposed = true;
     _pendingTimer?.cancel();
     server?.close();
     super.dispose();

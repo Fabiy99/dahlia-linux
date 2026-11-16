@@ -78,6 +78,37 @@ class Palette extends ThemeExtension<Palette> {
     bloomHome: .62,
   );
 
+  /// The palette with another accent colour (home.json look.accent), as the
+  /// :root[data-accent] rules in style.css.
+  Palette withAccent(String name, Brightness b) {
+    final a = _accents[name];
+    if (a == null) return this;
+    final dark = b == Brightness.dark;
+    final c = dark ? a.$2 : a.$1;
+    return Palette(
+      bg: bg,
+      fg: fg,
+      muted: muted,
+      card: card,
+      line: line,
+      accent: c,
+      accentFg: accentFg,
+      accentSoft: c.withValues(alpha: dark ? .22 : .13),
+      danger: danger,
+      warn: warn,
+      ok: ok,
+      track: track,
+      glow: glow,
+      glass: glass,
+      glassLine: glassLine,
+      bar: bar,
+      navActive: c.withValues(alpha: dark ? .20 : .14),
+      navActiveFg: dark ? a.$4 : a.$3,
+      sub: sub,
+      bloomHome: bloomHome,
+    );
+  }
+
   @override
   Palette copyWith() => this;
 
@@ -85,12 +116,29 @@ class Palette extends ThemeExtension<Palette> {
   Palette lerp(Palette? other, double t) => t < .5 ? this : (other ?? this);
 }
 
+/// Accent colours other than dahlia: light, dark, light nav text, dark nav text.
+const _accents = {
+  'violet': (Color(0xFF6D4BC4), Color(0xFFC3B0F5), Color(0xFF4F2FA3), Color(0xFFE6DDFF)),
+  'blue': (Color(0xFF2F6DB5), Color(0xFF9CC4F5), Color(0xFF1F5191), Color(0xFFDCEBFF)),
+  'teal': (Color(0xFF1F7F78), Color(0xFF8FDCD2), Color(0xFF145F59), Color(0xFFD5F6F1)),
+  'amber': (Color(0xFFA35F00), Color(0xFFF3C27A), Color(0xFF7D4800), Color(0xFFFFE9C7)),
+};
+
+/// Colour of the accent swatches in the customize panel (ACCENT_SWATCH in app.js).
+const accentSwatch = {
+  'dahlia': Color(0xFFD873B8),
+  'violet': Color(0xFF8E6BE0),
+  'blue': Color(0xFF4F8FDC),
+  'teal': Color(0xFF2FA79C),
+  'amber': Color(0xFFE0952A),
+};
+
 extension PaletteOf on BuildContext {
   Palette get palette => Theme.of(this).extension<Palette>()!;
 }
 
-ThemeData dahliaTheme(Brightness b) {
-  final p = b == Brightness.dark ? Palette.dark : Palette.light;
+ThemeData dahliaTheme(Brightness b, [String accent = 'dahlia']) {
+  final p = (b == Brightness.dark ? Palette.dark : Palette.light).withAccent(accent, b);
   final scheme = ColorScheme.fromSeed(
     seedColor: p.accent,
     brightness: b,

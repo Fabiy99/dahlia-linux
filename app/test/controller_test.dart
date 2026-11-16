@@ -118,6 +118,28 @@ void main() {
     c.dispose();
   });
 
+  test('start screen comes from the server; its look is kept for the next start', () async {
+    final c = make();
+    await c.start();
+    await c.choose(fake.host);
+    await c.confirmFingerprint();
+    await c.login('fabian', 'pw', save: false);
+    await c.loadHome();
+    expect(c.home.shown.map((t) => t.id), ['weather', 'apps']);
+    expect([c.home.look.theme, c.home.look.accent, c.settings.look.accent], ['dark', 'teal', 'teal']);
+    expect(Settings.load(File('${dir.path}/settings.json')).look.accent, 'teal');
+    await c.saveHome({'tiles': c.home.tilesJson(c.home.change('cpu', on: true, size: 'xl'))});
+    expect(c.home.tiles.last.toJson(), {'id': 'cpu', 'size': 'xl', 'on': true});
+    expect(fake.home['tiles'], hasLength(3));
+    await c.resetHome();
+    expect(c.settings.look.accent, 'dahlia');
+    c.setMood((kind: 'rain', day: false));
+    expect(c.mood, (kind: 'rain', day: false));
+    c.setAppUpdates(2);
+    expect(c.appUpdates, 2);
+    c.dispose();
+  });
+
   test('areas of the top bar; signing out goes back to the start page', () async {
     final c = make();
     await c.start();

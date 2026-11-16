@@ -64,28 +64,90 @@ def test_clean_place_validates():
 
 def test_store_defaults_and_roundtrip(tmp_path):
     store = home.HomeStore(tmp_path / "home.json")
-    assert store.get() == {"widgets": home.DEFAULT_WIDGETS, "places": []}
-    store.set({"history": False}, [HAMBURG])
     data = store.get()
-    assert data["widgets"]["history"] is False and data["widgets"]["weather"] is True
+    assert data["widgets"] == home.DEFAULT_WIDGETS and data["places"] == []
+    assert [t["id"] for t in data["tiles"]] == list(home.WIDGETS)
+    assert data["look"] == home.DEFAULT_LOOK
+    store.set(widgets={"history": True}, places=[HAMBURG])
+    data = store.get()
+    assert data["widgets"]["history"] is True and data["widgets"]["weather"] is True
     assert data["places"] == [HAMBURG]
     with pytest.raises(ValueError):
-        store.set({"bogus": True}, [])
+        store.set(widgets={"bogus": True})
     with pytest.raises(ValueError):
-        store.set({}, [HAMBURG] * (home.MAX_PLACES + 1))
+        store.set(places=[HAMBURG] * (home.MAX_PLACES + 1))
+
+
+def test_store_keeps_order_size_and_look(tmp_path):
+    store = home.HomeStore(tmp_path / "home.json")
+    tiles = [{"id": "system", "size": "xl", "on": True}, {"id": "weather", "size": "s", "on": True}]
+    look = {"theme": "dark", "accent": "teal", "background": "still", "weather_fx": False}
+    data = store.set(tiles=tiles, look=look)
+    assert data["tiles"][:2] == tiles
+    # Widgets left out of the request are kept, switched off, at the end.
+    rest = [w for w in home.WIDGETS if w not in ("system", "weather")]
+    assert [t["id"] for t in data["tiles"][2:]] == rest
+    assert not any(t["on"] for t in data["tiles"][2:])
+    # A change of the places alone keeps tiles and look.
+    store.set(places=[HAMBURG])
+    again = home.HomeStore(tmp_path / "home.json").get()
+    assert again["tiles"] == data["tiles"] and again["look"] == look
+    assert again["places"] == [HAMBURG]
+    for bad in ([{"id": "nope", "size": "s", "on": True}],
+                [{"id": "cpu", "size": "huge", "on": True}],
+                [{"id": "cpu", "size": "s", "on": True}, {"id": "cpu", "size": "m", "on": True}]):
+        with pytest.raises(ValueError):
+            store.set(tiles=bad)
+    for bad in ({"theme": "neon"}, {"weather_fx": "yes"}, {"font": "comic"}):
+        with pytest.raises(ValueError):
+            store.set(look=bad)
+
+
+def test_store_reset_keeps_places(tmp_path):
+    store = home.HomeStore(tmp_path / "home.json")
+    store.set(tiles=[{"id": "cpu", "size": "xl", "on": True}], look={"theme": "light"},
+              places=[HAMBURG])
+    data = store.reset()
+    assert data["tiles"] == home.default_tiles() and data["look"] == home.DEFAULT_LOOK
+    assert data["places"] == [HAMBURG]
 
 
 def test_store_ignores_broken_file(tmp_path):
     path = tmp_path / "home.json"
-    widgets = {"cpu": "no", "weather": False, "bogus": False}
-    path.write_text(json.dumps({"layout": home.LAYOUT, "widgets": widgets,
+    tiles = [{"id": "cpu", "size": "giant", "on": True}, {"id": "bogus", "size": "s", "on": True},
+             {"id": "weather", "size": "m", "on": "no"}, "junk"]
+    path.write_text(json.dumps({"layout": home.LAYOUT, "tiles": tiles, "look": {"theme": "neon"},
                                 "places": [{"name": "x"}, HAMBURG]}))
     data = home.HomeStore(path).get()
-    assert data["widgets"]["cpu"] is False and data["widgets"]["weather"] is False
-    assert "bogus" not in data["widgets"]
+    assert data["tiles"][0] == {"id": "cpu", "size": home.DEFAULT_SIZES["cpu"], "on": True}
+    assert data["tiles"][1] == {"id": "weather", "size": "m", "on": False}
+    assert "bogus" not in data["widgets"] and len(data["tiles"]) == len(home.WIDGETS)
+    assert data["look"] == home.DEFAULT_LOOK
     assert data["places"] == [HAMBURG]
-    path.write_text("{not json")
-    assert home.HomeStore(path).get()["places"] == []
+    for broken in ("{not json", "[1, 2]"):
+        path.write_text(broken)
+        assert home.HomeStore(path).get()["places"] == []
+
+
+def test_store_takes_over_layout_2(tmp_path):
+    # An update from layout 2 keeps which widgets the user switched on.
+    path = tmp_path / "home.json"
+    path.write_text(json.dumps({"layout": 2, "widgets": {"weather": False, "cpu": True},
+                                "places": [HAMBURG]}))
+    data = home.HomeStore(path).get()
+    assert data["widgets"]["weather"] is False and data["widgets"]["cpu"] is True
+    assert data["widgets"]["apps"] is True and data["places"] == [HAMBURG]
+
+
+def test_store_new_widgets_stay_off(tmp_path, monkeypatch):
+    # A widget added by a later version does not appear on an arranged start screen.
+    path = tmp_path / "home.json"
+    home.HomeStore(path).set(tiles=[{"id": w, "size": "s", "on": True} for w in home.WIDGETS])
+    monkeypatch.setattr(home, "WIDGETS", (*home.WIDGETS, "clock"))
+    monkeypatch.setitem(home.DEFAULT_SIZES, "clock", "s")
+    tiles = home.HomeStore(path).get()["tiles"]
+    assert tiles[-1] == {"id": "clock", "size": "s", "on": False}
+    assert all(t["on"] for t in tiles[:-1])
 
 
 def test_store_resets_widgets_of_old_layout(tmp_path):
@@ -173,6 +235,14 @@ def test_home_endpoints(client):
     assert c.get("/api/home").json()["places"] == [HAMBURG]
     bad = c.post("/api/home", json={"widgets": {"nope": True}, "places": []}, headers=CSRF)
     assert bad.status_code == 400
+    tiles = [{"id": "jobs", "size": "xl", "on": True}]
+    r = c.post("/api/home", json={"tiles": tiles, "look": {"accent": "blue"}}, headers=CSRF)
+    assert r.status_code == 200 and r.json()["tiles"][0] == tiles[0]
+    assert r.json()["look"]["accent"] == "blue" and r.json()["places"] == [HAMBURG]
+    assert c.post("/api/home", json={"look": {"accent": "pink"}}, headers=CSRF).status_code == 400
+    assert c.post("/api/home/reset").status_code == 403
+    r = c.post("/api/home/reset", headers=CSRF)
+    assert r.json()["tiles"] == home.default_tiles() and r.json()["places"] == [HAMBURG]
 
 
 def test_weather_endpoints(client):

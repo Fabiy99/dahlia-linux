@@ -31,13 +31,20 @@ class DahliaApp extends StatelessWidget {
         builder: (context, _) => MaterialApp(
           title: title,
           debugShowCheckedModeBanner: false,
-          theme: dahliaTheme(Brightness.light),
-          darkTheme: dahliaTheme(Brightness.dark),
+          theme: dahliaTheme(Brightness.light, c.settings.look.accent),
+          darkTheme: dahliaTheme(Brightness.dark, c.settings.look.accent),
+          themeMode: switch (c.settings.look.theme) {
+            'light' => ThemeMode.light,
+            'dark' => ThemeMode.dark,
+            _ => ThemeMode.system,
+          },
           locale: Locale(c.settings.lang),
           home: Scaffold(
             backgroundColor: Colors.transparent,
             body: Backdrop(
               home: c.stage == Stage.home && c.area == Area.home,
+              look: c.settings.look,
+              mood: c.stage == Stage.home ? c.mood : null,
               child: AnimatedSwitcher(
                 duration: const Duration(milliseconds: 350),
                 child: KeyedSubtree(key: ValueKey((c.stage, c.area)), child: SizedBox.expand(child: _page())),

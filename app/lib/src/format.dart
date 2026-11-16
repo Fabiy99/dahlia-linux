@@ -7,17 +7,35 @@ typedef Translate = String Function(String key, [Map<String, Object?> vars]);
 /// Account names are stored in lower case; shown with a capital first letter.
 String displayName(String name) => name.isEmpty ? name : name[0].toUpperCase() + name.substring(1);
 
-/// 1536 -> "1.5 KB" (base 1024, like the dashboard).
+/// 1500 -> "1.5 KB": base 1000 with one decimal, like formatBytes() in the dashboard.
 String bytes(num n, Translate t) {
-  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  const units = ['B', 'KB', 'MB', 'GB', 'TB', 'PB'];
   var v = n.toDouble();
   var i = 0;
-  while (v >= 1024 && i < units.length - 1) {
-    v /= 1024;
+  while (v >= 1000 && i < units.length - 1) {
+    v /= 1000;
     i++;
   }
-  final s = i == 0 || v >= 100 ? v.round().toString() : v.toStringAsFixed(1);
-  return '$s ${t('unit.${units[i]}')}';
+  return '${v.toStringAsFixed(i == 0 ? 0 : 1)} ${t('unit.${units[i]}')}';
+}
+
+/// "2.4 MB/s"
+String rate(num bytesPerSecond, Translate t) => '${bytes(bytesPerSecond, t)}/s';
+
+/// "3 Tage, 4 Std., 1 Min." (overview.uptime_value of the dashboard).
+String uptime(int seconds, Translate t) =>
+    t('overview.uptime_value', {'d': seconds ~/ 86400, 'h': seconds % 86400 ~/ 3600, 'm': seconds % 3600 ~/ 60});
+
+/// "47 °C"
+String temp(num c) => '${c.round()} °C';
+
+/// Disk temperatures like a NAS shows them: HDDs warm at 45, SSDs at 60 (tempKind()).
+String tempKind(num? c, bool rotational) {
+  if (c == null) return '';
+  final warn = rotational ? 45 : 60;
+  if (c >= warn + 10) return 'crit';
+  if (c >= warn) return 'warn';
+  return 'ok';
 }
 
 /// Uptime: "3 d", "5 h", "12 min".
