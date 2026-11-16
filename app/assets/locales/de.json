@@ -96,5 +96,9 @@
   "terminal.copy_hint_mac": "Kopieren: Text markieren, dann Cmd+C. Einfügen: Cmd+V.",
   "settings.system": "System",
   "settings.security": "Sicherheit",
-  "settings.services": "Dienste"
+  "settings.services": "Dienste",
+  "notices.title": "Mitteilungen",
+  "notices.none": "Noch keine Mitteilungen vom Server.",
+  "notices.desktop": "Auch als Mitteilung auf diesem Computer",
+  "notices.desktop_hint": "Neue Meldungen des Servers (Platten, Aufgaben, Backup) erscheinen als Mitteilung von Windows, macOS oder Linux, solange die App läuft."
 }

@@ -11,7 +11,18 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'home_layout.dart';
 
 class Settings {
-  Settings({this.host, this.pem, this.username, this.lang = 'en', this.autoLogin = true, this.look = const Look()});
+  Settings({
+    this.host,
+    this.pem,
+    this.username,
+    this.lang = 'en',
+    this.autoLogin = true,
+    this.look = const Look(),
+    this.desktopNotices = true,
+    this.noticeSeen,
+    this.noticeRead = 0,
+    this.tourDone = false,
+  });
 
   /// Paired server ("dahlia.local" or "host:port"); null before pairing.
   String? host;
@@ -30,10 +41,33 @@ class Settings {
   /// colours before the server answers.
   Look look;
 
+  /// Server notifications also as messages of the operating system.
+  bool desktopNotices;
+
+  /// Time of the newest notification shown on the desktop; null until the
+  /// first check, which only marks the old ones as seen.
+  int? noticeSeen;
+
+  /// Time of the newest notification seen in the bell list.
+  int noticeRead;
+
+  /// The welcome tour was shown (or skipped).
+  bool tourDone;
+
   bool get paired => host != null && pem != null;
 
-  Map<String, Object?> toJson() =>
-      {'host': host, 'pem': pem, 'username': username, 'lang': lang, 'auto_login': autoLogin, 'look': look.toJson()};
+  Map<String, Object?> toJson() => {
+        'host': host,
+        'pem': pem,
+        'username': username,
+        'lang': lang,
+        'auto_login': autoLogin,
+        'look': look.toJson(),
+        'desktop_notices': desktopNotices,
+        'notice_seen': noticeSeen,
+        'notice_read': noticeRead,
+        'tour_done': tourDone,
+      };
 
   factory Settings.fromJson(Object? j) {
     if (j is! Map) return Settings();
@@ -46,6 +80,10 @@ class Settings {
       lang: lang == 'de' ? 'de' : 'en',
       autoLogin: j['auto_login'] != false,
       look: Look.fromJson(j['look']),
+      desktopNotices: j['desktop_notices'] != false,
+      noticeSeen: j['notice_seen'] is int ? j['notice_seen'] as int : null,
+      noticeRead: j['notice_read'] is int ? j['notice_read'] as int : 0,
+      tourDone: j['tour_done'] == true,
     );
   }
 

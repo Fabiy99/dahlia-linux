@@ -31,6 +31,9 @@ class FakeDahlia {
     'places': [],
   };
 
+  /// Notifications /api/notifications offers.
+  List<Map> notices = const [];
+
   String get host => '127.0.0.1:${http.port}';
 
   Future<void> start() async {
@@ -93,6 +96,8 @@ class FakeDahlia {
       case '/api/home/reset':
         home = {...home, 'look': {'theme': 'auto', 'accent': 'dahlia', 'background': 'bloom', 'weather_fx': true}};
         r.write(jsonEncode(home));
+      case '/api/notifications':
+        r.write(jsonEncode({'items': notices}));
       case '/api/updates/pending':
         r.write(jsonEncode({'packages': [for (final n in pending) {'name': n}], 'running': false}));
       case '/app-icons/jellyfin.png':

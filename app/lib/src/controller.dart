@@ -9,6 +9,7 @@ import 'package:flutter/foundation.dart';
 
 import 'home_layout.dart';
 import 'manifest.dart';
+import 'notices.dart';
 import 'pairing.dart';
 import 'server.dart';
 import 'settings.dart';
@@ -28,7 +29,12 @@ class Controller extends ChangeNotifier {
     required this.loadAsset,
     Secrets? secrets,
     this.version = appVersion,
+    this.popup,
   }) : secrets = secrets ?? Secrets();
+
+  /// Shows a notification as a message of the operating system (main.dart);
+  /// null in tests.
+  final Future<void> Function(Notice)? popup;
 
   final File settingsFile;
   final Assets loadAsset;
@@ -85,11 +91,16 @@ class Controller extends ChangeNotifier {
       // Signed in: ask for pending updates now and then every hour.
       _pendingTimer?.cancel();
       _pendingTimer = Timer.periodic(const Duration(hours: 1), (_) => checkPendingUpdates());
+      _noticeTimer?.cancel();
+      _noticeTimer = Timer.periodic(const Duration(minutes: 1), (_) => checkNotices());
       unawaited(checkPendingUpdates());
       unawaited(loadHome());
+      unawaited(checkNotices());
     } else if (s != Stage.home) {
       _pendingTimer?.cancel();
       _pendingTimer = null;
+      _noticeTimer?.cancel();
+      _noticeTimer = null;
     }
     stage = s;
     error = err;
@@ -193,12 +204,13 @@ class Controller extends ChangeNotifier {
 
   void back() => _set(Stage.connect);
 
-  /// "Other server": keeps nothing of the old pairing but the language.
+  /// "Other server": keeps nothing of the old pairing but the language and
+  /// the app's own choices (desktop messages, tour).
   Future<void> otherServer() async {
     server?.close();
     server = null;
     user = null;
-    settings = Settings(lang: settings.lang);
+    settings = Settings(lang: settings.lang, desktopNotices: settings.desktopNotices, tourDone: settings.tourDone);
     settings.save(settingsFile);
     _set(Stage.connect);
   }
@@ -408,6 +420,59 @@ class Controller extends ChangeNotifier {
     notifyListeners();
   }
 
+  // --- notifications -----------------------------------------------------------
+
+  /// Last notifications of the server, newest first.
+  List<Notice> notices = const [];
+  Timer? _noticeTimer;
+
+  /// Notifications not yet seen in the bell list.
+  int get unreadNotices => notices.where((n) => n.time > settings.noticeRead).length;
+
+  /// Fetches the notifications; new ones go to the desktop. The first check
+  /// after pairing only marks what is already there as seen.
+  Future<void> checkNotices() async {
+    final s = server;
+    if (s == null) return;
+    final List<Notice> all;
+    try {
+      all = parseNotices(await s.get('/api/notifications'));
+    } on VersionMismatch {
+      return;
+    } on ApiError {
+      return;
+    }
+    if (_disposed) return;
+    final seen = settings.noticeSeen;
+    final show = seen == null || !settings.desktopNotices ? const <Notice>[] : freshNotices(all, seen);
+    final newest = newestTime(all, seen ?? 0);
+    if (newest != seen) {
+      settings.noticeSeen = newest;
+      if (seen == null) settings.noticeRead = newest;
+      settings.save(settingsFile);
+    }
+    notices = all;
+    notifyListeners();
+    for (final n in show) {
+      await popup?.call(n);
+    }
+  }
+
+  /// The bell list was opened.
+  void readNotices() {
+    final newest = newestTime(notices, settings.noticeRead);
+    if (newest == settings.noticeRead) return;
+    settings.noticeRead = newest;
+    settings.save(settingsFile);
+    notifyListeners();
+  }
+
+  void setDesktopNotices(bool on) {
+    settings.desktopNotices = on;
+    settings.save(settingsFile);
+    notifyListeners();
+  }
+
   // --- version binding ---------------------------------------------------------
 
   void _mismatch(String server) {
@@ -421,6 +486,7 @@ class Controller extends ChangeNotifier {
   void dispose() {
     _disposed = true;
     _pendingTimer?.cancel();
+    _noticeTimer?.cancel();
     server?.close();
     super.dispose();
   }

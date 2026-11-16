@@ -10,6 +10,7 @@ import 'package:material_ui/material_ui.dart';
 import '../src/controller.dart';
 import '../src/format.dart';
 import 'bloom.dart';
+import 'notices.dart';
 import 'services.dart';
 import 'theme.dart';
 import 'widgets.dart';
@@ -101,6 +102,8 @@ class TopBar extends StatelessWidget {
           ),
         ),
         const SizedBox(width: 12),
+        NoticeBell(c),
+        const SizedBox(width: 4),
         // Phone and pairing of other desktop apps, like the dashboard's "Phone" button.
         Tooltip(
           message: c.t('phone.open'),

@@ -96,5 +96,9 @@
   "terminal.copy_hint_mac": "Copy: select the text, then Cmd+C. Paste: Cmd+V.",
   "settings.system": "System",
   "settings.security": "Security",
-  "settings.services": "Services"
+  "settings.services": "Services",
+  "notices.title": "Notifications",
+  "notices.none": "No notifications from the server yet.",
+  "notices.desktop": "Also as a message on this computer",
+  "notices.desktop_hint": "New messages of the server (disks, jobs, backup) appear as a Windows, macOS or Linux notification while the app runs."
 }

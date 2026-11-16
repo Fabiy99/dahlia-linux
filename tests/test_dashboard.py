@@ -789,6 +789,20 @@ def test_notify_and_ups_endpoints(env):
     assert client.post("/api/notify/test").status_code == 403
 
 
+def test_notifications_feed(env):
+    client, agent, _ = logged_in(env)
+    agent.replies["notify.get"] = {"email": {}, "history": [
+        {"time": 300, "level": "warning", "title": "Disk hot", "message": "sda 60 °C",
+         "results": {"email": "ok"}},
+        {"time": 100, "level": "info", "title": "Test", "message": "x", "results": {}},
+        "broken",
+    ]}
+    got = client.get("/api/notifications?since=100").json()
+    assert got == {"items": [{"time": 300, "level": "warning", "title": "Disk hot",
+                              "message": "sda 60 °C"}]}
+    assert len(client.get("/api/notifications").json()["items"]) == 2
+
+
 def test_nginx_ui_is_revalidated_and_keeps_security_headers():
     conf = (ROOT / "packages/dashboard/etc/nginx/sites-available/dahlia").read_text()
     root = conf[conf.index("location / {"):]

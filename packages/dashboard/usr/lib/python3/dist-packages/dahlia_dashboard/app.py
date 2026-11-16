@@ -1429,6 +1429,16 @@ def create_app(cfg: Config | None = None) -> FastAPI:
     def notify_get():
         return agent("notify.get")
 
+    @app.get("/api/notifications", dependencies=authed)
+    def notifications(since: int = 0):
+        """Sent notifications newer than since (Unix time), newest first; the
+        desktop app shows them as its own messages."""
+        items = agent("notify.get").get("history", [])
+        keep = ("time", "level", "title", "message")
+        return {"items": [{k: i.get(k) for k in keep} for i in items
+                          if isinstance(i, dict) and isinstance(i.get("time"), int)
+                          and i["time"] > since]}
+
     @app.post("/api/notify/events", dependencies=changing)
     def notify_events(body: NotifyEventsBody):
         return agent("notify.set_events", {"events": body.events})
