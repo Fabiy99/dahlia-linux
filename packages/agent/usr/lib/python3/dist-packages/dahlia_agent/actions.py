@@ -100,12 +100,13 @@ JOBS = {
     "snapraid-scrub": "snapraid-scrub.service",
     "update": "update.service",
     "backup": "backup.service",
+    "backup-probe": "backup-probe.service",
     "smart-short": "smart-test@short.service",
     "smart-long": "smart-test@long.service",
 }
 # Jobs job.start may start. Updates go through updates.apply.
-STARTABLE_JOBS = ("mover", "snapraid-sync", "snapraid-scrub", "backup", "smart-short",
-                  "smart-long")
+STARTABLE_JOBS = ("mover", "snapraid-sync", "snapraid-scrub", "backup", "backup-probe",
+                  "smart-short", "smart-long")
 
 
 @dataclass(frozen=True)

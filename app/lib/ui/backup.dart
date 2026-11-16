@@ -88,7 +88,9 @@ class _BackupPageState extends State<BackupPage> with AreaCalls {
       }
     });
     // A backup or restore runs for minutes: follow it.
-    if (unitActive(data['job']) || unitActive(data['restore'])) _timer = Timer(const Duration(seconds: 4), _load);
+    if (unitActive(data['job']) || unitActive(data['restore']) || unitActive(data['probe_job'])) {
+      _timer = Timer(const Duration(seconds: 4), _load);
+    }
   }
 
   Map<String, Object>? get _body => backupBody(
@@ -121,6 +123,15 @@ class _BackupPageState extends State<BackupPage> with AreaCalls {
     setState(() => busy = true);
     final r = await call(() => s.post('/api/jobs/backup/start'), m);
     if (r != null) say(m, c.t('backup.started'));
+    if (mounted) setState(() => busy = false);
+    await _load();
+  }
+
+  Future<void> _probe() async {
+    final m = ScaffoldMessenger.of(context);
+    setState(() => busy = true);
+    final r = await call(() => s.post('/api/jobs/backup-probe/start'), m);
+    if (r != null) say(m, c.t('probe.started'));
     if (mounted) setState(() => busy = false);
     await _load();
   }
@@ -189,6 +200,7 @@ class _BackupPageState extends State<BackupPage> with AreaCalls {
         Wrap(spacing: 18, runSpacing: 18, children: [
           SizedBox(width: half, child: _targetCard(p, data)),
           SizedBox(width: half, child: _stateCard(p, data)),
+          SizedBox(width: half, child: _probeCard(p, data)),
           if (snapshots != null) SizedBox(width: full, child: _snapshotsCard(p)),
         ]),
     ]);
@@ -305,6 +317,38 @@ class _BackupPageState extends State<BackupPage> with AreaCalls {
         FilledButton(onPressed: !busy && hasTarget && !running ? _run : null, child: Text(c.t('backup.run'))),
         OutlinedButton(onPressed: hasTarget ? _list : null, child: Text(c.t('backup.list'))),
       ]),
+    ]);
+  }
+
+  Widget _probeCard(Palette p, Map data) {
+    final probe = data['probe'] is Map ? data['probe'] as Map : const {};
+    final running = unitActive(data['probe_job']);
+    final ok = probe['result'] == 'success';
+    Widget fact(String key, String value, {Color? color}) => Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            SizedBox(width: 150, child: Text(c.t(key), style: TextStyle(color: p.muted))),
+            Expanded(child: SelectableText(value, style: TextStyle(color: color, height: 1.35))),
+          ]),
+        );
+    return _card(c.t('probe.title'), [
+      _hint(p, c.t('probe.hint')),
+      fact('probe.last', probe['started'] == null ? c.t('jobs.never') : _time(probe['started'])),
+      if (probe['result'] != null)
+        fact(
+            'jobs.result',
+            ok
+                ? c.t('probe.ok', {'files': probe['files'], 'size': bytes((probe['bytes'] as num?) ?? 0, c.t)})
+                : c.t('probe.failed'),
+            color: ok ? p.ok : p.danger),
+      if ('${probe['snapshot'] ?? ''}'.isNotEmpty) fact('backup.id', '${probe['snapshot']}'),
+      if ('${probe['error'] ?? ''}'.isNotEmpty) fact('backup.error', '${probe['error']}', color: p.danger),
+      if (running) ...[
+        fact('jobs.state', c.t('probe.running')),
+        const Padding(padding: EdgeInsets.only(bottom: 12), child: LinearProgressIndicator()),
+      ],
+      FilledButton.tonal(
+          onPressed: !busy && data['target'] is Map && !running ? _probe : null, child: Text(c.t('probe.run'))),
     ]);
   }
 

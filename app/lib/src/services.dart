@@ -6,7 +6,7 @@ import 'format.dart';
 
 String _text(Object? v) => v == null ? '' : '$v';
 
-const scheduleJobs = ['mover', 'snapraid-sync', 'snapraid-scrub', 'backup', 'smart-short', 'smart-long'];
+const scheduleJobs = ['mover', 'snapraid-sync', 'snapraid-scrub', 'backup', 'backup-probe', 'smart-short', 'smart-long'];
 const frequencies = ['off', 'hourly', 'daily', 'weekly', 'monthly'];
 const weekdays = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
 

@@ -2,7 +2,7 @@
 // log query and line levels, the same rules as the dashboard's pages.
 
 /// Jobs that may be started by hand (the system update runs from its own page).
-const startableJobs = ['mover', 'snapraid-sync', 'snapraid-scrub', 'backup', 'smart-short', 'smart-long'];
+const startableJobs = ['mover', 'snapraid-sync', 'snapraid-scrub', 'backup', 'backup-probe', 'smart-short', 'smart-long'];
 
 bool jobActive(Object? s) => s is Map && const ['active', 'activating'].contains(s['active']);
 

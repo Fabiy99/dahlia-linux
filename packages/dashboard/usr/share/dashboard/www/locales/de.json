@@ -1347,5 +1347,14 @@
   "apps.rollback_kept": "Vor dem Update gesichert: Version {version}, {date}",
   "apps.confirm_rollback": "{name} auf Version {version} zurücksetzen? Die Daten von vor dem Update ersetzen die jetzigen, alles seit dem Update geht verloren.",
   "apps.rollback_running": "{name} wird zurückgesetzt …",
-  "apps.rollback_done": "{name} läuft wieder mit der alten Version."
+  "apps.rollback_done": "{name} läuft wieder mit der alten Version.",
+  "probe.title": "Backup-Probe",
+  "probe.hint": "Ein Backup ist nur etwas wert, wenn es sich wiederherstellen lässt. Einmal im Monat liest Dahlia einen Teil der Backup-Daten, stellt Stichproben aus dem neuesten Backup testweise wieder her und prüft sie. Geht das schief, kommt eine Benachrichtigung.",
+  "probe.last": "Letzte Probe",
+  "probe.ok": "{files} Dateien ({size}) wiederhergestellt und geprüft",
+  "probe.failed": "fehlgeschlagen",
+  "probe.run": "Jetzt prüfen",
+  "probe.running": "Probe läuft …",
+  "probe.started": "Die Backup-Probe läuft im Hintergrund.",
+  "job.backup-probe": "Backup-Probe (Test-Wiederherstellung)"
 }

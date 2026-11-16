@@ -1347,5 +1347,14 @@
   "apps.rollback_kept": "Saved before the update: version {version}, {date}",
   "apps.confirm_rollback": "Take {name} back to version {version}? The data from before the update replaces the current data; everything since the update is lost.",
   "apps.rollback_running": "Taking {name} back …",
-  "apps.rollback_done": "{name} runs the old version again."
+  "apps.rollback_done": "{name} runs the old version again.",
+  "probe.title": "Backup probe",
+  "probe.hint": "A backup is only worth something if it can be restored. Once a month Dahlia reads part of the backup data, restores a sample of files from the newest backup as a test and checks them. If that fails, you get a notification.",
+  "probe.last": "Last probe",
+  "probe.ok": "{files} files ({size}) restored and checked",
+  "probe.failed": "failed",
+  "probe.run": "Check now",
+  "probe.running": "Probe running …",
+  "probe.started": "The backup probe runs in the background.",
+  "job.backup-probe": "Backup probe (test restore)"
 }

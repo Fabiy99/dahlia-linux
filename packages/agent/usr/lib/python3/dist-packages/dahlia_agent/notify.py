@@ -229,6 +229,7 @@ JOB_NAMES = {
     "parity.service": "Parity repair",
     "rollback.service": "Rollback",
     "update.service": "System update",
+    "backup.service": "Backup",
     "tailscale-install.service": "Tailscale install",
     "smart-test@short.service": "SMART short self-test",
     "smart-test@long.service": "SMART long self-test",

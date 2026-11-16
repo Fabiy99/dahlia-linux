@@ -2912,7 +2912,8 @@ function bindParity() {
 
 // --- jobs -----------------------------------------------------------------------
 
-const STARTABLE = ["mover", "snapraid-sync", "snapraid-scrub", "backup", "smart-short", "smart-long"];
+const STARTABLE = ["mover", "snapraid-sync", "snapraid-scrub", "backup", "backup-probe", "smart-short",
+  "smart-long"];
 
 let jobsTimer = null;
 
@@ -3174,9 +3175,31 @@ async function loadBackup() {
   document.getElementById("backup-run").disabled = !data.target || running;
   document.getElementById("backup-key").disabled = !data.target;
   document.getElementById("backup-list").disabled = !data.target;
-  if ((running || restoring) && current === "backup") {
+  const probing = renderProbe(data);
+  if ((running || restoring || probing) && current === "backup") {
     backupTimer = setTimeout(() => loadBackup().catch(sayError), 4000);
   }
+}
+
+// Last test restore; returns whether one is running.
+function renderProbe(data) {
+  const dl = document.getElementById("probe-state");
+  dl.replaceChildren();
+  const probe = data.probe || {};
+  const running = ["active", "activating"].includes((data.probe_job || {}).active);
+  if (running) fact(dl, "jobs.state", t("probe.running"));
+  if (!probe.started) {
+    fact(dl, "probe.last", t("jobs.never"));
+  } else {
+    fact(dl, "probe.last", new Date(probe.started).toLocaleString(lang));
+    fact(dl, "jobs.result", probe.result === "success"
+      ? badge(t("probe.ok", { files: probe.files, size: formatBytes(probe.bytes || 0) }), "ok")
+      : badge(t("probe.failed"), "crit"));
+    if (probe.snapshot) fact(dl, "backup.id", probe.snapshot);
+    if (probe.error) fact(dl, "backup.error", probe.error);
+  }
+  document.getElementById("probe-run").disabled = !data.target || running;
+  return running;
 }
 
 async function loadSnapshots() {
@@ -3235,6 +3258,12 @@ function bindBackup() {
   run.addEventListener("click", () => guarded(run, async () => {
     await api("POST", "jobs/backup/start");
     say(t("backup.started"), "ok");
+    await loadBackup();
+  }));
+  const probe = document.getElementById("probe-run");
+  probe.addEventListener("click", () => guarded(probe, async () => {
+    await api("POST", "jobs/backup-probe/start");
+    say(t("probe.started"), "ok");
     await loadBackup();
   }));
   const key = document.getElementById("backup-key");
@@ -3750,7 +3779,8 @@ async function loadAccount() {
 
 // --- settings: time, network, spindown, schedules ---------------------------------
 
-const SCHEDULE_JOBS = ["mover", "snapraid-sync", "snapraid-scrub", "backup", "smart-short", "smart-long"];
+const SCHEDULE_JOBS = ["mover", "snapraid-sync", "snapraid-scrub", "backup", "backup-probe", "smart-short",
+  "smart-long"];
 const FREQUENCIES = ["off", "hourly", "daily", "weekly", "monthly"];
 const WEEKDAYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
 let netTimer = null;

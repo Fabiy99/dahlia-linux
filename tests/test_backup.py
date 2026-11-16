@@ -6,7 +6,9 @@ installed.
 """
 
 import json
+import random
 import shutil
+from pathlib import Path
 
 import pytest
 from dahlia_agent import actions, apps, backup
@@ -183,6 +185,67 @@ def test_real_restic(b, tmp_path, monkeypatch):
     b.restic("restore", snaps[0]["id"], "--target", str(tmp_path / "out"),
              "--include", str(data))
     assert (tmp_path / "out" / str(data).lstrip("/")).read_text() == "data"
+    probe = b.probe()
+    assert probe["result"] == "success", probe
+    assert probe["files"] >= 1 and not b.probe_dir.exists()
+
+
+def test_probe_restores_sample(b, tmp_path):
+    b.configure({"type": "folder", "path": "/mnt/disk2/backup"}, True, [])
+    snaps = json.dumps([{"short_id": "abcd1234", "time": "2026-11-15T02:00:00Z"}])
+    nodes = "\n".join(json.dumps(n) for n in [
+        {"struct_type": "snapshot", "id": "abcd"},
+        {"struct_type": "node", "type": "dir", "path": "/srv"},
+        *[{"struct_type": "node", "type": "file", "path": f"/srv/f{i}", "size": 10}
+          for i in range(30)],
+        {"struct_type": "node", "type": "file", "path": "/srv/huge", "size": 10**12},
+    ])
+
+    def run(cmd, env=None, timeout=None):
+        run.calls.append(cmd)
+        if "snapshots" in cmd:
+            return snaps
+        if "ls" in cmd:
+            return nodes
+        if "restore" in cmd:
+            target = Path(cmd[cmd.index("--target") + 1])
+            for path in cmd[cmd.index("--verify") + 1:][1::2]:
+                (target / path.lstrip("/")).parent.mkdir(parents=True, exist_ok=True)
+                (target / path.lstrip("/")).write_text("x" * 10)
+        return ""
+
+    run.calls = []
+    b.run = run
+    status = b.probe(random.Random(1))  # noqa: S311 (fixed seed for the test)
+    assert status["result"] == "success", status
+    assert status["files"] == backup.PROBE_FILES and status["snapshot"] == "abcd1234"
+    restore = next(c for c in run.calls if "restore" in c)
+    assert "/srv/huge" not in restore
+    assert any("--read-data-subset=5%" in c for c in run.calls)
+    assert not b.probe_dir.exists()
+    assert b.probe_status()["result"] == "success"
+
+
+def test_probe_reports_wrong_files(b):
+    b.configure({"type": "folder", "path": "/mnt/disk2/backup"}, True, [])
+    b.run = FakeRun({"snapshots": json.dumps([{"short_id": "abcd1234"}]),
+                     "ls": json.dumps({"struct_type": "node", "type": "file", "path": "/srv/a",
+                                       "size": 3})})
+    status = b.probe()
+    assert status["result"] == "failed" and "1 of 1 files" in status["error"]
+    assert b.probe_status()["error"] == status["error"]
+
+
+def test_probe_without_snapshot(b):
+    b.configure({"type": "folder", "path": "/mnt/disk2/backup"}, True, [])
+    b.run = FakeRun({"snapshots": "[]"})
+    assert "no snapshot" in b.probe()["error"]
+
+
+def test_probe_check_failure(b):
+    b.configure({"type": "folder", "path": "/mnt/disk2/backup"}, True, [])
+    b.run = FakeRun({"snapshots": json.dumps([{"short_id": "abcd1234"}])}, fail=("check",))
+    assert "check" in b.probe()["error"]
 
 
 # --- agent actions --------------------------------------------------------------
@@ -202,6 +265,7 @@ def test_action_set_and_get(ctx):
     res = run(ctx, "backup.set", {"target": {"type": "folder", "path": "/mnt/disk2/backup"}})
     assert res["ok"], res
     assert ["systemctl", "enable", "backup.timer"] in ctx.runner.calls
+    assert ["systemctl", "enable", "backup-probe.timer"] in ctx.runner.calls
     got = run(ctx, "backup.get")["result"]
     assert got["target"] == {"type": "folder", "path": "/mnt/disk2/backup"} and got["stop_apps"]
     assert len(run(ctx, "backup.key")["result"]["password"]) == 64
