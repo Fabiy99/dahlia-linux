@@ -19,6 +19,7 @@ consistent) and started again afterwards. Old snapshots are thinned out:
     /etc/dahlia/backup.json                  settings
     /var/lib/dahlia/backup-status.json       result of the last run
     /var/lib/dahlia/backup-probe.json        result of the last probe
+    /var/lib/dahlia/backup-runs.json         short log of the last runs (letters.py)
     backup.service / .timer                  the job and its schedule
     backup-probe.service / .timer            the probe, monthly by default
 
@@ -63,6 +64,7 @@ SNAPSHOT_RE = re.compile(r"^[0-9a-f]{8,64}$")
 PROBE_FILES = 20
 PROBE_BYTES = 512 * 1024**2
 PROBE_READ = "5%"
+RUNS_KEPT = 400
 
 
 class BackupError(ValueError):
@@ -279,6 +281,18 @@ class Backup:
         tmp.write_text(json.dumps(status) + "\n")
         tmp.replace(self.status_file)
 
+    def _log_run(self, status: dict) -> None:
+        path = self.state / "backup-runs.json"
+        try:
+            runs = json.loads(path.read_text()).get("runs", [])
+        except (OSError, ValueError, AttributeError):
+            runs = []
+        runs.append({"time": status.get("finished"), "result": status.get("result"),
+                     "added": status.get("added")})
+        tmp = path.with_name("backup-runs.json.tmp")
+        tmp.write_text(json.dumps({"runs": runs[-RUNS_KEPT:]}) + "\n")
+        tmp.replace(path)
+
     def backup(self) -> dict:
         """One run: stop apps, restic backup, start apps, thin out old snapshots."""
         settings = self.settings()
@@ -314,6 +328,7 @@ class Backup:
             status["finished"] = self.clock().strftime("%Y-%m-%dT%H:%M:%SZ")
             status["apps_stopped"] = stopped
             self._write_status(status)
+            self._log_run(status)
         keep = [a for k, v in KEEP.items() for a in (f"--keep-{k}", str(v))]
         try:
             self.restic("forget", "--tag", "dahlia", *keep, "--prune")

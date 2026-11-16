@@ -13,7 +13,8 @@ class DesktopNotifier {
     final ready = _ready;
     if (ready != null) return ready;
     try {
-      _ready = await _plugin.initialize(
+      _ready =
+          await _plugin.initialize(
             settings: const InitializationSettings(
               macOS: DarwinInitializationSettings(),
               linux: LinuxInitializationSettings(defaultActionName: 'Open'),

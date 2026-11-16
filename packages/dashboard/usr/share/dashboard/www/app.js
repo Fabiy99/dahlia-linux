@@ -738,6 +738,7 @@ async function loadOverview() {
     updateAppsBadge(data.installed);
   }).catch(tileError("overview-apps"));
   api("GET", "jobs").then(renderOverviewJobs).catch(tileError("overview-jobs"));
+  loadLetterTile().catch(tileError("letter-lines"));
   loadHealth();
   loadHistory().catch(sayError);
   api("GET", "hardware").then((hw) => {
@@ -749,6 +750,118 @@ async function loadOverview() {
       .map((g) => [g.vendor, g.driver && `(${g.driver})`].filter(Boolean).join(" ")).join(", ");
     if (gpu) fact(dl, "overview.gpu", gpu);
   }).catch(tileError("overview-disks"));
+}
+
+// --- weekly letter and year review ----------------------------------------------
+
+// Sentences of a letter (letters.py): [icon, text], only for what has numbers.
+function letterLines(l) {
+  const out = [];
+  const st = l.storage;
+  if (st) {
+    out.push(["storage", typeof st.added === "number"
+      ? t(st.added >= 0 ? "letter.storage_added" : "letter.storage_freed",
+          { added: formatBytes(Math.abs(st.added)), used: formatBytes(st.used), size: formatBytes(st.size) })
+      : t("letter.storage", { used: formatBytes(st.used), size: formatBytes(st.size) })]);
+  }
+  const b = l.backups || {};
+  if (b.runs) {
+    let text = t("letter.backups", { ok: b.ok, runs: b.runs });
+    if (b.probe) text += ` ${t(b.probe === "success" ? "letter.probe_ok" : "letter.probe_failed")}`;
+    out.push(["backup", text]);
+  } else if (b.runs === 0) {
+    out.push(["backup", t("letter.no_backups")]);
+  }
+  if (l.updates) out.push(["updates", t("letter.updates", { count: l.updates })]);
+  const a = l.apps || {};
+  if (a.count !== undefined) {
+    let text = t("letter.apps", { count: a.count });
+    if (a.new && a.new.length) text += ` ${t("letter.apps_new", { names: a.new.join(", ") })}`;
+    if (a.updated && a.updated.length) text += ` ${t("letter.apps_updated", { names: a.updated.join(", ") })}`;
+    out.push(["apps", text]);
+  }
+  if (l.photos) out.push(["sun", t("letter.photos", { count: l.photos })]);
+  if (l.traffic) out.push(["network", t("letter.traffic", { rx: formatBytes(l.traffic.rx), tx: formatBytes(l.traffic.tx) })]);
+  if (typeof l.cpu_avg === "number") {
+    out.push(["cpu", typeof l.temp_max === "number"
+      ? t("letter.cpu_temp", { cpu: Math.round(l.cpu_avg), temp: Math.round(l.temp_max) })
+      : t("letter.cpu", { cpu: Math.round(l.cpu_avg) })]);
+  }
+  const up = l.kind === "year" ? l.uptime_max : l.uptime;
+  if (up > 86400) out.push(["power", t(l.kind === "year" ? "letter.uptime_max" : "letter.uptime", { days: Math.floor(up / 86400) })]);
+  const n = l.notices || {};
+  if (n.warning || n.critical) {
+    let text = t("letter.notices", { warning: n.warning || 0, critical: n.critical || 0 });
+    if (n.titles && n.titles.length) text += `: ${n.titles.join(", ")}`;
+    out.push(["log", text]);
+  } else {
+    out.push(["log", t(l.kind === "year" ? "letter.quiet_year" : "letter.quiet")]);
+  }
+  return out;
+}
+
+function letterTitle(l) {
+  if (l.kind === "year") return t(l.preview ? "letter.year_now" : "letter.year", { year: l.id });
+  return t(l.preview ? "letter.week_now" : "letter.week");
+}
+
+function letterWhen(l) {
+  if (!l.from) return t("letter.no_weeks");
+  const opts = { day: "numeric", month: "long" };
+  const from = new Date(l.from * 1000);
+  const to = new Date((l.to - 1) * 1000);
+  return t("letter.range", { from: from.toLocaleDateString(lang, opts),
+                             to: to.toLocaleDateString(lang, { ...opts, year: "numeric" }) });
+}
+
+function renderLetter(l, list) {
+  list.replaceChildren(...letterLines(l).map(([name, text]) => {
+    const li = el("li");
+    li.append(icon(name), el("span", "", text));
+    return li;
+  }));
+}
+
+let letterIndex = [];
+
+// Tile: the newest letter, or the running week before the first one.
+async function loadLetterTile() {
+  const { letters } = await api("GET", "letters");
+  letterIndex = letters;
+  const newest = letters.find((x) => x.kind === "week");
+  const l = await api("GET", `letters/${newest ? newest.id : "week"}`);
+  document.getElementById("letter-title").textContent = letterTitle(l);
+  document.getElementById("letter-when").textContent = letterWhen(l);
+  renderLetter(l, document.getElementById("letter-lines"));
+}
+
+async function showLetter(id) {
+  const l = await api("GET", `letters/${id}`);
+  document.getElementById("letter-dialog-title").textContent = letterTitle(l);
+  document.getElementById("letter-dialog-when").textContent = letterWhen(l);
+  renderLetter(l, document.getElementById("letter-dialog-lines"));
+}
+
+async function openLetters() {
+  const pick = document.getElementById("letter-pick");
+  const ids = ["week", "year", ...letterIndex.map((x) => x.id)];
+  const names = { week: t("letter.week_now"), year: t("letter.year_now", { year: new Date().getFullYear() }) };
+  for (const x of letterIndex) {
+    names[x.id] = x.kind === "year" ? t("letter.year", { year: x.id })
+      : t("letter.week_of", { date: new Date(x.from * 1000).toLocaleDateString(lang, { day: "numeric", month: "short", year: "numeric" }) });
+  }
+  fillOptions(pick, ids, (id) => names[id]);
+  const newest = letterIndex.find((x) => x.kind === "week");
+  pick.value = newest ? newest.id : "week";
+  await showLetter(pick.value);
+  document.getElementById("letter-dialog").showModal();
+}
+
+function bindLetters() {
+  const open = document.getElementById("letter-open");
+  open.addEventListener("click", () => guarded(open, openLetters));
+  const pick = document.getElementById("letter-pick");
+  pick.addEventListener("change", () => showLetter(pick.value).catch(sayError));
 }
 
 // --- start screen: greeting, widgets, weather -----------------------------------
@@ -5377,6 +5490,7 @@ async function start() {
   bindRootSnapshots();
   bindParity();
   bindBackup();
+  bindLetters();
   bindVpn();
   bindPhone();
   bindHome();

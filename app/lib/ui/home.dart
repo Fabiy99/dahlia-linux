@@ -124,7 +124,19 @@ class _HomePageState extends State<HomePage> {
       _loadHealth(),
       _loadWeather(),
       _loadHistory(),
+      _loadLetter(),
     ]);
+  }
+
+  Future<void> _loadLetter() async {
+    final r = await _call(() => s.get('/api/letters'));
+    final saved = r is Map && r['letters'] is List ? (r['letters'] as List).whereType<Map>().toList() : <Map>[];
+    final newest = saved.where((x) => x['kind'] == 'week').firstOrNull;
+    final l = await _call(() => s.get('/api/letters/${newest?['id'] ?? 'week'}'));
+    _put(() {
+      d.letters = saved;
+      d.letter = l is Map ? l : null;
+    });
   }
 
   void _put(VoidCallback f) {
@@ -328,6 +340,7 @@ class _HomePageState extends State<HomePage> {
             HomeTile('storage', 's', true),
             HomeTile('system', 's', true),
             HomeTile('jobs', 's', true),
+            HomeTile('letter', 'm', true),
           ]
         : c.home.shown;
     final builder = HomeTiles(

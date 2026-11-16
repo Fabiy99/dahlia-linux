@@ -21,7 +21,7 @@ from .protocol import FAILED, INVALID_PARAMS, AgentError
 from .settings import read_json, write_file
 
 CHANNELS = ("email", "ntfy", "gotify")
-EVENTS = ("smart", "temperature", "usage", "jobs", "ups", "updates")
+EVENTS = ("smart", "temperature", "usage", "jobs", "ups", "updates", "letters")
 LEVELS = ("info", "warning", "critical")
 HISTORY_MAX = 100
 # Disk temperature (°C) that counts as a problem; SSDs run warmer.

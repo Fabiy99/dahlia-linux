@@ -157,7 +157,7 @@ def test_store_resets_widgets_of_old_layout(tmp_path):
     data = home.HomeStore(path).get()
     assert data["widgets"] == home.DEFAULT_WIDGETS and data["places"] == [HAMBURG]
     shown = [w for w, on in data["widgets"].items() if on]
-    assert shown == ["weather", "apps", "storage", "system", "jobs"]
+    assert shown == ["weather", "apps", "storage", "system", "jobs", "letter"]
 
 
 def test_search_filters_and_builds_query():

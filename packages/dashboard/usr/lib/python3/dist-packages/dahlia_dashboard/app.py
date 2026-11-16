@@ -1439,6 +1439,17 @@ def create_app(cfg: Config | None = None) -> FastAPI:
                           if isinstance(i, dict) and isinstance(i.get("time"), int)
                           and i["time"] > since]}
 
+    @app.get("/api/letters", dependencies=readable)
+    def letters_list():
+        return agent("letters.list")
+
+    @app.get("/api/letters/{letter_id}", dependencies=readable)
+    def letters_get(letter_id: str):
+        """A saved letter; "week" and "year" are the running week and year so far."""
+        if letter_id in ("week", "year"):
+            return agent("letters.now", {"kind": letter_id})
+        return agent("letters.get", {"id": letter_id})
+
     @app.post("/api/notify/events", dependencies=changing)
     def notify_events(body: NotifyEventsBody):
         return agent("notify.set_events", {"events": body.events})

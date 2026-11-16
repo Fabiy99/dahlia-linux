@@ -1,0 +1,10 @@
+[Unit]
+Description=Dahlia weekly letter and year review
+Documentation=https://github.com/Fabiy99/dahlia-linux
+After=network-online.target
+
+# Started by letters.timer; see dahlia_agent/letters.py.
+[Service]
+Type=oneshot
+ExecStart=/usr/sbin/letters run
+Nice=10

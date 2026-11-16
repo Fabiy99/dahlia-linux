@@ -15,7 +15,7 @@ import urllib.request
 from collections.abc import Callable
 from pathlib import Path
 
-WIDGETS = ("weather", "apps", "storage", "system", "jobs", "network", "disks", "health",
+WIDGETS = ("weather", "apps", "storage", "system", "jobs", "letter", "network", "disks", "health",
            "cpu", "memory", "history")
 # Start screen of the design: weather, apps, storage, system, recently done.
 WIDGETS_OFF = ("network", "disks", "health", "cpu", "memory", "history")
@@ -24,7 +24,7 @@ DEFAULT_WIDGETS = {w: w not in WIDGETS_OFF for w in WIDGETS}
 SIZES = ("s", "m", "l", "xl")
 DEFAULT_SIZES = {"weather": "m", "apps": "l", "storage": "s", "system": "s", "jobs": "s",
                  "network": "s", "disks": "s", "health": "l", "cpu": "s", "memory": "s",
-                 "history": "l"}
+                 "history": "l", "letter": "m"}
 # Appearance: colour scheme, accent colour, backdrop, weather effects.
 LOOK_CHOICES = {
     "theme": ("auto", "light", "dark"),

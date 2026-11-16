@@ -16,8 +16,12 @@ class Notice {
     if (j is! Map || j['time'] is! int) return null;
     String s(String k) => j[k] is String ? j[k] as String : '';
     final level = s('level');
-    return Notice(j['time'] as int, const ['info', 'warning', 'critical'].contains(level) ? level : 'info',
-        s('title'), s('message'));
+    return Notice(
+      j['time'] as int,
+      const ['info', 'warning', 'critical'].contains(level) ? level : 'info',
+      s('title'),
+      s('message'),
+    );
   }
 
   DateTime get when => DateTime.fromMillisecondsSinceEpoch(time * 1000);
@@ -39,4 +43,5 @@ List<Notice> freshNotices(List<Notice> all, int seen, {int max = 3}) {
 }
 
 /// Newest time in [all], or [fallback].
-int newestTime(List<Notice> all, int fallback) => all.isEmpty ? fallback : all.map((n) => n.time).reduce((a, b) => a > b ? a : b);
+int newestTime(List<Notice> all, int fallback) =>
+    all.isEmpty ? fallback : all.map((n) => n.time).reduce((a, b) => a > b ? a : b);

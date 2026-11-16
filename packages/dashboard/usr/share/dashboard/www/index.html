@@ -231,6 +231,15 @@
             <div id="overview-jobs" class="rows"></div>
           </article>
 
+          <article class="card tile" data-widget="letter">
+            <div class="section-head">
+              <h2 id="letter-title" data-i18n="letter.title"></h2>
+              <button type="button" id="letter-open" class="link-btn" data-i18n="letter.all"></button>
+            </div>
+            <p id="letter-when" class="hint"></p>
+            <ul id="letter-lines" class="letter-lines"></ul>
+          </article>
+
           <article class="card tile" data-widget="network">
             <header><h2 data-i18n="overview.network"></h2></header>
             <div id="net-info" class="net-now"></div>
@@ -1292,6 +1301,20 @@
     <div class="dialog-actions">
       <a id="wg-peer-download" class="button" data-i18n="vpn.peer_download"></a>
       <button value="ok" class="primary" data-i18n="common.ok"></button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="letter-dialog" class="wide-dialog">
+  <form method="dialog">
+    <div class="section-head">
+      <h2 id="letter-dialog-title" data-i18n="letter.title"></h2>
+      <select id="letter-pick" aria-label="letter"></select>
+    </div>
+    <p id="letter-dialog-when" class="hint"></p>
+    <ul id="letter-dialog-lines" class="letter-lines big"></ul>
+    <div class="dialog-actions">
+      <button value="ok" class="primary" data-i18n="common.close"></button>
     </div>
   </form>
 </dialog>

@@ -44,7 +44,8 @@ case "$1" in
             touch /var/lib/dahlia/probe-timer-set
         fi
         systemctl enable agent.socket apps.service mdns.service \
-            domains.timer apps-catalog.timer spindown.service notify.timer history.service recycle.timer >/dev/null 2>&1 || true
+            domains.timer apps-catalog.timer spindown.service notify.timer history.service recycle.timer \
+            letters.timer >/dev/null 2>&1 || true
         # Local CA, server certificate, app proxies. nginx may not be
         # configured yet; dashboard runs this again.
         domains apply >/dev/null || echo "agent: domains apply failed" >&2
@@ -55,7 +56,8 @@ case "$1" in
             sysctl -q -p /usr/lib/sysctl.d/50-apps.conf || true
             # A running agent keeps the old code until restarted.
             systemctl try-restart agent.service || true
-            systemctl start agent.socket domains.timer apps-catalog.timer notify.timer recycle.timer || true
+            systemctl start agent.socket domains.timer apps-catalog.timer notify.timer recycle.timer \
+                letters.timer || true
             if systemctl is-enabled --quiet smart-short.timer; then
                 systemctl start smart-short.timer || true
             fi

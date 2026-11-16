@@ -6,10 +6,12 @@ case "$1" in
     remove)
         if [ -d /run/systemd/system ]; then
             systemctl stop agent.socket agent.service mdns.service \
-                domains.timer apps-catalog.timer backup.timer backup-probe.timer history.service recycle.timer || true
+                domains.timer apps-catalog.timer backup.timer backup-probe.timer history.service recycle.timer \
+                letters.timer || true
         fi
         systemctl disable agent.socket mdns.service domains.timer \
-            apps-catalog.timer backup.timer backup-probe.timer recycle.timer firewall.service history.service >/dev/null 2>&1 || true
+            apps-catalog.timer backup.timer backup-probe.timer recycle.timer firewall.service history.service \
+            letters.timer >/dev/null 2>&1 || true
         # Without the agent nothing keeps the firewall table up to date.
         nft delete table inet dahlia 2>/dev/null || true
         ;;

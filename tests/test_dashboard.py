@@ -803,6 +803,17 @@ def test_notifications_feed(env):
     assert len(client.get("/api/notifications").json()["items"]) == 2
 
 
+def test_letters_endpoints(env):
+    client, agent, _ = logged_in(env)
+    agent.calls.clear()
+    client.get("/api/letters")
+    client.get("/api/letters/2026-W46")
+    client.get("/api/letters/week")
+    client.get("/api/letters/year")
+    assert agent.calls == [("letters.list", {}), ("letters.get", {"id": "2026-W46"}),
+                           ("letters.now", {"kind": "week"}), ("letters.now", {"kind": "year"})]
+
+
 def test_nginx_ui_is_revalidated_and_keeps_security_headers():
     conf = (ROOT / "packages/dashboard/etc/nginx/sites-available/dahlia").read_text()
     root = conf[conf.index("location / {"):]

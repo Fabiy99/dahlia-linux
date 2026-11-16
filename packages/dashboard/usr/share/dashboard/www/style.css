@@ -941,3 +941,10 @@ body.home main { padding-top: 28px; }
 /* Way back after an app update */
 .app-card .rollback { display: flex; align-items: center; justify-content: space-between; gap: .6rem; flex-wrap: wrap; }
 .app-card .rollback small { color: var(--muted); }
+
+/* Weekly letter and year review */
+.letter-lines { list-style: none; margin: .4rem 0 0; padding: 0; display: grid; gap: .55rem; }
+.letter-lines li { display: flex; gap: .65rem; align-items: flex-start; line-height: 1.4; font-size: .92rem; }
+.letter-lines svg { width: 1.1rem; height: 1.1rem; flex: none; margin-top: .1rem; stroke: var(--accent); fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.letter-lines.big li { font-size: 1rem; }
+#letter-dialog .section-head select { max-width: 16rem; }
