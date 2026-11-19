@@ -1268,3 +1268,67 @@ def test_encryption_routes(env):
     assert agent.calls[-1] == ("storage.auto_unlock", {"enabled": False})
     client.post("/api/storage/passphrase", json={"old": "a" * 8, "new": "b" * 8}, headers=CSRF)
     assert agent.calls[-1] == ("storage.change_passphrase", {"old": "a" * 8, "new": "b" * 8})
+
+
+# --- VMs and containers --------------------------------------------------------
+
+
+def test_vm_routes(env):
+    client, agent, _ = logged_in(env)
+    assert client.get("/api/vms").json() == {"action": "vm.status"}
+    r = client.post("/api/vms/install", json={"location": "system"}, headers=CSRF)
+    assert r.status_code == 200
+    assert agent.calls[-1] == ("vm.install", {"location": "system", "user": "fabian"})
+    body = {"name": "web", "kind": "container", "source": "image", "cpus": 2, "memory": 1024,
+            "disk": 10, "network": "nat"}
+    assert client.post("/api/vms", json=body, headers=CSRF).status_code == 200
+    assert agent.calls[-1][1]["image"] == "debian/13" and agent.calls[-1][1]["start"] is True
+    client.post("/api/vms/web/settings", json={"cpus": 1, "memory": 512, "autostart": True},
+                headers=CSRF)
+    assert agent.calls[-1] == ("vm.set", {"name": "web", "cpus": 1, "memory": 512,
+                                          "autostart": True})
+    for path, call in [("eject", ("vm.eject", {"name": "web"})),
+                       ("delete", ("vm.delete", {"name": "web"})),
+                       ("force-stop", ("vm.op", {"name": "web", "op": "force-stop"}))]:
+        assert client.post(f"/api/vms/web/{path}", headers=CSRF).status_code == 200
+        assert agent.calls[-1] == call
+    assert client.post("/api/vms/web/explode", headers=CSRF).status_code == 404
+    assert client.post("/api/vms/web/start").status_code == 403  # no CSRF header
+
+
+def test_vm_console_relay(env):
+    import socket
+    import threading
+
+    from starlette.websockets import WebSocketDisconnect
+
+    client, agent, _ = logged_in(env)
+    srv = socket.socket()
+    srv.bind(("127.0.0.1", 0))
+    srv.listen(1)
+
+    def vnc():
+        conn, _ = srv.accept()
+        conn.sendall(b"RFB 003.008\n")
+        conn.sendall(conn.recv(12).upper())
+        conn.close()
+
+    threading.Thread(target=vnc, daemon=True).start()
+    agent.replies["vm.console"] = {"name": "win", "port": srv.getsockname()[1]}
+    origin = {"origin": "http://testserver", "sec-websocket-protocol": "binary"}
+    with client.websocket_connect("/api/vms/win/console", headers=origin) as ws:
+        assert ws.receive_bytes() == b"RFB 003.008\n"
+        ws.send_bytes(b"rfb 003.008\n")
+        assert ws.receive_bytes() == b"RFB 003.008\n"
+    assert agent.calls[-1] == ("vm.console", {"name": "win"})
+    srv.close()
+
+    with pytest.raises(WebSocketDisconnect) as e, client.websocket_connect(
+            "/api/vms/win/console", headers={"origin": "http://evil.example"}):
+        pass
+    assert e.value.code == 4401
+    agent.errors["vm.console"] = AgentError("failed", "win is not running")
+    with pytest.raises(WebSocketDisconnect) as e, client.websocket_connect(
+            "/api/vms/win/console", headers={"origin": "http://testserver"}):
+        pass
+    assert e.value.code == 4404

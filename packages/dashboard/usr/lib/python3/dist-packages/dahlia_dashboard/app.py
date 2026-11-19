@@ -93,6 +93,8 @@ class Config:
     run_dir: Path = Path("/run/dashboard")
     agent_socket: str = "/run/dahlia/agent.sock"
     terminal_socket: str = "/run/terminal/terminal.sock"
+    # VNC of the VMs (machines.py); always on this host.
+    vnc_host: str = "127.0.0.1"
     secure_cookie: bool = True
     agent_call: AgentCall | None = None
     agent_open: AgentOpen | None = None
@@ -511,6 +513,36 @@ class PeerBody(BaseModel):
 class TailscaleBody(BaseModel):
     routes: bool
     exit_node: bool
+
+
+class VmInstallBody(BaseModel):
+    location: str
+
+
+class VmCreateBody(BaseModel):
+    name: str
+    kind: str
+    source: str
+    image: str = "debian/13"
+    iso_root: str = ""
+    iso_path: str = ""
+    cpus: int
+    memory: int
+    disk: int
+    network: str
+    autostart: bool = False
+    secureboot: bool = True
+    windows: bool = False
+    start: bool = True
+
+
+class VmSetBody(BaseModel):
+    cpus: int
+    memory: int
+    autostart: bool
+
+
+VM_OPS = ("start", "stop", "restart", "force-stop")
 
 
 class ScheduleBody(BaseModel):
@@ -1296,6 +1328,39 @@ def create_app(cfg: Config | None = None) -> FastAPI:
             raise ApiError(404, "error.not_found")
         return agent("docker.container", {"name": name, "op": op})
 
+    # --- VMs and containers (Incus) ----------------------------------------------
+
+    @app.get("/api/vms", dependencies=authed)
+    def vm_status():
+        return agent("vm.status")
+
+    @app.post("/api/vms/install", dependencies=changing)
+    def vm_install(body: VmInstallBody, session: Annotated[Session, Depends(require_user)]):
+        # The Linux account with the dashboard account's name joins incus-admin.
+        return agent("vm.install", {"location": body.location, "user": session.username})
+
+    @app.post("/api/vms", dependencies=changing)
+    def vm_create(body: VmCreateBody):
+        return agent("vm.create", body.model_dump())
+
+    @app.post("/api/vms/{name}/settings", dependencies=changing)
+    def vm_set(name: str, body: VmSetBody):
+        return agent("vm.set", {"name": name, **body.model_dump()})
+
+    @app.post("/api/vms/{name}/eject", dependencies=changing)
+    def vm_eject(name: str):
+        return agent("vm.eject", {"name": name})
+
+    @app.post("/api/vms/{name}/delete", dependencies=changing)
+    def vm_delete(name: str):
+        return agent("vm.delete", {"name": name})
+
+    @app.post("/api/vms/{name}/{op}", dependencies=changing)
+    def vm_op(name: str, op: str):
+        if op not in VM_OPS:
+            raise ApiError(404, "error.not_found")
+        return agent("vm.op", {"name": name, "op": op})
+
     @app.get("/api/hardware", dependencies=readable)
     def hardware():
         return agent("system.hardware")
@@ -1640,6 +1705,51 @@ def create_app(cfg: Config | None = None) -> FastAPI:
         tasks = [asyncio.create_task(to_browser()), asyncio.create_task(to_terminal())]
         try:
             with contextlib.suppress(WebSocketDisconnect):
+                await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+        finally:
+            for task in tasks:
+                task.cancel()
+            writer.close()
+            if ws.client_state.name == "CONNECTED":
+                with contextlib.suppress(RuntimeError):
+                    await ws.close()
+
+    @app.websocket("/api/vms/{name}/console")
+    async def vm_console(ws: WebSocket, name: str):
+        """Relay between the RFB client (noVNC, the app) and the VM's VNC on 127.0.0.1."""
+        session = sessions.get(ws.cookies.get(COOKIE))
+        origin = urllib.parse.urlsplit(ws.headers.get("origin", "")).hostname
+        host = urllib.parse.urlsplit("//" + ws.headers.get("host", "")).hostname
+        if session is None or not origin or origin != host \
+                or users.role(session.username) != "admin":
+            await ws.close(code=4401)
+            return
+        try:
+            port = (await asyncio.to_thread(agent, "vm.console", {"name": name}))["port"]
+            reader, writer = await asyncio.open_connection(cfg.vnc_host, port)
+        except (ApiError, OSError, KeyError, TypeError):
+            await ws.close(code=4404)
+            return
+        # noVNC asks for the "binary" subprotocol.
+        wanted = ws.headers.get("sec-websocket-protocol", "")
+        await ws.accept(subprotocol="binary" if "binary" in wanted else None)
+
+        async def to_client():
+            while data := await reader.read(65536):
+                await ws.send_bytes(data)
+
+        async def to_vm():
+            while True:
+                msg = await ws.receive()
+                if msg["type"] == "websocket.disconnect":
+                    return
+                if msg.get("bytes"):
+                    writer.write(msg["bytes"])
+                    await writer.drain()
+
+        tasks = [asyncio.create_task(to_client()), asyncio.create_task(to_vm())]
+        try:
+            with contextlib.suppress(WebSocketDisconnect, ConnectionError):
                 await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
         finally:
             for task in tasks:

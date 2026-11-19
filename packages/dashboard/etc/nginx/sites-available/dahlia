@@ -38,6 +38,19 @@ server {
         proxy_send_timeout 1h;
     }
 
+    # Graphical console of a VM: WebSocket to the backend, which relays to VNC.
+    location ~ ^/api/vms/[a-z0-9-]+/console$ {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_buffering off;
+        proxy_read_timeout 8h;
+        proxy_send_timeout 8h;
+    }
+
     # File manager: uploads of any size go straight through to the backend,
     # downloads are not buffered on disk by nginx.
     location = /api/files/upload {

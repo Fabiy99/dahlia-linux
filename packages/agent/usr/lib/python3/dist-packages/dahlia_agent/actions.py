@@ -1240,6 +1240,7 @@ from . import (  # noqa: E402, F401
     health,
     history,
     letters,
+    machines,
     netlayout,
     network,
     notify,
