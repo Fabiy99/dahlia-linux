@@ -1,6 +1,8 @@
 // Pages before the home page: connect and pair, fingerprint or code,
 // connecting, login, and the version update.
 
+import 'dart:io';
+
 import 'package:flutter/services.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -10,12 +12,16 @@ import '../src/discover.dart';
 import '../src/manifest.dart';
 import '../src/self_update.dart';
 import 'theme.dart';
+import 'usb_creator.dart';
 import 'widgets.dart';
 
 class ConnectPage extends StatefulWidget {
-  const ConnectPage(this.c, {super.key});
+  const ConnectPage(this.c, {super.key, this.usbCreator});
 
   final Controller c;
+
+  /// Offer the USB Creator; by default on Windows.
+  final bool? usbCreator;
 
   @override
   State<ConnectPage> createState() => _ConnectPageState();
@@ -24,6 +30,7 @@ class ConnectPage extends StatefulWidget {
 class _ConnectPageState extends State<ConnectPage> {
   final _address = TextEditingController();
   List<Found>? _found;
+  bool _usb = false;
 
   @override
   void initState() {
@@ -49,6 +56,7 @@ class _ConnectPageState extends State<ConnectPage> {
     final c = widget.c;
     final p = context.palette;
     final found = _found;
+    if (_usb) return UsbCreatorPanel(c, onClose: () => setState(() => _usb = false));
     return Panel(c: c, title: c.t('connect.title'), children: [
       Text(c.t('connect.intro'), style: TextStyle(color: p.muted, height: 1.45)),
       const SizedBox(height: 22),
@@ -95,6 +103,16 @@ class _ConnectPageState extends State<ConnectPage> {
         if (c.busy) ...[const SizedBox(width: 14), Expanded(child: Busy(c.t('connect.contacting')))],
       ]),
       ErrorLine(c),
+      if (widget.usbCreator ?? Platform.isWindows) ...[
+        const SizedBox(height: 18),
+        Divider(color: p.line),
+        const SizedBox(height: 8),
+        Text(c.t('usb.no_server'), style: TextStyle(color: p.muted, height: 1.45)),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: TextButton(onPressed: () => setState(() => _usb = true), child: Text(c.t('usb.open'))),
+        ),
+      ],
     ]);
   }
 }

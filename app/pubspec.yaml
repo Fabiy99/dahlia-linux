@@ -32,6 +32,7 @@ flutter:
   assets:
     - assets/locales/
     - assets/dahlia-archive-keyring.asc
+    - assets/usb-writer.ps1
   fonts:
     - family: Inter
       fonts:
