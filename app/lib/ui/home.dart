@@ -14,6 +14,7 @@ import '../src/server.dart';
 import 'home_tiles.dart';
 import 'shell.dart';
 import 'theme.dart';
+import 'tour.dart';
 import 'widgets.dart';
 
 /// Samples kept for the processor and memory sparklines (HISTORY in app.js).
@@ -283,6 +284,7 @@ class _HomePageState extends State<HomePage> {
   Widget _customizeButton(Palette p) {
     final on = editing;
     return Material(
+      key: tourKey(c, 'customize'),
       color: on ? p.accent : p.glass,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(14),

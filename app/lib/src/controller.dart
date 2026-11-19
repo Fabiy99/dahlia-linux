@@ -487,6 +487,24 @@ class Controller extends ChangeNotifier {
     notifyListeners();
   }
 
+  // --- welcome tour --------------------------------------------------------------
+
+  /// The tour runs on the first sign-in of this app.
+  bool get tourActive => stage == Stage.home && !settings.tourDone;
+
+  void finishTour() {
+    settings.tourDone = true;
+    settings.save(settingsFile);
+    notifyListeners();
+  }
+
+  void restartTour() {
+    settings.tourDone = false;
+    settings.save(settingsFile);
+    area = Area.home;
+    notifyListeners();
+  }
+
   void setDesktopNotices(bool on) {
     settings.desktopNotices = on;
     settings.save(settingsFile);

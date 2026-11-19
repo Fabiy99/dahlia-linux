@@ -17,6 +17,7 @@ import 'shares.dart';
 import 'storage.dart';
 import 'terminal.dart';
 import 'theme.dart';
+import 'tour.dart';
 
 const title = 'Dahlia, I love you ♥';
 
@@ -45,10 +46,13 @@ class DahliaApp extends StatelessWidget {
               home: c.stage == Stage.home && c.area == Area.home,
               look: c.settings.look,
               mood: c.stage == Stage.home ? c.mood : null,
-              child: AnimatedSwitcher(
-                duration: const Duration(milliseconds: 350),
-                child: KeyedSubtree(key: ValueKey((c.stage, c.area)), child: SizedBox.expand(child: _page())),
-              ),
+              child: Stack(children: [
+                AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 350),
+                  child: KeyedSubtree(key: ValueKey((c.stage, c.area)), child: SizedBox.expand(child: _page())),
+                ),
+                if (c.tourActive && c.area == Area.home) Positioned.fill(child: TourOverlay(c)),
+              ]),
             ),
           ),
         ),

@@ -149,6 +149,23 @@ void main() {
     c.dispose();
   });
 
+  test('the welcome tour runs once after the first sign-in and can be started again', () async {
+    final c = make();
+    await c.start();
+    expect(c.tourActive, isFalse);
+    await c.choose(fake.host);
+    await c.confirmFingerprint();
+    await c.login('fabian', 'pw', save: false);
+    expect(c.tourActive, isTrue);
+    c.go(Area.apps);
+    c.finishTour();
+    expect(c.tourActive, isFalse);
+    expect(Settings.load(File('${dir.path}/settings.json')).tourDone, isTrue);
+    c.restartTour();
+    expect([c.tourActive, c.area], [true, Area.home]);
+    c.dispose();
+  });
+
   test('start screen comes from the server; its look is kept for the next start', () async {
     final c = make();
     await c.start();
