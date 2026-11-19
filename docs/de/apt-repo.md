@@ -27,6 +27,15 @@ snapper legt vorher und nachher einen Snapshot an.
 `archive-keyring` passt. So kann kein Repo veröffentlicht werden, dem die Server
 nicht vertrauen.
 
+## Website
+
+Auf derselben Pages-Seite liegt die Projekt-Website: `index.html` (Deutsch), `en/`,
+`handbuch/` und `handbook/`. `tools/build-site.py` baut sie aus `site/` und dem Handbuch
+(`docs/de/handbuch.md`, `docs/en/handbook.md`). Die Website kommt vom Stand des Workflows
+(main), das apt-Repo vom Release-Tag. Eine geänderte Website geht online, sobald der
+Workflow `repo` auf main mit `release_tag` des aktuellen Releases gestartet wird; das
+Repo bleibt dabei gleich.
+
 ## Signierschlüssel einrichten (einmalig)
 
 Der private Schlüssel liegt nur beim Maintainer und als GitHub-Secret, nie im Repo.

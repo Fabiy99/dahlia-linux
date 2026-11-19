@@ -26,6 +26,15 @@ snapper takes a snapshot before and after.
 `tools/sign-repo.sh` aborts if the signature does not verify against the key in the
 `archive-keyring` package, so a repository the servers do not trust is never published.
 
+## Website
+
+The same Pages site carries the project website: `index.html` (German), `en/`, `handbuch/`
+and `handbook/`. `tools/build-site.py` builds it from `site/` and the handbook
+(`docs/de/handbuch.md`, `docs/en/handbook.md`). The website comes from the workflow's
+commit (main), the apt repository from the release tag. A changed website goes online
+when the `repo` workflow is started on main with `release_tag` set to the current
+release; the repository stays the same.
+
 ## Setting up the signing key (once)
 
 The private key exists only with the maintainer and as a GitHub secret, never in the

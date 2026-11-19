@@ -77,6 +77,15 @@ jobs:
           tools/fetch-app-manifests.sh
           tools/sign-repo.sh
 
+      # Website from the commit the workflow runs on (main), so it can change
+      # without a release; the apt repository above stays at the release tag.
+      - uses: actions/checkout@v4
+        with:
+          path: current
+
+      - name: Website
+        run: python3 current/tools/build-site.py current build/repo
+
       - uses: actions/upload-pages-artifact@v3
         with:
           path: build/repo
