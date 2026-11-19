@@ -231,6 +231,14 @@ def build_week(ctx: Context, day: datetime.date, now: float | None = None) -> di
         },
         "notices": notice_numbers(ctx, s, e),
     }
+    from . import tiles
+
+    photos = tiles.photo_total(ctx)
+    if photos is not None:
+        letter["photo_total"] = photos
+        old = (before or {}).get("photo_total")
+        if isinstance(old, int) and photos > old:
+            letter["photos"] = photos - old
     return letter
 
 
@@ -252,6 +260,9 @@ def build_year(ctx: Context, year: int) -> dict:
     out["backups"] = {k: sum((w.get("backups") or {}).get(k, 0) for w in weeks)
                       for k in ("runs", "ok", "added")}
     out["updates"] = sum(w.get("updates", 0) for w in weeks)
+    photos = sum(w.get("photos", 0) for w in weeks)
+    if photos:
+        out["photos"] = photos
     out["uptime_max"] = max(w.get("uptime", 0) for w in weeks)
     first = next((w["storage"] for w in weeks if w.get("storage")), None)
     last = next((w["storage"] for w in reversed(weeks) if w.get("storage")), None)

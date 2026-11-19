@@ -1249,6 +1249,7 @@ from . import (  # noqa: E402, F401
     settings,
     smb,
     snapshots,
+    tiles,
     unattended,
     ups,
     vpn,

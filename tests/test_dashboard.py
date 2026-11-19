@@ -814,6 +814,25 @@ def test_letters_endpoints(env):
                            ("letters.now", {"kind": "week"}), ("letters.now", {"kind": "year"})]
 
 
+def test_tile_endpoints(env):
+    client, agent, _ = logged_in(env)
+    agent.replies["tiles.data"] = {"tile": "photos", "state": "ok", "id": "x"}
+    agent.replies["tiles.image"] = {"type": "image/jpeg", "data": "/9hqcGVn"}
+    agent.calls.clear()
+    client.get("/api/tiles")
+    client.post("/api/tiles/immich", json={"settings": {"key": "k"}}, headers=CSRF)
+    assert client.get("/api/tiles/photos/data").json()["id"] == "x"
+    client.get("/api/tiles/photos/data")  # cached
+    r = client.get("/api/tiles/image/immich/0b2e3c4d-1111-2222-3333-444455556666")
+    assert r.content == b"\xff\xd8jpeg" and r.headers["content-type"] == "image/jpeg"
+    assert agent.calls == [
+        ("tiles.get", {}), ("tiles.set", {"app": "immich", "settings": {"key": "k"}}),
+        ("tiles.data", {"tile": "photos"}),
+        ("tiles.image", {"app": "immich", "item": "0b2e3c4d-1111-2222-3333-444455556666"})]
+    assert client.get("/api/tiles/bogus/data").status_code == 404
+    assert client.get("/api/tiles/image/immich/..%2fetc").status_code == 404
+
+
 def test_nginx_ui_is_revalidated_and_keeps_security_headers():
     conf = (ROOT / "packages/dashboard/etc/nginx/sites-available/dahlia").read_text()
     root = conf[conf.index("location / {"):]

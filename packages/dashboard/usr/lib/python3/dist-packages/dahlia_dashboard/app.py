@@ -9,6 +9,7 @@ from the agent or the system, shown as additional information.
 """
 
 import asyncio
+import base64
 import contextlib
 import grp
 import json
@@ -414,6 +415,15 @@ class SmbUserBody(BaseModel):
 
 class SmbPasswordBody(BaseModel):
     password: str
+
+
+class TileSetupBody(BaseModel):
+    settings: dict
+
+
+# Seconds a tile's content is kept: a photo stays for a while, downloads move.
+TILE_CACHE = {"photos": 600, "media": 300, "downloads": 0}
+TILE_ITEM_RE = re.compile(r"^[0-9a-f-]{32,36}$")
 
 
 class NotifyChannelBody(BaseModel):
@@ -1438,6 +1448,39 @@ def create_app(cfg: Config | None = None) -> FastAPI:
         return {"items": [{k: i.get(k) for k in keep} for i in items
                           if isinstance(i, dict) and isinstance(i.get("time"), int)
                           and i["time"] > since]}
+
+    # --- tiles with content from apps -----------------------------------------
+
+    tile_cache: dict[str, tuple[float, dict]] = {}
+
+    @app.get("/api/tiles", dependencies=admin)
+    def tiles_get():
+        return agent("tiles.get")
+
+    @app.post("/api/tiles/{app_id}", dependencies=changing)
+    def tiles_set(app_id: str, body: TileSetupBody):
+        tile_cache.clear()
+        return agent("tiles.set", {"app": app_id, "settings": body.settings})
+
+    @app.get("/api/tiles/{tile}/data", dependencies=readable)
+    def tiles_data(tile: str):
+        if tile not in TILE_CACHE:
+            raise ApiError(404, "error.not_found")
+        hit = tile_cache.get(tile)
+        if hit and time.monotonic() - hit[0] < TILE_CACHE[tile]:
+            return hit[1]
+        data = agent("tiles.data", {"tile": tile})
+        if data.get("state") == "ok":
+            tile_cache[tile] = (time.monotonic(), data)
+        return data
+
+    @app.get("/api/tiles/image/{app_id}/{item}", dependencies=readable)
+    def tiles_image(app_id: str, item: str):
+        if app_id not in ("immich", "jellyfin") or not TILE_ITEM_RE.fullmatch(item):
+            raise ApiError(404, "error.not_found")
+        got = agent("tiles.image", {"app": app_id, "item": item})
+        return Response(base64.b64decode(got["data"]), media_type=got["type"],
+                        headers={"Cache-Control": "private, max-age=3600"})
 
     @app.get("/api/letters", dependencies=readable)
     def letters_list():

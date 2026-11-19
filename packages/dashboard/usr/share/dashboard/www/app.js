@@ -734,11 +734,13 @@ async function loadOverview() {
   renderStats(stats);
   // Apps and jobs come from slower calls; the tiles fill in when they arrive.
   api("GET", "apps?catalog=false").then((data) => {
+    overviewApps = data.installed;
     renderOverviewApps(data.installed);
     updateAppsBadge(data.installed);
   }).catch(tileError("overview-apps"));
   api("GET", "jobs").then(renderOverviewJobs).catch(tileError("overview-jobs"));
   loadLetterTile().catch(tileError("letter-lines"));
+  loadAppTiles();
   loadHealth();
   loadHistory().catch(sayError);
   api("GET", "hardware").then((hw) => {
@@ -750,6 +752,153 @@ async function loadOverview() {
       .map((g) => [g.vendor, g.driver && `(${g.driver})`].filter(Boolean).join(" ")).join(", ");
     if (gpu) fact(dl, "overview.gpu", gpu);
   }).catch(tileError("overview-disks"));
+}
+
+// --- tiles with content from apps (tiles.py) --------------------------------------
+
+const APP_TILES = ["photos", "media", "downloads"];
+const TILE_APPS = { photos: "immich", media: "jellyfin" };
+let overviewApps = [];
+let downloadsTimer = null;
+
+function appTileLink(id) {
+  const app = overviewApps.find((a) => a.id === id);
+  return app ? primaryUrl(app) : null;
+}
+
+// Form for the key or login an app needs for its tile (admins only).
+function tileSetupForm(tile, appId, fields, done) {
+  const form = el("form", "tile-setup admin-only");
+  form.append(el("p", "hint", t(`tiles.hint_${appId}`)));
+  for (const name of fields) {
+    const label = el("label");
+    const input = el("input");
+    input.name = name;
+    input.type = name === "user" ? "text" : "password";
+    input.autocomplete = "off";
+    input.required = true;
+    label.append(el("span", "", t(`tiles.field_${name}`)), input);
+    form.append(label);
+  }
+  const save = el("button", "primary", t("common.save"));
+  form.append(save);
+  form.addEventListener("submit", (e) => {
+    e.preventDefault();
+    guarded(save, async () => {
+      await api("POST", `tiles/${appId}`, { settings: formData(form) });
+      say(t("tiles.saved"), "ok");
+      await done();
+    });
+  });
+  return form;
+}
+
+function renderAppTile(tile, data) {
+  const box = document.getElementById(`tile-${tile}`);
+  const reload = () => loadAppTile(tile);
+  if (data.state === "missing") {
+    const go = el("button", "link-btn", t("tiles.to_apps"));
+    go.addEventListener("click", () => show("apps"));
+    box.replaceChildren(el("p", "empty", t(`tiles.missing_${tile}`)), go);
+    return;
+  }
+  if (data.state === "setup") {
+    const appId = data.apps[0];
+    const fields = appId === "qbittorrent" ? ["user", "password"] : ["key"];
+    box.replaceChildren(el("p", "empty", t("tiles.setup", { app: tv("tiles.app", appId) })),
+                        tileSetupForm(tile, appId, fields, reload));
+    return;
+  }
+  if (data.state === "error") {
+    const fix = el("button", "link-btn admin-only", t("tiles.change"));
+    fix.addEventListener("click", () => {
+      const fields = data.app === "qbittorrent" ? ["user", "password"] : ["key"];
+      box.append(tileSetupForm(tile, data.app, fields, reload));
+      fix.remove();
+    });
+    box.replaceChildren(el("p", "empty", t("tiles.error", { app: tv("tiles.app", data.app), error: data.error })),
+                        data.app === "transmission" ? "" : fix);
+    return;
+  }
+  const link = appTileLink(data.app);
+  if (tile === "photos") {
+    if (!data.id) {
+      box.replaceChildren(el("p", "empty", t("tiles.no_photos")));
+      return;
+    }
+    const a = el("a", "photo-frame");
+    if (link) { a.href = link; a.target = "_blank"; a.rel = "noopener"; }
+    const img = el("img");
+    img.alt = "";
+    img.loading = "lazy";
+    img.src = `/api/tiles/image/immich/${data.id}`;
+    const caption = data.years
+      ? t(data.years === 1 ? "tiles.photo_year" : "tiles.photo_years", { n: data.years })
+      : t("tiles.photo_random");
+    a.append(img, el("span", "photo-caption", caption));
+    box.replaceChildren(a);
+    return;
+  }
+  if (tile === "media") {
+    if (!data.items.length) {
+      box.replaceChildren(el("p", "empty", t("tiles.no_media")));
+      return;
+    }
+    const grid = el("div", "poster-row");
+    for (const item of data.items) {
+      const fig = el(link ? "a" : "div", "poster");
+      if (link) { fig.href = link; fig.target = "_blank"; fig.rel = "noopener"; }
+      if (item.image) {
+        const img = el("img");
+        img.alt = "";
+        img.loading = "lazy";
+        img.src = `/api/tiles/image/jellyfin/${item.id}`;
+        fig.append(img);
+      } else {
+        fig.append(el("div", "poster-blank", item.name.slice(0, 1)));
+      }
+      fig.append(el("small", "", item.year ? `${item.name} (${item.year})` : item.name));
+      grid.append(fig);
+    }
+    box.replaceChildren(grid);
+    return;
+  }
+  const head = el("div", "dl-speed");
+  head.append(el("span", "", `↓ ${formatRate(data.down)}`), el("span", "", `↑ ${formatRate(data.up)}`));
+  const list = el("div", "rows");
+  for (const item of data.items) {
+    const row = el("div", "dl-item");
+    const pct = Math.round(item.progress * 100);
+    const bar = el("div", "dl-bar");
+    const fill = el("span");
+    fill.style.width = `${pct}%`;
+    bar.append(fill);
+    row.append(el("div", "dl-name", item.name),
+               el("small", "", [`${pct} %`, item.down ? `↓ ${formatRate(item.down)}` : "",
+                                item.eta ? t("tiles.eta", { time: formatDuration(item.eta) }) : ""]
+                 .filter(Boolean).join(" · ")),
+               bar);
+    list.append(row);
+  }
+  if (!data.items.length) list.append(el("p", "empty", t("tiles.no_downloads")));
+  box.replaceChildren(head, list);
+}
+
+async function loadAppTile(tile) {
+  try {
+    renderAppTile(tile, await api("GET", `tiles/${tile}/data`));
+  } catch (err) {
+    tileError(`tile-${tile}`)(err);
+  }
+}
+
+function loadAppTiles() {
+  for (const tile of APP_TILES) loadAppTile(tile);
+  if (downloadsTimer) downloadsTimer.stop();
+  downloadsTimer = poller(async () => {
+    if (current !== "overview") throw new Error("left the start screen");
+    if (widgetOn("downloads")) await loadAppTile("downloads");
+  }, 10000);
 }
 
 // --- weekly letter and year review ----------------------------------------------

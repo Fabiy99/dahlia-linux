@@ -11,6 +11,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../src/controller.dart';
 import '../src/format.dart';
 import '../src/letters.dart';
+import 'app_tiles.dart';
 import 'area.dart';
 import 'letters.dart';
 import 'shell.dart';
@@ -75,6 +76,9 @@ class HomeTiles {
     'memory': 'overview.memory',
     'history': 'history.title',
     'letter': 'letter.title',
+    'photos': 'home.widget_photos',
+    'media': 'home.widget_media',
+    'downloads': 'home.widget_downloads',
   };
 
   /// Content of tile [id] at [width] (inside the padding).
@@ -91,6 +95,11 @@ class HomeTiles {
         'memory' => memory(),
         'history' => history(width),
         'letter' => letter(),
+        'photos' || 'media' || 'downloads' => [
+            header(id),
+            const SizedBox(height: 12),
+            AppContentTile(c, id, apps: d.apps, key: ValueKey('tile-$id')),
+          ],
         _ => const [],
       };
 

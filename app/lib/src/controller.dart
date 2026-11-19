@@ -55,6 +55,11 @@ class Controller extends ChangeNotifier {
   Server? server;
   String? user;
 
+  /// Role of the account (admin, viewer); the server checks it on every call.
+  String? role;
+
+  bool get isAdmin => role != 'viewer';
+
   /// Host and CA while the user compares the fingerprint.
   String? pendingHost;
   String? pendingPem;
@@ -96,6 +101,7 @@ class Controller extends ChangeNotifier {
       unawaited(checkPendingUpdates());
       unawaited(loadHome());
       unawaited(checkNotices());
+      unawaited(_loadRole());
     } else if (s != Stage.home) {
       _pendingTimer?.cancel();
       _pendingTimer = null;
@@ -418,6 +424,20 @@ class Controller extends ChangeNotifier {
   void closeUpdateBanner() {
     updateBannerClosed = true;
     notifyListeners();
+  }
+
+  Future<void> _loadRole() async {
+    try {
+      final st = await server?.get('/api/state');
+      if (st is Map && st['role'] is String && !_disposed) {
+        role = st['role'] as String;
+        notifyListeners();
+      }
+    } on VersionMismatch {
+      return;
+    } on ApiError {
+      return;
+    }
   }
 
   // --- notifications -----------------------------------------------------------
