@@ -335,10 +335,18 @@ class Server {
 
   /// WebSocket of the terminal (`/api/terminal`). The dashboard only accepts
   /// one whose Origin names this server, as a browser page of it would.
-  Future<WebSocket> terminal({required int cols, required int rows}) async {
+  Future<WebSocket> terminal({required int cols, required int rows}) =>
+      _socket(terminalUrl(host, cols: cols, rows: rows));
+
+  /// Graphical console of a VM: RFB (VNC) in binary messages.
+  Future<WebSocket> vmConsole(String name) =>
+      _socket('wss://$host/api/vms/${Uri.encodeComponent(name)}/console', protocols: const ['binary']);
+
+  Future<WebSocket> _socket(String url, {Iterable<String>? protocols}) async {
     try {
       return await WebSocket.connect(
-        terminalUrl(host, cols: cols, rows: rows),
+        url,
+        protocols: protocols,
         headers: {
           'Origin': 'https://$host',
           'X-Dahlia-Request': '1',

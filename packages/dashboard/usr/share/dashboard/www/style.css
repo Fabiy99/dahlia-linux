@@ -967,3 +967,12 @@ body.home main { padding-top: 28px; }
 .dl-item small { color: var(--muted); }
 .dl-bar { height: 6px; border-radius: 3px; background: var(--card-2); overflow: hidden; }
 .dl-bar span { display: block; height: 100%; background: var(--accent); }
+
+/* VMs and containers */
+.vm-list { display: grid; gap: .6rem; }
+.vm-row { border: 1px solid var(--line); border-radius: 14px; padding: .7rem .9rem; }
+.vm-head { display: flex; align-items: center; flex-wrap: wrap; gap: .5rem; }
+.vm-row > .hint { margin: .35rem 0 .5rem; }
+.vm-iso .row-ops { align-items: center; margin-top: .3rem; }
+dialog.console-dialog { width: min(96rem, calc(100vw - 1rem)); max-height: calc(100vh - 1rem); }
+.vm-screen { width: 100%; height: min(75vh, 56rem); background: #000; border-radius: 10px; overflow: hidden; }

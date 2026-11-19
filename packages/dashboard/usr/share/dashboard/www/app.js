@@ -319,7 +319,7 @@ function percent(used, size) {
 const TITLES = {
   overview: "nav.overview", storage: "storage.title", parity: "parity.title", apps: "apps.title",
   domains: "nav.domains", jobs: "jobs.title", backup: "nav.backup", updates: "updates.title", account: "nav.account",
-  docker: "nav.docker", log: "nav.log", shares: "nav.shares", terminal: "nav.terminal", files: "nav.files",
+  docker: "nav.docker", vms: "nav.vms", log: "nav.log", shares: "nav.shares", terminal: "nav.terminal", files: "nav.files",
   setup: "setup.title", login: "login.title",
 };
 
@@ -338,6 +338,7 @@ function show(view) {
   if (view === "overview") startStats();
   else stopStats();
   if (view !== "docker") stopDockerStats();
+  if (view !== "vms") stopVmPoll();
   if (view !== "account") clearTimeout(netTimer);
 }
 
@@ -389,6 +390,7 @@ const loaders = {
   apps: loadApps,
   domains: loadDomains,
   docker: loadDocker,
+  vms: loadVms,
   shares: loadShares,
   files: loadFiles,
   log: loadLog,
@@ -2279,6 +2281,10 @@ const SYSTEM = "/srv";
 const REMOTES = "/mnt/remotes";
 let folderRoot = ARRAY;
 let folderPath = "";
+// pickFile: the file ending to choose, the folder the chosen file is in and its name.
+let folderFileExt = null;
+let folderFileDir = null;
+let folderFile = null;
 
 function joinPath(base, name) {
   return base ? `${base}/${name}` : name;
@@ -2306,6 +2312,7 @@ async function showFolder(root, path) {
   const data = await api("GET", `files?root=${encodeURIComponent(root)}&path=${encodeURIComponent(path)}`);
   const available = {};
   for (const loc of data.locations) available[loc.path] = loc.available;
+  if (root !== folderRoot) folderFile = null;
   folderRoot = root;
   folderPath = path;
   // Shares of other devices are offered once one is set up.
@@ -2342,14 +2349,28 @@ async function showFolder(root, path) {
     li.append(b);
     list.append(li);
   }
-  // Files only for orientation: a folder is picked, not a file.
+  // Files only for orientation: a folder is picked, not a file (pickFile: files of one type).
   for (const name of data.files) {
     const li = el("li", "file");
-    li.append(icon("file"), el("span", "", name));
+    if (folderFileExt && name.toLowerCase().endsWith(folderFileExt)) {
+      const b = el("button", "folder", name);
+      b.type = "button";
+      b.prepend(icon("file"));
+      b.setAttribute("aria-pressed", String(folderFileDir === path && folderFile === name));
+      b.addEventListener("click", () => {
+        folderFileDir = path;
+        folderFile = name;
+        showFolder(root, path).catch(sayError);
+      });
+      li.append(b);
+    } else {
+      li.append(icon("file"), el("span", "", name));
+    }
     list.append(li);
   }
   document.getElementById("folder-new").disabled = !data.mounted || (root === REMOTES && !path);
-  document.getElementById("folder-ok").disabled = !path;
+  document.getElementById("folder-ok").disabled = folderFileExt
+    ? !(folderFile && folderFileDir === path) : !path;
 }
 
 // Resolves with the chosen {root, path}, or null.
@@ -2369,6 +2390,22 @@ async function pickFolder(start) {
     dlg.addEventListener("close", () => resolve(
       dlg.returnValue === "ok" ? { root: folderRoot, path: folderPath } : null), { once: true });
   });
+}
+
+// Resolves with the chosen file {root, path} ending in ext, or null.
+async function pickFile(start, ext) {
+  const dlg = document.getElementById("folder-dialog");
+  folderFileExt = ext;
+  folderFile = null;
+  folderFileDir = null;
+  dlg.querySelector("h2").textContent = t("folder.file_title", { ext });
+  try {
+    return await pickFolder(start).then((r) => (r && folderFile
+      ? { root: r.root, path: joinPath(folderFileDir, folderFile) } : null));
+  } finally {
+    folderFileExt = null;
+    dlg.querySelector("h2").textContent = t("folder.title");
+  }
 }
 
 function bindFolderPicker() {
@@ -2840,6 +2877,259 @@ async function loadDocker() {
   stopDockerStats();
   await loadDockerStats().catch(() => {});
   dockerTimer = poller(loadDockerStats, 5000);
+}
+
+// --- VMs and containers (Incus) -------------------------------------------------
+
+let vmState = null;
+let vmTimer = null;
+let vmLocation = "system";
+let vmIso = null;
+let vmConsole = null;
+
+function stopVmPoll() {
+  if (vmTimer) vmTimer.stop();
+  vmTimer = null;
+}
+
+const VM_KIND = { running: "ok", stopped: "", frozen: "warn", error: "crit" };
+
+function vmBusy(st) {
+  return ["active", "activating"].includes(st.install_job?.active) || st.creating.length > 0;
+}
+
+function renderVmSetup(st) {
+  const box = document.getElementById("vm-setup");
+  box.hidden = st.installed;
+  if (st.installed) return;
+  const roots = [["system", "system"], ["cache", "cache"]];
+  const loc = document.getElementById("vm-location");
+  loc.replaceChildren();
+  for (const [name] of roots) {
+    const b = el("button", "place");
+    b.type = "button";
+    b.setAttribute("aria-pressed", String(vmLocation === name));
+    b.disabled = name === "cache" && !st.cache;
+    b.append(el("b", "", t(`vms.location_${name}`)),
+             el("small", "hint", name === "system" ? "/var/lib/incus" : "/mnt/cache/incus"));
+    b.addEventListener("click", () => { vmLocation = name; renderVmSetup(st); });
+    loc.append(b);
+  }
+  const job = st.install_job || {};
+  const running = ["active", "activating"].includes(job.active);
+  const state = document.getElementById("vm-install-state");
+  state.textContent = running ? t("vms.installing")
+    : job.result && job.result !== "success" && job.started ? t("vms.install_failed") : "";
+  document.getElementById("vm-install").disabled = running;
+}
+
+function vmRow(v) {
+  const row = el("article", "vm-row");
+  const head = el("div", "vm-head");
+  head.append(el("span", `dot ${DOT_KIND[VM_KIND[v.status] ?? ""] ?? ""}`), el("b", "", v.name),
+              badge(t(v.type === "vm" ? "vms.kind_vm" : "vms.kind_container"), "accent"),
+              badge(tv("vms.status", v.status), VM_KIND[v.status] ?? ""));
+  if (v.iso) head.append(badge(t("vms.has_iso")));
+  row.append(head);
+  const facts = [];
+  if (v.image) facts.push(v.image);
+  if (v.cpus) facts.push(t("vms.cpus_n", { n: v.cpus }));
+  if (v.memory) facts.push(t("vms.memory_n", { n: +(v.memory / 1024).toFixed(2) }));
+  facts.push(t(`vms.network_${v.network}`));
+  if (v.addresses.length) facts.push(v.addresses.join(", "));
+  if (v.autostart) facts.push(t("vms.autostart_on"));
+  row.append(el("p", "hint", facts.join(" · ")));
+  const ops = el("div", "row-ops");
+  const op = (name, iconName, key, danger) => iconButton(iconName, key, async () => {
+    if (name !== "start" && !await ask(t(`vms.confirm_${name.replace("-", "_")}`, { name: v.name }), key, danger)) return;
+    await api("POST", `vms/${encodeURIComponent(v.name)}/${name}`);
+    say(t("vms.done", { name: v.name }), "ok");
+    await loadVms();
+  }, danger ? "danger" : "");
+  if (v.status === "running") {
+    if (v.console) ops.append(iconButton("vm", "vms.console", () => openVmConsole(v.name)));
+    if (v.type === "container") ops.append(iconButton("terminal", "vms.shell", () => copyVmShell(v.name)));
+    ops.append(op("restart", "reboot", "vms.restart"), op("stop", "stop", "vms.stop", true),
+               op("force-stop", "power", "vms.force_stop", true));
+  } else {
+    ops.append(op("start", "play", "vms.start"));
+    if (v.iso) ops.append(op("eject", "download", "vms.eject"));
+    ops.append(op("delete", "trash", "vms.delete", true));
+  }
+  ops.append(button("vms.settings", () => vmSettings(v)));
+  row.append(ops);
+  return row;
+}
+
+function renderVms(st) {
+  const card = document.getElementById("vm-list-card");
+  card.hidden = !st.installed;
+  if (!st.installed) return;
+  const err = document.getElementById("vm-error");
+  err.hidden = !st.error;
+  err.textContent = st.error ? t("vms.error", { error: st.error }) : "";
+  const list = document.getElementById("vm-list");
+  list.replaceChildren();
+  for (const c of st.creating) {
+    const row = el("article", "vm-row");
+    const failed = c.job?.result && c.job.result !== "success" && !["active", "activating"].includes(c.job.active);
+    row.append(el("div", "vm-head"));
+    row.firstChild.append(el("span", "dot"), el("b", "", c.name),
+                          badge(t(failed ? "vms.create_failed" : "vms.creating"), failed ? "crit" : "warn"));
+    list.append(row);
+  }
+  for (const v of st.instances) list.append(vmRow(v));
+  if (!st.instances.length && !st.creating.length) list.append(el("p", "empty", t("vms.none")));
+}
+
+async function loadVms() {
+  const st = await api("GET", "vms");
+  vmState = st;
+  renderVmSetup(st);
+  renderVms(st);
+  stopVmPoll();
+  if (vmBusy(st)) vmTimer = poller(async () => {
+    const next = await api("GET", "vms");
+    const was = vmBusy(vmState);
+    vmState = next;
+    renderVmSetup(next);
+    renderVms(next);
+    if (was && !vmBusy(next)) stopVmPoll();
+  }, 4000);
+}
+
+async function copyVmShell(name) {
+  const cmd = `incus exec ${name} -- bash -l`;
+  try {
+    await navigator.clipboard.writeText(cmd);
+    say(t("vms.shell_copied", { cmd }), "ok");
+  } catch (_) {
+    say(t("vms.shell_hint", { cmd }), "ok");
+  }
+  open("terminal");
+}
+
+function vmFormSync() {
+  const f = document.getElementById("vm-form");
+  const vm = f.kind.value === "vm";
+  if (!vm) f.source.value = "image";
+  for (const e of f.querySelectorAll(".vm-vm-only")) e.hidden = !vm;
+  const iso = vm && f.source.value === "iso";
+  f.querySelector(".vm-image").hidden = iso;
+  f.querySelector(".vm-iso").hidden = !iso;
+  f.network.querySelector('[value="lan"]').disabled = !vmState?.lan;
+  document.getElementById("vm-network-hint").textContent = t(`vms.network_${f.network.value}_hint`);
+  document.getElementById("vm-iso-path").textContent = vmIso ? `${vmIso.root}/${vmIso.path}` : "–";
+}
+
+async function vmCreate() {
+  const st = vmState;
+  const dlg = document.getElementById("vm-dialog");
+  const f = document.getElementById("vm-form");
+  f.reset();
+  vmIso = null;
+  const images = document.getElementById("vm-images");
+  images.replaceChildren(...st.images.map((i) => { const o = el("option", "", i); o.value = i; return o; }));
+  f.cpus.max = st.host.cpus;
+  f.memory.max = st.host.memory ? Math.floor(st.host.memory / 1024) : "";
+  vmFormSync();
+  dlg.returnValue = "";
+  dlg.showModal();
+  const ok = await new Promise((resolve) => {
+    dlg.addEventListener("close", () => resolve(dlg.returnValue === "ok"), { once: true });
+  });
+  if (!ok) return;
+  const vm = f.kind.value === "vm";
+  const body = {
+    name: f.name.value.trim(), kind: f.kind.value, source: f.source.value, image: f.image.value,
+    cpus: Number(f.cpus.value), memory: Math.round(Number(f.memory.value) * 1024),
+    disk: vm ? Number(f.disk.value) : 10, network: f.network.value,
+    autostart: f.autostart.checked, start: f.start.checked,
+    secureboot: f.secureboot.checked, windows: vm && f.windows.checked,
+  };
+  if (body.source === "iso") {
+    if (!vmIso) throw new ApiError(0, "vms.iso_missing");
+    body.iso_root = vmIso.root;
+    body.iso_path = vmIso.path;
+  }
+  await api("POST", "vms", body);
+  say(t("vms.create_started", { name: body.name }), "ok");
+  await loadVms();
+}
+
+async function vmSettings(v) {
+  const dlg = document.getElementById("vm-settings-dialog");
+  const f = document.getElementById("vm-settings-form");
+  document.getElementById("vm-settings-title").textContent = t("vms.settings_title", { name: v.name });
+  f.cpus.value = v.cpus || 1;
+  f.cpus.max = vmState.host.cpus;
+  f.memory.value = v.memory ? v.memory / 1024 : 1;
+  f.autostart.checked = v.autostart;
+  dlg.returnValue = "";
+  dlg.showModal();
+  const ok = await new Promise((resolve) => {
+    dlg.addEventListener("close", () => resolve(dlg.returnValue === "ok"), { once: true });
+  });
+  if (!ok) return;
+  await api("POST", `vms/${encodeURIComponent(v.name)}/settings`, {
+    cpus: Number(f.cpus.value), memory: Math.round(Number(f.memory.value) * 1024),
+    autostart: f.autostart.checked,
+  });
+  say(t("vms.saved", { name: v.name }), "ok");
+  await loadVms();
+}
+
+// noVNC (vendor/novnc, MPL-2.0) is an ES module, loaded on first use.
+async function openVmConsole(name) {
+  const { default: RFB } = await import("/vendor/novnc/core/rfb.js");
+  const dlg = document.getElementById("vm-console-dialog");
+  const screen = document.getElementById("vm-console-screen");
+  const state = document.getElementById("vm-console-state");
+  document.getElementById("vm-console-title").textContent = t("vms.console_title", { name });
+  screen.replaceChildren();
+  state.textContent = t("vms.console_connecting");
+  dlg.showModal();
+  const proto = location.protocol === "https:" ? "wss" : "ws";
+  const rfb = new RFB(screen, `${proto}://${location.host}/api/vms/${encodeURIComponent(name)}/console`);
+  rfb.scaleViewport = true;
+  rfb.resizeSession = false;
+  rfb.focusOnClick = true;
+  rfb.addEventListener("connect", () => { state.textContent = ""; rfb.focus(); });
+  rfb.addEventListener("disconnect", (e) => {
+    state.textContent = t(e.detail.clean ? "vms.console_closed" : "vms.console_failed");
+  });
+  vmConsole = rfb;
+  dlg.addEventListener("close", () => {
+    if (vmConsole === rfb) vmConsole = null;
+    rfb.disconnect();
+  }, { once: true });
+}
+
+function bindVms() {
+  const install = document.getElementById("vm-install");
+  install.addEventListener("click", () => guarded(install, async () => {
+    await api("POST", "vms/install", { location: vmLocation });
+    say(t("vms.install_started"), "ok");
+    await loadVms();
+  }));
+  const add = document.getElementById("vm-new");
+  add.addEventListener("click", () => guarded(add, vmCreate));
+  document.getElementById("vm-refresh").addEventListener("click", (e) => guarded(e.currentTarget, loadVms));
+  const f = document.getElementById("vm-form");
+  for (const name of ["kind", "source", "network"]) f[name].addEventListener("change", vmFormSync);
+  const pick = document.getElementById("vm-iso-pick");
+  pick.addEventListener("click", () => guarded(pick, async () => {
+    const chosen = await pickFile(vmIso || { root: ARRAY, path: "" }, ".iso");
+    if (chosen) vmIso = chosen;
+    vmFormSync();
+  }));
+  document.getElementById("vm-console-close").addEventListener("click", () => {
+    document.getElementById("vm-console-dialog").close();
+  });
+  document.getElementById("vm-console-cad").addEventListener("click", () => vmConsole?.sendCtrlAltDel());
+  document.getElementById("vm-console-full").addEventListener("click", () => {
+    document.getElementById("vm-console-screen").requestFullscreen?.().catch(() => {});
+  });
 }
 
 async function refreshLogs() {
@@ -5630,6 +5920,7 @@ async function start() {
   bindBurnin();
   bindImport();
   bindFolderPicker();
+  bindVms();
   bindNotifyUps();
   bindTokens();
   bindUsers();

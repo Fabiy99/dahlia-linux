@@ -29,6 +29,7 @@ const _more = [
   (Area.parity, 'nav.parity'),
   (Area.backup, 'nav.backup'),
   (Area.docker, 'nav.docker'),
+  (Area.vms, 'nav.vms'),
   (Area.terminal, 'nav.terminal'),
   (Area.jobs, 'jobs.title'),
   (Area.log, 'nav.log'),

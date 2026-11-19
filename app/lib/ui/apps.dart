@@ -728,11 +728,13 @@ class _InstallDialogState extends State<_InstallDialog> {
 
 /// Folder tree of one location; pops with the chosen folder or null.
 /// Files are listed greyed out for orientation, a folder is what gets picked.
+/// With [fileExt] (".iso"), files with that ending are picked instead.
 class FolderPicker extends StatefulWidget {
-  const FolderPicker({super.key, required this.c, required this.start});
+  const FolderPicker({super.key, required this.c, required this.start, this.fileExt});
 
   final Controller c;
   final Place start;
+  final String? fileExt;
 
   @override
   State<FolderPicker> createState() => _FolderPickerState();
@@ -742,6 +744,7 @@ class _FolderPickerState extends State<FolderPicker> {
   late Place at = Place(widget.start.root, widget.start.parent);
   Map? data;
   String? error;
+  String? file;
   final _name = TextEditingController();
 
   Controller get c => widget.c;
@@ -769,6 +772,7 @@ class _FolderPickerState extends State<FolderPicker> {
         at = to;
         data = r;
         error = null;
+        file = null;
       });
       return true;
     } on ApiError catch (e) {
@@ -808,8 +812,9 @@ class _FolderPickerState extends State<FolderPicker> {
     final files = d == null || d['files'] is! List ? const <String>[] : (d['files'] as List).whereType<String>().toList();
     final parts = at.path.isEmpty ? const <String>[] : at.path.split('/');
     final canCreate = d != null && d['mounted'] == true && !(at.root == remotesRoot && at.path.isEmpty);
+    final ext = widget.fileExt;
     return AlertDialog(
-      title: Text(c.t('folder.title')),
+      title: Text(ext == null ? c.t('folder.title') : c.t('folder.file_title', {'ext': ext})),
       content: SizedBox(
         width: 520,
         height: 460,
@@ -848,12 +853,22 @@ class _FolderPickerState extends State<FolderPicker> {
                           onTap: () => _open(Place(at.root, joinPath(at.path, name))),
                         ),
                       for (final name in files)
-                        ListTile(
-                          dense: true,
-                          enabled: false,
-                          leading: Icon(Icons.description_outlined, color: p.muted),
-                          title: Text(name, style: TextStyle(color: p.muted)),
-                        ),
+                        if (ext != null && name.toLowerCase().endsWith(ext))
+                          ListTile(
+                            dense: true,
+                            selected: name == file,
+                            selectedTileColor: p.navActive,
+                            leading: Icon(Icons.album_outlined, color: p.accent),
+                            title: Text(name),
+                            onTap: () => setState(() => file = name),
+                          )
+                        else
+                          ListTile(
+                            dense: true,
+                            enabled: false,
+                            leading: Icon(Icons.description_outlined, color: p.muted),
+                            title: Text(name, style: TextStyle(color: p.muted)),
+                          ),
                     ]),
                   ),
                 ),
@@ -879,10 +894,16 @@ class _FolderPickerState extends State<FolderPicker> {
       ),
       actions: [
         TextButton(onPressed: () => Navigator.pop(context), child: Text(c.t('common.cancel'))),
-        FilledButton(
-          onPressed: d != null && at.path.isNotEmpty ? () => Navigator.pop(context, at) : null,
-          child: Text(c.t('folder.choose')),
-        ),
+        if (ext == null)
+          FilledButton(
+            onPressed: d != null && at.path.isNotEmpty ? () => Navigator.pop(context, at) : null,
+            child: Text(c.t('folder.choose')),
+          )
+        else
+          FilledButton(
+            onPressed: file == null ? null : () => Navigator.pop(context, Place(at.root, joinPath(at.path, file!))),
+            child: Text(c.t('folder.choose')),
+          ),
       ],
     );
   }

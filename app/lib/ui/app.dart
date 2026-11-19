@@ -18,6 +18,7 @@ import 'storage.dart';
 import 'terminal.dart';
 import 'theme.dart';
 import 'tour.dart';
+import 'vms.dart';
 
 const title = 'Dahlia, I love you ♥';
 
@@ -73,6 +74,7 @@ class DahliaApp extends StatelessWidget {
           Area.parity => ParityPage(c),
           Area.backup => BackupPage(c),
           Area.docker => DockerPage(c),
+          Area.vms => VmsPage(c),
           Area.jobs => JobsPage(c),
           Area.log => LogPage(c),
           Area.settings => SettingsPage(c),
