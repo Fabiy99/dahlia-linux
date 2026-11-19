@@ -10,7 +10,9 @@
 
 Dahlia Linux ist ein Server-Betriebssystem für das Homelab auf Basis von Debian 13 "Trixie".
 Es kombiniert Plattenpooling wie bei Unraid (mergerfs, SnapRAID, Cache mit Mover) mit
-einem schlanken Debian-Unterbau. VMs und LXC über Incus kommen in Version 2.
+einem schlanken Debian-Unterbau, Apps mit einem Klick und VMs und LXC-Containern über Incus.
+
+Website: <https://fabiy99.github.io/dahlia-linux/>, Handbuch: [docs/de/handbuch.md](docs/de/handbuch.md).
 
 Kein Abo, keine Lizenzschlüssel. Lizenz: GPLv3.
 
@@ -33,6 +35,9 @@ Updates über das apt-Repo, im Dashboard unter "Updates".
 - **Apps:** Katalog mit über 100 Vorlagen ([dahlia-apps](https://github.com/Fabiy99/dahlia-apps)),
   Stacks mit Datenbank, Update-Anzeige, Ordnerwahl über einen Ordnerbaum, Grafikkarte für
   Transcoding, eigene Container ohne Katalog. Apps liegen auf dem Array oder auf der System-SSD.
+  Vor jedem Update eine Kopie der Appdaten, mit einem Klick zurück zur alten Version.
+- **VMs und Container:** virtuelle Maschinen (auch Windows, von einer ISO-Datei) und
+  LXC-Container über Incus, Bildschirm der VM im Browser und in der App.
 - **Netzwerk:** Port-Links und mDNS-Namen (`<app>.local`), lokale CA für HTTPS, nftables-Firewall
   nur für lokale Netze, Fernzugriff per WireGuard oder Tailscale.
 - **System:** Btrfs-Root mit snapper, Rollback im Dashboard, automatische Sicherheitsupdates,
@@ -50,6 +55,11 @@ Updates über das apt-Repo, im Dashboard unter "Updates".
   und die Desktop-App lässt sich mit einem kurzen Kopplungscode neu koppeln.
 - **Anmeldung:** eigenes Dashboard-Konto aus dem Einrichtungs-Assistenten, optional mit
   Zwei-Faktor-Login (TOTP).
+- **Backup-Probe, Briefe, Meldungen:** einmal im Monat stellt Dahlia eine Stichprobe aus dem
+  Backup wieder her und prüft sie; montags ein Wochenbrief, zum Jahreswechsel ein Rückblick;
+  Meldungen des Servers in der App (Glocke und Systemmeldung). Kacheln mit Fotos aus Immich,
+  Neuem aus Jellyfin und laufenden Downloads.
+- **USB Creator:** die Desktop-App schreibt unter Windows den Installer auf einen USB-Stick.
 
 ### In einer VM testen
 
@@ -176,9 +186,17 @@ Nach 1.0 (1.x):
 56. Tauri-App (`desktop/`) entfernt; die native App deckt alle Bereiche ab
 57. Startbildschirm selbst gestalten (Kacheln verschieben, Größe, ein/aus, Farbschema, Akzentfarbe, Hintergrund; bleibt bei Updates erhalten), App zeigt ihn wie der Browser, Browser als Notzugang
 
-Später: USB-Creator für Windows, Installationsanleitung.
+58. Sichere App-Updates: Kopie der Appdaten vor dem Update, mit einem Klick zurück
+59. Backup-Probe: monatlich Repo prüfen und eine Stichprobe testweise wiederherstellen
+60. Meldungen des Servers in der Desktop-App (Glocke, Systemmeldung)
+61. Wochenbrief und Jahresrückblick
+62. App-Kacheln auf dem Startbildschirm (Immich, Jellyfin, Downloads)
+63. Willkommens-Tour in der App
+64. VMs und LXC-Container über Incus, grafische Konsole in Browser und App
+65. USB Creator für Windows in der Desktop-App
+66. Handbuch (DE/EN) und Website auf GitHub Pages
 
-Version 2: VMs und LXC über Incus.
+Später: Code-Signierung der Desktop-App (SignPath).
 
 ### Mitmachen
 
@@ -199,8 +217,10 @@ diesem Repo baut; jede Signierung gibt der Maintainer einzeln frei.
 
 - Autoren und Freigabe: [Fabiy99](https://github.com/Fabiy99)
 - Datenschutz: Die Desktop-App überträgt keine Daten an andere Systeme als den Dahlia-Server, mit
-  dem sie gekoppelt ist. Der Server selbst holt Updates aus dem apt-Repo, den App-Katalog von
-  GitHub und, falls Orte eingetragen sind, das Wetter von Open-Meteo.
+  dem sie gekoppelt ist. Nur der USB Creator unter Windows fragt GitHub nach dem neuesten Release
+  und lädt die ISO von dort. Der Server selbst holt Updates aus dem apt-Repo, den App-Katalog von
+  GitHub, Abbilder für VMs und Container von images.linuxcontainers.org und, falls Orte
+  eingetragen sind, das Wetter von Open-Meteo.
 
 ---
 
@@ -208,7 +228,9 @@ diesem Repo baut; jede Signierung gibt der Maintainer einzeln frei.
 
 Dahlia Linux is a homelab server operating system based on Debian 13 "Trixie".
 It combines Unraid-style disk pooling (mergerfs, SnapRAID, a cache with a mover) with a
-lean Debian base. VMs and LXC via Incus follow in version 2.
+lean Debian base, apps in one click, and VMs and LXC containers through Incus.
+
+Website: <https://fabiy99.github.io/dahlia-linux/>, handbook: [docs/en/handbook.md](docs/en/handbook.md).
 
 No subscription, no license keys. License: GPLv3.
 
@@ -229,6 +251,9 @@ updates from the apt repository, in the dashboard under "Updates".
 - **Apps:** catalog with over 100 templates ([dahlia-apps](https://github.com/Fabiy99/dahlia-apps)),
   stacks with a database, update notices, folders chosen from a folder tree, GPU for
   transcoding, custom containers without the catalog. Apps live on the array or the system SSD.
+  A copy of the app data before every update, back to the old version in one click.
+- **VMs and containers:** virtual machines (Windows too, from an ISO file) and LXC containers
+  through Incus, the VM's screen in the browser and in the app.
 - **Network:** port links and mDNS names (`<app>.local`), local CA for HTTPS, nftables firewall
   for local networks only, remote access via WireGuard or Tailscale.
 - **System:** Btrfs root with snapper, rollback in the dashboard, automatic security updates,
@@ -245,6 +270,11 @@ updates from the apt repository, in the dashboard under "Updates".
   the browser and keeps it as a bookmark. That way the server stays reachable, and the desktop app
   can be paired again with a short pairing code.
 - **Login:** own dashboard account from the setup wizard, optionally with two-factor login (TOTP).
+- **Backup probe, letters, notifications:** once a month Dahlia restores a sample of the backup
+  and checks it; a weekly letter on Mondays, a review at the turn of the year; the server's
+  notifications in the app (bell and system message). Tiles with photos from Immich, new in
+  Jellyfin and running downloads.
+- **USB Creator:** on Windows the desktop app writes the installer to a USB stick.
 
 ### Testing in a VM
 
@@ -370,9 +400,17 @@ After 1.0 (1.x):
 56. Tauri app (`desktop/`) removed; the native app covers every area
 57. Arrange the start screen yourself (move tiles, size, on/off, colour scheme, accent colour, background; kept across updates), the app shows it like the browser, browser as emergency access
 
-Later: USB creator for Windows, installation guide.
+58. Safe app updates: copy of the app data before an update, back in one click
+59. Backup probe: check the repository monthly and restore a sample as a test
+60. The server's notifications in the desktop app (bell, system message)
+61. Weekly letter and year review
+62. App tiles on the start screen (Immich, Jellyfin, downloads)
+63. Welcome tour in the app
+64. VMs and LXC containers through Incus, graphical console in browser and app
+65. USB Creator for Windows in the desktop app
+66. Handbook (DE/EN) and website on GitHub Pages
 
-Version 2: VMs and LXC via Incus.
+Later: code signing of the desktop app (SignPath).
 
 ### Contributing
 
@@ -393,8 +431,10 @@ repository are signed; the maintainer approves every signing request.
 
 - Committers and approvers: [Fabiy99](https://github.com/Fabiy99)
 - Privacy: the desktop app does not transfer any information to systems other than the Dahlia
-  server it is paired with. The server itself fetches updates from the apt repository, the app
-  catalog from GitHub and, if places are set, the weather from Open-Meteo.
+  server it is paired with. Only the USB Creator on Windows asks GitHub for the latest release
+  and downloads the ISO from there. The server itself fetches updates from the apt repository,
+  the app catalog from GitHub, images for VMs and containers from images.linuxcontainers.org
+  and, if places are set, the weather from Open-Meteo.
 
 ## License
 
