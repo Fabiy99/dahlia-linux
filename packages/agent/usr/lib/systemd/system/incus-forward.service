@@ -1,0 +1,13 @@
+[Unit]
+Description=Dahlia: let the Incus bridge pass Docker's forward policy
+After=docker.service incus.service
+PartOf=docker.service
+ConditionPathExists=/usr/bin/incus
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/lib/dahlia/incus-forward.sh
+
+[Install]
+WantedBy=docker.service multi-user.target

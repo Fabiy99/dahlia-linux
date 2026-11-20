@@ -80,6 +80,11 @@ jobs:
           flutter build linux --release --build-name="$VERSION" --dart-define=DAHLIA_VERSION="$VERSION"
           packaging/linux/build-deb.sh "$VERSION" build/linux/x64/release/bundle dist
 
+      - name: USB Creator writer on a virtual disk
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: packaging\windows\test-usb-writer.ps1
+
       - name: Windows
         if: runner.os == 'Windows'
         run: |

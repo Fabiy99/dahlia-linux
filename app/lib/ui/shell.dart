@@ -10,8 +10,10 @@ import 'package:material_ui/material_ui.dart';
 import '../src/controller.dart';
 import '../src/format.dart';
 import 'bloom.dart';
+import 'notices.dart';
 import 'services.dart';
 import 'theme.dart';
+import 'tour.dart';
 import 'widgets.dart';
 
 /// Areas in the bar; the rest sit in the "More" menu.
@@ -27,6 +29,7 @@ const _more = [
   (Area.parity, 'nav.parity'),
   (Area.backup, 'nav.backup'),
   (Area.docker, 'nav.docker'),
+  (Area.vms, 'nav.vms'),
   (Area.terminal, 'nav.terminal'),
   (Area.jobs, 'jobs.title'),
   (Area.log, 'nav.log'),
@@ -79,13 +82,14 @@ class TopBar extends StatelessWidget {
             padding: const EdgeInsets.only(left: 4),
             child: Material(
               color: Colors.transparent,
-              child: InkWell(borderRadius: BorderRadius.circular(12), onTap: () => c.go(view), child: tab(c.t(key), c.area == view, null, count: view == Area.apps ? c.appUpdates : 0)),
+              child: InkWell(key: tourKey(c, view.name), borderRadius: BorderRadius.circular(12), onTap: () => c.go(view), child: tab(c.t(key), c.area == view, null, count: view == Area.apps ? c.appUpdates : 0)),
             ),
           ),
         // The chosen area of the menu takes its place in the bar.
         Padding(
           padding: const EdgeInsets.only(left: 4),
           child: PopupMenuButton<Area>(
+            key: tourKey(c, 'more'),
             tooltip: '',
             position: PopupMenuPosition.under,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -101,8 +105,11 @@ class TopBar extends StatelessWidget {
           ),
         ),
         const SizedBox(width: 12),
+        NoticeBell(c, key: tourKey(c, 'bell')),
+        const SizedBox(width: 4),
         // Phone and pairing of other desktop apps, like the dashboard's "Phone" button.
         Tooltip(
+          key: tourKey(c, 'phone'),
           message: c.t('phone.open'),
           child: Material(
             color: Colors.transparent,
@@ -143,6 +150,8 @@ class TopBar extends StatelessWidget {
             switch (v) {
               case 'en' || 'de':
                 c.setLanguage(v);
+              case 'tour':
+                c.restartTour();
               case 'server':
                 c.otherServer();
               case 'logout':
@@ -155,6 +164,7 @@ class TopBar extends StatelessWidget {
             CheckedPopupMenuItem(value: 'en', checked: c.settings.lang == 'en', child: const Text('English')),
             CheckedPopupMenuItem(value: 'de', checked: c.settings.lang == 'de', child: const Text('Deutsch')),
             const PopupMenuDivider(),
+            PopupMenuItem(value: 'tour', child: Text(c.t('tour.restart'))),
             PopupMenuItem(value: 'server', child: Text(c.t('menu.other_server'))),
             PopupMenuItem(value: 'logout', child: Text(c.t('menu.logout'), style: TextStyle(color: p.danger))),
           ],

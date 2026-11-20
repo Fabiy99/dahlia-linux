@@ -319,7 +319,7 @@ function percent(used, size) {
 const TITLES = {
   overview: "nav.overview", storage: "storage.title", parity: "parity.title", apps: "apps.title",
   domains: "nav.domains", jobs: "jobs.title", backup: "nav.backup", updates: "updates.title", account: "nav.account",
-  docker: "nav.docker", log: "nav.log", shares: "nav.shares", terminal: "nav.terminal", files: "nav.files",
+  docker: "nav.docker", vms: "nav.vms", log: "nav.log", shares: "nav.shares", terminal: "nav.terminal", files: "nav.files",
   setup: "setup.title", login: "login.title",
 };
 
@@ -338,6 +338,7 @@ function show(view) {
   if (view === "overview") startStats();
   else stopStats();
   if (view !== "docker") stopDockerStats();
+  if (view !== "vms") stopVmPoll();
   if (view !== "account") clearTimeout(netTimer);
 }
 
@@ -389,6 +390,7 @@ const loaders = {
   apps: loadApps,
   domains: loadDomains,
   docker: loadDocker,
+  vms: loadVms,
   shares: loadShares,
   files: loadFiles,
   log: loadLog,
@@ -734,10 +736,13 @@ async function loadOverview() {
   renderStats(stats);
   // Apps and jobs come from slower calls; the tiles fill in when they arrive.
   api("GET", "apps?catalog=false").then((data) => {
+    overviewApps = data.installed;
     renderOverviewApps(data.installed);
     updateAppsBadge(data.installed);
   }).catch(tileError("overview-apps"));
   api("GET", "jobs").then(renderOverviewJobs).catch(tileError("overview-jobs"));
+  loadLetterTile().catch(tileError("letter-lines"));
+  loadAppTiles();
   loadHealth();
   loadHistory().catch(sayError);
   api("GET", "hardware").then((hw) => {
@@ -749,6 +754,265 @@ async function loadOverview() {
       .map((g) => [g.vendor, g.driver && `(${g.driver})`].filter(Boolean).join(" ")).join(", ");
     if (gpu) fact(dl, "overview.gpu", gpu);
   }).catch(tileError("overview-disks"));
+}
+
+// --- tiles with content from apps (tiles.py) --------------------------------------
+
+const APP_TILES = ["photos", "media", "downloads"];
+const TILE_APPS = { photos: "immich", media: "jellyfin" };
+let overviewApps = [];
+let downloadsTimer = null;
+
+function appTileLink(id) {
+  const app = overviewApps.find((a) => a.id === id);
+  return app ? primaryUrl(app) : null;
+}
+
+// Form for the key or login an app needs for its tile (admins only).
+function tileSetupForm(tile, appId, fields, done) {
+  const form = el("form", "tile-setup admin-only");
+  form.append(el("p", "hint", t(`tiles.hint_${appId}`)));
+  for (const name of fields) {
+    const label = el("label");
+    const input = el("input");
+    input.name = name;
+    input.type = name === "user" ? "text" : "password";
+    input.autocomplete = "off";
+    input.required = true;
+    label.append(el("span", "", t(`tiles.field_${name}`)), input);
+    form.append(label);
+  }
+  const save = el("button", "primary", t("common.save"));
+  form.append(save);
+  form.addEventListener("submit", (e) => {
+    e.preventDefault();
+    guarded(save, async () => {
+      await api("POST", `tiles/${appId}`, { settings: formData(form) });
+      say(t("tiles.saved"), "ok");
+      await done();
+    });
+  });
+  return form;
+}
+
+function renderAppTile(tile, data) {
+  const box = document.getElementById(`tile-${tile}`);
+  const reload = () => loadAppTile(tile);
+  if (data.state === "missing") {
+    const go = el("button", "link-btn", t("tiles.to_apps"));
+    go.addEventListener("click", () => show("apps"));
+    box.replaceChildren(el("p", "empty", t(`tiles.missing_${tile}`)), go);
+    return;
+  }
+  if (data.state === "setup") {
+    const appId = data.apps[0];
+    const fields = appId === "qbittorrent" ? ["user", "password"] : ["key"];
+    box.replaceChildren(el("p", "empty", t("tiles.setup", { app: tv("tiles.app", appId) })),
+                        tileSetupForm(tile, appId, fields, reload));
+    return;
+  }
+  if (data.state === "error") {
+    const fix = el("button", "link-btn admin-only", t("tiles.change"));
+    fix.addEventListener("click", () => {
+      const fields = data.app === "qbittorrent" ? ["user", "password"] : ["key"];
+      box.append(tileSetupForm(tile, data.app, fields, reload));
+      fix.remove();
+    });
+    box.replaceChildren(el("p", "empty", t("tiles.error", { app: tv("tiles.app", data.app), error: data.error })),
+                        data.app === "transmission" ? "" : fix);
+    return;
+  }
+  const link = appTileLink(data.app);
+  if (tile === "photos") {
+    if (!data.id) {
+      box.replaceChildren(el("p", "empty", t("tiles.no_photos")));
+      return;
+    }
+    const a = el("a", "photo-frame");
+    if (link) { a.href = link; a.target = "_blank"; a.rel = "noopener"; }
+    const img = el("img");
+    img.alt = "";
+    img.loading = "lazy";
+    img.src = `/api/tiles/image/immich/${data.id}`;
+    const caption = data.years
+      ? t(data.years === 1 ? "tiles.photo_year" : "tiles.photo_years", { n: data.years })
+      : t("tiles.photo_random");
+    a.append(img, el("span", "photo-caption", caption));
+    box.replaceChildren(a);
+    return;
+  }
+  if (tile === "media") {
+    if (!data.items.length) {
+      box.replaceChildren(el("p", "empty", t("tiles.no_media")));
+      return;
+    }
+    const grid = el("div", "poster-row");
+    for (const item of data.items) {
+      const fig = el(link ? "a" : "div", "poster");
+      if (link) { fig.href = link; fig.target = "_blank"; fig.rel = "noopener"; }
+      if (item.image) {
+        const img = el("img");
+        img.alt = "";
+        img.loading = "lazy";
+        img.src = `/api/tiles/image/jellyfin/${item.id}`;
+        fig.append(img);
+      } else {
+        fig.append(el("div", "poster-blank", item.name.slice(0, 1)));
+      }
+      fig.append(el("small", "", item.year ? `${item.name} (${item.year})` : item.name));
+      grid.append(fig);
+    }
+    box.replaceChildren(grid);
+    return;
+  }
+  const head = el("div", "dl-speed");
+  head.append(el("span", "", `↓ ${formatRate(data.down)}`), el("span", "", `↑ ${formatRate(data.up)}`));
+  const list = el("div", "rows");
+  for (const item of data.items) {
+    const row = el("div", "dl-item");
+    const pct = Math.round(item.progress * 100);
+    const bar = el("div", "dl-bar");
+    const fill = el("span");
+    fill.style.width = `${pct}%`;
+    bar.append(fill);
+    row.append(el("div", "dl-name", item.name),
+               el("small", "", [`${pct} %`, item.down ? `↓ ${formatRate(item.down)}` : "",
+                                item.eta ? t("tiles.eta", { time: formatDuration(item.eta) }) : ""]
+                 .filter(Boolean).join(" · ")),
+               bar);
+    list.append(row);
+  }
+  if (!data.items.length) list.append(el("p", "empty", t("tiles.no_downloads")));
+  box.replaceChildren(head, list);
+}
+
+async function loadAppTile(tile) {
+  try {
+    renderAppTile(tile, await api("GET", `tiles/${tile}/data`));
+  } catch (err) {
+    tileError(`tile-${tile}`)(err);
+  }
+}
+
+function loadAppTiles() {
+  for (const tile of APP_TILES) loadAppTile(tile);
+  if (downloadsTimer) downloadsTimer.stop();
+  downloadsTimer = poller(async () => {
+    if (current !== "overview") throw new Error("left the start screen");
+    if (widgetOn("downloads")) await loadAppTile("downloads");
+  }, 10000);
+}
+
+// --- weekly letter and year review ----------------------------------------------
+
+// Sentences of a letter (letters.py): [icon, text], only for what has numbers.
+function letterLines(l) {
+  const out = [];
+  const st = l.storage;
+  if (st) {
+    out.push(["storage", typeof st.added === "number"
+      ? t(st.added >= 0 ? "letter.storage_added" : "letter.storage_freed",
+          { added: formatBytes(Math.abs(st.added)), used: formatBytes(st.used), size: formatBytes(st.size) })
+      : t("letter.storage", { used: formatBytes(st.used), size: formatBytes(st.size) })]);
+  }
+  const b = l.backups || {};
+  if (b.runs) {
+    let text = t("letter.backups", { ok: b.ok, runs: b.runs });
+    if (b.probe) text += ` ${t(b.probe === "success" ? "letter.probe_ok" : "letter.probe_failed")}`;
+    out.push(["backup", text]);
+  } else if (b.runs === 0) {
+    out.push(["backup", t("letter.no_backups")]);
+  }
+  if (l.updates) out.push(["updates", t("letter.updates", { count: l.updates })]);
+  const a = l.apps || {};
+  if (a.count !== undefined) {
+    let text = t("letter.apps", { count: a.count });
+    if (a.new && a.new.length) text += ` ${t("letter.apps_new", { names: a.new.join(", ") })}`;
+    if (a.updated && a.updated.length) text += ` ${t("letter.apps_updated", { names: a.updated.join(", ") })}`;
+    out.push(["apps", text]);
+  }
+  if (l.photos) out.push(["sun", t("letter.photos", { count: l.photos })]);
+  if (l.traffic) out.push(["network", t("letter.traffic", { rx: formatBytes(l.traffic.rx), tx: formatBytes(l.traffic.tx) })]);
+  if (typeof l.cpu_avg === "number") {
+    out.push(["cpu", typeof l.temp_max === "number"
+      ? t("letter.cpu_temp", { cpu: Math.round(l.cpu_avg), temp: Math.round(l.temp_max) })
+      : t("letter.cpu", { cpu: Math.round(l.cpu_avg) })]);
+  }
+  const up = l.kind === "year" ? l.uptime_max : l.uptime;
+  if (up > 86400) out.push(["power", t(l.kind === "year" ? "letter.uptime_max" : "letter.uptime", { days: Math.floor(up / 86400) })]);
+  const n = l.notices || {};
+  if (n.warning || n.critical) {
+    let text = t("letter.notices", { warning: n.warning || 0, critical: n.critical || 0 });
+    if (n.titles && n.titles.length) text += `: ${n.titles.join(", ")}`;
+    out.push(["log", text]);
+  } else {
+    out.push(["log", t(l.kind === "year" ? "letter.quiet_year" : "letter.quiet")]);
+  }
+  return out;
+}
+
+function letterTitle(l) {
+  if (l.kind === "year") return t(l.preview ? "letter.year_now" : "letter.year", { year: l.id });
+  return t(l.preview ? "letter.week_now" : "letter.week");
+}
+
+function letterWhen(l) {
+  if (!l.from) return t("letter.no_weeks");
+  const opts = { day: "numeric", month: "long" };
+  const from = new Date(l.from * 1000);
+  const to = new Date((l.to - 1) * 1000);
+  return t("letter.range", { from: from.toLocaleDateString(lang, opts),
+                             to: to.toLocaleDateString(lang, { ...opts, year: "numeric" }) });
+}
+
+function renderLetter(l, list) {
+  list.replaceChildren(...letterLines(l).map(([name, text]) => {
+    const li = el("li");
+    li.append(icon(name), el("span", "", text));
+    return li;
+  }));
+}
+
+let letterIndex = [];
+
+// Tile: the newest letter, or the running week before the first one.
+async function loadLetterTile() {
+  const { letters } = await api("GET", "letters");
+  letterIndex = letters;
+  const newest = letters.find((x) => x.kind === "week");
+  const l = await api("GET", `letters/${newest ? newest.id : "week"}`);
+  document.getElementById("letter-title").textContent = letterTitle(l);
+  document.getElementById("letter-when").textContent = letterWhen(l);
+  renderLetter(l, document.getElementById("letter-lines"));
+}
+
+async function showLetter(id) {
+  const l = await api("GET", `letters/${id}`);
+  document.getElementById("letter-dialog-title").textContent = letterTitle(l);
+  document.getElementById("letter-dialog-when").textContent = letterWhen(l);
+  renderLetter(l, document.getElementById("letter-dialog-lines"));
+}
+
+async function openLetters() {
+  const pick = document.getElementById("letter-pick");
+  const ids = ["week", "year", ...letterIndex.map((x) => x.id)];
+  const names = { week: t("letter.week_now"), year: t("letter.year_now", { year: new Date().getFullYear() }) };
+  for (const x of letterIndex) {
+    names[x.id] = x.kind === "year" ? t("letter.year", { year: x.id })
+      : t("letter.week_of", { date: new Date(x.from * 1000).toLocaleDateString(lang, { day: "numeric", month: "short", year: "numeric" }) });
+  }
+  fillOptions(pick, ids, (id) => names[id]);
+  const newest = letterIndex.find((x) => x.kind === "week");
+  pick.value = newest ? newest.id : "week";
+  await showLetter(pick.value);
+  document.getElementById("letter-dialog").showModal();
+}
+
+function bindLetters() {
+  const open = document.getElementById("letter-open");
+  open.addEventListener("click", () => guarded(open, openLetters));
+  const pick = document.getElementById("letter-pick");
+  pick.addEventListener("change", () => showLetter(pick.value).catch(sayError));
 }
 
 // --- start screen: greeting, widgets, weather -----------------------------------
@@ -1911,6 +2175,19 @@ function renderInstalled(installed) {
       b.append(badge(t("apps.update_available", { version: app.update.version }), "accent"));
       card.append(b);
     }
+    if (app.rollback) {
+      // Copy of the data from before the last update: one click goes back.
+      const back = el("div", "rollback");
+      back.append(el("small", "", t("apps.rollback_kept", {
+        version: app.rollback.version,
+        date: new Date(app.rollback.time).toLocaleString(lang, { dateStyle: "medium", timeStyle: "short" }) })));
+      back.append(button("apps.rollback", async () => {
+        if (!await ask(t("apps.confirm_rollback", { name: app.name, version: app.rollback.version }),
+                       "apps.rollback", true)) return;
+        await appJob(app.id, "rollback", app.name);
+      }));
+      card.append(back);
+    }
     card.append(appLinks(app));
     if (app.login) {
       const d = el("details");
@@ -2004,6 +2281,10 @@ const SYSTEM = "/srv";
 const REMOTES = "/mnt/remotes";
 let folderRoot = ARRAY;
 let folderPath = "";
+// pickFile: the file ending to choose, the folder the chosen file is in and its name.
+let folderFileExt = null;
+let folderFileDir = null;
+let folderFile = null;
 
 function joinPath(base, name) {
   return base ? `${base}/${name}` : name;
@@ -2031,6 +2312,7 @@ async function showFolder(root, path) {
   const data = await api("GET", `files?root=${encodeURIComponent(root)}&path=${encodeURIComponent(path)}`);
   const available = {};
   for (const loc of data.locations) available[loc.path] = loc.available;
+  if (root !== folderRoot) folderFile = null;
   folderRoot = root;
   folderPath = path;
   // Shares of other devices are offered once one is set up.
@@ -2067,14 +2349,28 @@ async function showFolder(root, path) {
     li.append(b);
     list.append(li);
   }
-  // Files only for orientation: a folder is picked, not a file.
+  // Files only for orientation: a folder is picked, not a file (pickFile: files of one type).
   for (const name of data.files) {
     const li = el("li", "file");
-    li.append(icon("file"), el("span", "", name));
+    if (folderFileExt && name.toLowerCase().endsWith(folderFileExt)) {
+      const b = el("button", "folder", name);
+      b.type = "button";
+      b.prepend(icon("file"));
+      b.setAttribute("aria-pressed", String(folderFileDir === path && folderFile === name));
+      b.addEventListener("click", () => {
+        folderFileDir = path;
+        folderFile = name;
+        showFolder(root, path).catch(sayError);
+      });
+      li.append(b);
+    } else {
+      li.append(icon("file"), el("span", "", name));
+    }
     list.append(li);
   }
   document.getElementById("folder-new").disabled = !data.mounted || (root === REMOTES && !path);
-  document.getElementById("folder-ok").disabled = !path;
+  document.getElementById("folder-ok").disabled = folderFileExt
+    ? !(folderFile && folderFileDir === path) : !path;
 }
 
 // Resolves with the chosen {root, path}, or null.
@@ -2094,6 +2390,22 @@ async function pickFolder(start) {
     dlg.addEventListener("close", () => resolve(
       dlg.returnValue === "ok" ? { root: folderRoot, path: folderPath } : null), { once: true });
   });
+}
+
+// Resolves with the chosen file {root, path} ending in ext, or null.
+async function pickFile(start, ext) {
+  const dlg = document.getElementById("folder-dialog");
+  folderFileExt = ext;
+  folderFile = null;
+  folderFileDir = null;
+  dlg.querySelector("h2").textContent = t("folder.file_title", { ext });
+  try {
+    return await pickFolder(start).then((r) => (r && folderFile
+      ? { root: r.root, path: joinPath(folderFileDir, folderFile) } : null));
+  } finally {
+    folderFileExt = null;
+    dlg.querySelector("h2").textContent = t("folder.title");
+  }
 }
 
 function bindFolderPicker() {
@@ -2567,6 +2879,259 @@ async function loadDocker() {
   dockerTimer = poller(loadDockerStats, 5000);
 }
 
+// --- VMs and containers (Incus) -------------------------------------------------
+
+let vmState = null;
+let vmTimer = null;
+let vmLocation = "system";
+let vmIso = null;
+let vmConsole = null;
+
+function stopVmPoll() {
+  if (vmTimer) vmTimer.stop();
+  vmTimer = null;
+}
+
+const VM_KIND = { running: "ok", stopped: "", frozen: "warn", error: "crit" };
+
+function vmBusy(st) {
+  return ["active", "activating"].includes(st.install_job?.active) || st.creating.length > 0;
+}
+
+function renderVmSetup(st) {
+  const box = document.getElementById("vm-setup");
+  box.hidden = st.installed;
+  if (st.installed) return;
+  const roots = [["system", "system"], ["cache", "cache"]];
+  const loc = document.getElementById("vm-location");
+  loc.replaceChildren();
+  for (const [name] of roots) {
+    const b = el("button", "place");
+    b.type = "button";
+    b.setAttribute("aria-pressed", String(vmLocation === name));
+    b.disabled = name === "cache" && !st.cache;
+    b.append(el("b", "", t(`vms.location_${name}`)),
+             el("small", "hint", name === "system" ? "/var/lib/incus" : "/mnt/cache/incus"));
+    b.addEventListener("click", () => { vmLocation = name; renderVmSetup(st); });
+    loc.append(b);
+  }
+  const job = st.install_job || {};
+  const running = ["active", "activating"].includes(job.active);
+  const state = document.getElementById("vm-install-state");
+  state.textContent = running ? t("vms.installing")
+    : job.result && job.result !== "success" && job.started ? t("vms.install_failed") : "";
+  document.getElementById("vm-install").disabled = running;
+}
+
+function vmRow(v) {
+  const row = el("article", "vm-row");
+  const head = el("div", "vm-head");
+  head.append(el("span", `dot ${DOT_KIND[VM_KIND[v.status] ?? ""] ?? ""}`), el("b", "", v.name),
+              badge(t(v.type === "vm" ? "vms.kind_vm" : "vms.kind_container"), "accent"),
+              badge(tv("vms.status", v.status), VM_KIND[v.status] ?? ""));
+  if (v.iso) head.append(badge(t("vms.has_iso")));
+  row.append(head);
+  const facts = [];
+  if (v.image) facts.push(v.image);
+  if (v.cpus) facts.push(t("vms.cpus_n", { n: v.cpus }));
+  if (v.memory) facts.push(t("vms.memory_n", { n: +(v.memory / 1024).toFixed(2) }));
+  facts.push(t(`vms.network_${v.network}`));
+  if (v.addresses.length) facts.push(v.addresses.join(", "));
+  if (v.autostart) facts.push(t("vms.autostart_on"));
+  row.append(el("p", "hint", facts.join(" · ")));
+  const ops = el("div", "row-ops");
+  const op = (name, iconName, key, danger) => iconButton(iconName, key, async () => {
+    if (name !== "start" && !await ask(t(`vms.confirm_${name.replace("-", "_")}`, { name: v.name }), key, danger)) return;
+    await api("POST", `vms/${encodeURIComponent(v.name)}/${name}`);
+    say(t("vms.done", { name: v.name }), "ok");
+    await loadVms();
+  }, danger ? "danger" : "");
+  if (v.status === "running") {
+    if (v.console) ops.append(iconButton("vm", "vms.console", () => openVmConsole(v.name)));
+    if (v.type === "container") ops.append(iconButton("terminal", "vms.shell", () => copyVmShell(v.name)));
+    ops.append(op("restart", "reboot", "vms.restart"), op("stop", "stop", "vms.stop", true),
+               op("force-stop", "power", "vms.force_stop", true));
+  } else {
+    ops.append(op("start", "play", "vms.start"));
+    if (v.iso) ops.append(op("eject", "download", "vms.eject"));
+    ops.append(op("delete", "trash", "vms.delete", true));
+  }
+  ops.append(button("vms.settings", () => vmSettings(v)));
+  row.append(ops);
+  return row;
+}
+
+function renderVms(st) {
+  const card = document.getElementById("vm-list-card");
+  card.hidden = !st.installed;
+  if (!st.installed) return;
+  const err = document.getElementById("vm-error");
+  err.hidden = !st.error;
+  err.textContent = st.error ? t("vms.error", { error: st.error }) : "";
+  const list = document.getElementById("vm-list");
+  list.replaceChildren();
+  for (const c of st.creating) {
+    const row = el("article", "vm-row");
+    const failed = c.job?.result && c.job.result !== "success" && !["active", "activating"].includes(c.job.active);
+    row.append(el("div", "vm-head"));
+    row.firstChild.append(el("span", "dot"), el("b", "", c.name),
+                          badge(t(failed ? "vms.create_failed" : "vms.creating"), failed ? "crit" : "warn"));
+    list.append(row);
+  }
+  for (const v of st.instances) list.append(vmRow(v));
+  if (!st.instances.length && !st.creating.length) list.append(el("p", "empty", t("vms.none")));
+}
+
+async function loadVms() {
+  const st = await api("GET", "vms");
+  vmState = st;
+  renderVmSetup(st);
+  renderVms(st);
+  stopVmPoll();
+  if (vmBusy(st)) vmTimer = poller(async () => {
+    const next = await api("GET", "vms");
+    const was = vmBusy(vmState);
+    vmState = next;
+    renderVmSetup(next);
+    renderVms(next);
+    if (was && !vmBusy(next)) stopVmPoll();
+  }, 4000);
+}
+
+async function copyVmShell(name) {
+  const cmd = `incus exec ${name} -- bash -l`;
+  try {
+    await navigator.clipboard.writeText(cmd);
+    say(t("vms.shell_copied", { cmd }), "ok");
+  } catch (_) {
+    say(t("vms.shell_hint", { cmd }), "ok");
+  }
+  open("terminal");
+}
+
+function vmFormSync() {
+  const f = document.getElementById("vm-form");
+  const vm = f.kind.value === "vm";
+  if (!vm) f.source.value = "image";
+  for (const e of f.querySelectorAll(".vm-vm-only")) e.hidden = !vm;
+  const iso = vm && f.source.value === "iso";
+  f.querySelector(".vm-image").hidden = iso;
+  f.querySelector(".vm-iso").hidden = !iso;
+  f.network.querySelector('[value="lan"]').disabled = !vmState?.lan;
+  document.getElementById("vm-network-hint").textContent = t(`vms.network_${f.network.value}_hint`);
+  document.getElementById("vm-iso-path").textContent = vmIso ? `${vmIso.root}/${vmIso.path}` : "–";
+}
+
+async function vmCreate() {
+  const st = vmState;
+  const dlg = document.getElementById("vm-dialog");
+  const f = document.getElementById("vm-form");
+  f.reset();
+  vmIso = null;
+  const images = document.getElementById("vm-images");
+  images.replaceChildren(...st.images.map((i) => { const o = el("option", "", i); o.value = i; return o; }));
+  f.cpus.max = st.host.cpus;
+  f.memory.max = st.host.memory ? Math.floor(st.host.memory / 1024) : "";
+  vmFormSync();
+  dlg.returnValue = "";
+  dlg.showModal();
+  const ok = await new Promise((resolve) => {
+    dlg.addEventListener("close", () => resolve(dlg.returnValue === "ok"), { once: true });
+  });
+  if (!ok) return;
+  const vm = f.kind.value === "vm";
+  const body = {
+    name: f.name.value.trim(), kind: f.kind.value, source: f.source.value, image: f.image.value,
+    cpus: Number(f.cpus.value), memory: Math.round(Number(f.memory.value) * 1024),
+    disk: vm ? Number(f.disk.value) : 10, network: f.network.value,
+    autostart: f.autostart.checked, start: f.start.checked,
+    secureboot: f.secureboot.checked, windows: vm && f.windows.checked,
+  };
+  if (body.source === "iso") {
+    if (!vmIso) throw new ApiError(0, "vms.iso_missing");
+    body.iso_root = vmIso.root;
+    body.iso_path = vmIso.path;
+  }
+  await api("POST", "vms", body);
+  say(t("vms.create_started", { name: body.name }), "ok");
+  await loadVms();
+}
+
+async function vmSettings(v) {
+  const dlg = document.getElementById("vm-settings-dialog");
+  const f = document.getElementById("vm-settings-form");
+  document.getElementById("vm-settings-title").textContent = t("vms.settings_title", { name: v.name });
+  f.cpus.value = v.cpus || 1;
+  f.cpus.max = vmState.host.cpus;
+  f.memory.value = v.memory ? v.memory / 1024 : 1;
+  f.autostart.checked = v.autostart;
+  dlg.returnValue = "";
+  dlg.showModal();
+  const ok = await new Promise((resolve) => {
+    dlg.addEventListener("close", () => resolve(dlg.returnValue === "ok"), { once: true });
+  });
+  if (!ok) return;
+  await api("POST", `vms/${encodeURIComponent(v.name)}/settings`, {
+    cpus: Number(f.cpus.value), memory: Math.round(Number(f.memory.value) * 1024),
+    autostart: f.autostart.checked,
+  });
+  say(t("vms.saved", { name: v.name }), "ok");
+  await loadVms();
+}
+
+// noVNC (vendor/novnc, MPL-2.0) is an ES module, loaded on first use.
+async function openVmConsole(name) {
+  const { default: RFB } = await import("/vendor/novnc/core/rfb.js");
+  const dlg = document.getElementById("vm-console-dialog");
+  const screen = document.getElementById("vm-console-screen");
+  const state = document.getElementById("vm-console-state");
+  document.getElementById("vm-console-title").textContent = t("vms.console_title", { name });
+  screen.replaceChildren();
+  state.textContent = t("vms.console_connecting");
+  dlg.showModal();
+  const proto = location.protocol === "https:" ? "wss" : "ws";
+  const rfb = new RFB(screen, `${proto}://${location.host}/api/vms/${encodeURIComponent(name)}/console`);
+  rfb.scaleViewport = true;
+  rfb.resizeSession = false;
+  rfb.focusOnClick = true;
+  rfb.addEventListener("connect", () => { state.textContent = ""; rfb.focus(); });
+  rfb.addEventListener("disconnect", (e) => {
+    state.textContent = t(e.detail.clean ? "vms.console_closed" : "vms.console_failed");
+  });
+  vmConsole = rfb;
+  dlg.addEventListener("close", () => {
+    if (vmConsole === rfb) vmConsole = null;
+    rfb.disconnect();
+  }, { once: true });
+}
+
+function bindVms() {
+  const install = document.getElementById("vm-install");
+  install.addEventListener("click", () => guarded(install, async () => {
+    await api("POST", "vms/install", { location: vmLocation });
+    say(t("vms.install_started"), "ok");
+    await loadVms();
+  }));
+  const add = document.getElementById("vm-new");
+  add.addEventListener("click", () => guarded(add, vmCreate));
+  document.getElementById("vm-refresh").addEventListener("click", (e) => guarded(e.currentTarget, loadVms));
+  const f = document.getElementById("vm-form");
+  for (const name of ["kind", "source", "network"]) f[name].addEventListener("change", vmFormSync);
+  const pick = document.getElementById("vm-iso-pick");
+  pick.addEventListener("click", () => guarded(pick, async () => {
+    const chosen = await pickFile(vmIso || { root: ARRAY, path: "" }, ".iso");
+    if (chosen) vmIso = chosen;
+    vmFormSync();
+  }));
+  document.getElementById("vm-console-close").addEventListener("click", () => {
+    document.getElementById("vm-console-dialog").close();
+  });
+  document.getElementById("vm-console-cad").addEventListener("click", () => vmConsole?.sendCtrlAltDel());
+  document.getElementById("vm-console-full").addEventListener("click", () => {
+    document.getElementById("vm-console-screen").requestFullscreen?.().catch(() => {});
+  });
+}
+
 async function refreshLogs() {
   const out = document.getElementById("logs-output");
   const data = await api("GET", `docker/${encodeURIComponent(logsFor)}/logs?lines=500`);
@@ -2899,7 +3464,8 @@ function bindParity() {
 
 // --- jobs -----------------------------------------------------------------------
 
-const STARTABLE = ["mover", "snapraid-sync", "snapraid-scrub", "backup", "smart-short", "smart-long"];
+const STARTABLE = ["mover", "snapraid-sync", "snapraid-scrub", "backup", "backup-probe", "smart-short",
+  "smart-long"];
 
 let jobsTimer = null;
 
@@ -3161,9 +3727,31 @@ async function loadBackup() {
   document.getElementById("backup-run").disabled = !data.target || running;
   document.getElementById("backup-key").disabled = !data.target;
   document.getElementById("backup-list").disabled = !data.target;
-  if ((running || restoring) && current === "backup") {
+  const probing = renderProbe(data);
+  if ((running || restoring || probing) && current === "backup") {
     backupTimer = setTimeout(() => loadBackup().catch(sayError), 4000);
   }
+}
+
+// Last test restore; returns whether one is running.
+function renderProbe(data) {
+  const dl = document.getElementById("probe-state");
+  dl.replaceChildren();
+  const probe = data.probe || {};
+  const running = ["active", "activating"].includes((data.probe_job || {}).active);
+  if (running) fact(dl, "jobs.state", t("probe.running"));
+  if (!probe.started) {
+    fact(dl, "probe.last", t("jobs.never"));
+  } else {
+    fact(dl, "probe.last", new Date(probe.started).toLocaleString(lang));
+    fact(dl, "jobs.result", probe.result === "success"
+      ? badge(t("probe.ok", { files: probe.files, size: formatBytes(probe.bytes || 0) }), "ok")
+      : badge(t("probe.failed"), "crit"));
+    if (probe.snapshot) fact(dl, "backup.id", probe.snapshot);
+    if (probe.error) fact(dl, "backup.error", probe.error);
+  }
+  document.getElementById("probe-run").disabled = !data.target || running;
+  return running;
 }
 
 async function loadSnapshots() {
@@ -3222,6 +3810,12 @@ function bindBackup() {
   run.addEventListener("click", () => guarded(run, async () => {
     await api("POST", "jobs/backup/start");
     say(t("backup.started"), "ok");
+    await loadBackup();
+  }));
+  const probe = document.getElementById("probe-run");
+  probe.addEventListener("click", () => guarded(probe, async () => {
+    await api("POST", "jobs/backup-probe/start");
+    say(t("probe.started"), "ok");
     await loadBackup();
   }));
   const key = document.getElementById("backup-key");
@@ -3737,7 +4331,8 @@ async function loadAccount() {
 
 // --- settings: time, network, spindown, schedules ---------------------------------
 
-const SCHEDULE_JOBS = ["mover", "snapraid-sync", "snapraid-scrub", "backup", "smart-short", "smart-long"];
+const SCHEDULE_JOBS = ["mover", "snapraid-sync", "snapraid-scrub", "backup", "backup-probe", "smart-short",
+  "smart-long"];
 const FREQUENCIES = ["off", "hourly", "daily", "weekly", "monthly"];
 const WEEKDAYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
 let netTimer = null;
@@ -5325,6 +5920,7 @@ async function start() {
   bindBurnin();
   bindImport();
   bindFolderPicker();
+  bindVms();
   bindNotifyUps();
   bindTokens();
   bindUsers();
@@ -5334,6 +5930,7 @@ async function start() {
   bindRootSnapshots();
   bindParity();
   bindBackup();
+  bindLetters();
   bindVpn();
   bindPhone();
   bindHome();

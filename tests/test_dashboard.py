@@ -789,6 +789,50 @@ def test_notify_and_ups_endpoints(env):
     assert client.post("/api/notify/test").status_code == 403
 
 
+def test_notifications_feed(env):
+    client, agent, _ = logged_in(env)
+    agent.replies["notify.get"] = {"email": {}, "history": [
+        {"time": 300, "level": "warning", "title": "Disk hot", "message": "sda 60 °C",
+         "results": {"email": "ok"}},
+        {"time": 100, "level": "info", "title": "Test", "message": "x", "results": {}},
+        "broken",
+    ]}
+    got = client.get("/api/notifications?since=100").json()
+    assert got == {"items": [{"time": 300, "level": "warning", "title": "Disk hot",
+                              "message": "sda 60 °C"}]}
+    assert len(client.get("/api/notifications").json()["items"]) == 2
+
+
+def test_letters_endpoints(env):
+    client, agent, _ = logged_in(env)
+    agent.calls.clear()
+    client.get("/api/letters")
+    client.get("/api/letters/2026-W46")
+    client.get("/api/letters/week")
+    client.get("/api/letters/year")
+    assert agent.calls == [("letters.list", {}), ("letters.get", {"id": "2026-W46"}),
+                           ("letters.now", {"kind": "week"}), ("letters.now", {"kind": "year"})]
+
+
+def test_tile_endpoints(env):
+    client, agent, _ = logged_in(env)
+    agent.replies["tiles.data"] = {"tile": "photos", "state": "ok", "id": "x"}
+    agent.replies["tiles.image"] = {"type": "image/jpeg", "data": "/9hqcGVn"}
+    agent.calls.clear()
+    client.get("/api/tiles")
+    client.post("/api/tiles/immich", json={"settings": {"key": "k"}}, headers=CSRF)
+    assert client.get("/api/tiles/photos/data").json()["id"] == "x"
+    client.get("/api/tiles/photos/data")  # cached
+    r = client.get("/api/tiles/image/immich/0b2e3c4d-1111-2222-3333-444455556666")
+    assert r.content == b"\xff\xd8jpeg" and r.headers["content-type"] == "image/jpeg"
+    assert agent.calls == [
+        ("tiles.get", {}), ("tiles.set", {"app": "immich", "settings": {"key": "k"}}),
+        ("tiles.data", {"tile": "photos"}),
+        ("tiles.image", {"app": "immich", "item": "0b2e3c4d-1111-2222-3333-444455556666"})]
+    assert client.get("/api/tiles/bogus/data").status_code == 404
+    assert client.get("/api/tiles/image/immich/..%2fetc").status_code == 404
+
+
 def test_nginx_ui_is_revalidated_and_keeps_security_headers():
     conf = (ROOT / "packages/dashboard/etc/nginx/sites-available/dahlia").read_text()
     root = conf[conf.index("location / {"):]
@@ -1224,3 +1268,67 @@ def test_encryption_routes(env):
     assert agent.calls[-1] == ("storage.auto_unlock", {"enabled": False})
     client.post("/api/storage/passphrase", json={"old": "a" * 8, "new": "b" * 8}, headers=CSRF)
     assert agent.calls[-1] == ("storage.change_passphrase", {"old": "a" * 8, "new": "b" * 8})
+
+
+# --- VMs and containers --------------------------------------------------------
+
+
+def test_vm_routes(env):
+    client, agent, _ = logged_in(env)
+    assert client.get("/api/vms").json() == {"action": "vm.status"}
+    r = client.post("/api/vms/install", json={"location": "system"}, headers=CSRF)
+    assert r.status_code == 200
+    assert agent.calls[-1] == ("vm.install", {"location": "system", "user": "fabian"})
+    body = {"name": "web", "kind": "container", "source": "image", "cpus": 2, "memory": 1024,
+            "disk": 10, "network": "nat"}
+    assert client.post("/api/vms", json=body, headers=CSRF).status_code == 200
+    assert agent.calls[-1][1]["image"] == "debian/13" and agent.calls[-1][1]["start"] is True
+    client.post("/api/vms/web/settings", json={"cpus": 1, "memory": 512, "autostart": True},
+                headers=CSRF)
+    assert agent.calls[-1] == ("vm.set", {"name": "web", "cpus": 1, "memory": 512,
+                                          "autostart": True})
+    for path, call in [("eject", ("vm.eject", {"name": "web"})),
+                       ("delete", ("vm.delete", {"name": "web"})),
+                       ("force-stop", ("vm.op", {"name": "web", "op": "force-stop"}))]:
+        assert client.post(f"/api/vms/web/{path}", headers=CSRF).status_code == 200
+        assert agent.calls[-1] == call
+    assert client.post("/api/vms/web/explode", headers=CSRF).status_code == 404
+    assert client.post("/api/vms/web/start").status_code == 403  # no CSRF header
+
+
+def test_vm_console_relay(env):
+    import socket
+    import threading
+
+    from starlette.websockets import WebSocketDisconnect
+
+    client, agent, _ = logged_in(env)
+    srv = socket.socket()
+    srv.bind(("127.0.0.1", 0))
+    srv.listen(1)
+
+    def vnc():
+        conn, _ = srv.accept()
+        conn.sendall(b"RFB 003.008\n")
+        conn.sendall(conn.recv(12).upper())
+        conn.close()
+
+    threading.Thread(target=vnc, daemon=True).start()
+    agent.replies["vm.console"] = {"name": "win", "port": srv.getsockname()[1]}
+    origin = {"origin": "http://testserver", "sec-websocket-protocol": "binary"}
+    with client.websocket_connect("/api/vms/win/console", headers=origin) as ws:
+        assert ws.receive_bytes() == b"RFB 003.008\n"
+        ws.send_bytes(b"rfb 003.008\n")
+        assert ws.receive_bytes() == b"RFB 003.008\n"
+    assert agent.calls[-1] == ("vm.console", {"name": "win"})
+    srv.close()
+
+    with pytest.raises(WebSocketDisconnect) as e, client.websocket_connect(
+            "/api/vms/win/console", headers={"origin": "http://evil.example"}):
+        pass
+    assert e.value.code == 4401
+    agent.errors["vm.console"] = AgentError("failed", "win is not running")
+    with pytest.raises(WebSocketDisconnect) as e, client.websocket_connect(
+            "/api/vms/win/console", headers={"origin": "http://testserver"}):
+        pass
+    assert e.value.code == 4404

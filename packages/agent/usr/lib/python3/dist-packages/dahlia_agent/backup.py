@@ -18,9 +18,18 @@ consistent) and started again afterwards. Old snapshots are thinned out:
 
     /etc/dahlia/backup.json                  settings
     /var/lib/dahlia/backup-status.json       result of the last run
+    /var/lib/dahlia/backup-probe.json        result of the last probe
+    /var/lib/dahlia/backup-runs.json         short log of the last runs (letters.py)
     backup.service / .timer                  the job and its schedule
+    backup-probe.service / .timer            the probe, monthly by default
 
-CLI: backup run | snapshots | restore SNAPSHOT (config|APP_ID)
+Probe: a backup is only worth something if it can be restored. Once a month
+the probe reads a part of the repository's data (restic check
+--read-data-subset), restores a random sample of files from the newest
+snapshot into /var/lib/dahlia/backup-probe and lets restic verify their
+content (restore --verify). A failed probe is sent as a notification.
+
+CLI: backup run | probe | snapshots | restore SNAPSHOT (config|APP_ID)
 """
 
 import argparse
@@ -28,8 +37,10 @@ import contextlib
 import datetime
 import json
 import os
+import random
 import re
 import secrets
+import shutil
 import subprocess
 import sys
 from collections.abc import Callable
@@ -49,6 +60,11 @@ HOST_RE = re.compile(r"^[A-Za-z0-9]([A-Za-z0-9.-]{0,252}[A-Za-z0-9])?$")
 SFTP_USER_RE = re.compile(r"^[a-z_][a-z0-9_.-]{0,31}$")
 SFTP_PATH_RE = re.compile(r"^[A-Za-z0-9/._~-]{1,200}$")
 SNAPSHOT_RE = re.compile(r"^[0-9a-f]{8,64}$")
+# Probe: files restored per run, their total size and the share of pack data read.
+PROBE_FILES = 20
+PROBE_BYTES = 512 * 1024**2
+PROBE_READ = "5%"
+RUNS_KEPT = 400
 
 
 class BackupError(ValueError):
@@ -131,6 +147,14 @@ class Backup:
     def status_file(self) -> Path:
         return self.state / "backup-status.json"
 
+    @property
+    def probe_file(self) -> Path:
+        return self.state / "backup-probe.json"
+
+    @property
+    def probe_dir(self) -> Path:
+        return self.state / "backup-probe"
+
     def settings(self) -> dict:
         try:
             data = json.loads(self.config_file.read_text())
@@ -152,6 +176,13 @@ class Backup:
     def status(self) -> dict:
         try:
             data = json.loads(self.status_file.read_text())
+        except (OSError, ValueError):
+            data = {}
+        return data if isinstance(data, dict) else {}
+
+    def probe_status(self) -> dict:
+        try:
+            data = json.loads(self.probe_file.read_text())
         except (OSError, ValueError):
             data = {}
         return data if isinstance(data, dict) else {}
@@ -250,6 +281,18 @@ class Backup:
         tmp.write_text(json.dumps(status) + "\n")
         tmp.replace(self.status_file)
 
+    def _log_run(self, status: dict) -> None:
+        path = self.state / "backup-runs.json"
+        try:
+            runs = json.loads(path.read_text()).get("runs", [])
+        except (OSError, ValueError, AttributeError):
+            runs = []
+        runs.append({"time": status.get("finished"), "result": status.get("result"),
+                     "added": status.get("added")})
+        tmp = path.with_name("backup-runs.json.tmp")
+        tmp.write_text(json.dumps({"runs": runs[-RUNS_KEPT:]}) + "\n")
+        tmp.replace(path)
+
     def backup(self) -> dict:
         """One run: stop apps, restic backup, start apps, thin out old snapshots."""
         settings = self.settings()
@@ -285,12 +328,77 @@ class Backup:
             status["finished"] = self.clock().strftime("%Y-%m-%dT%H:%M:%SZ")
             status["apps_stopped"] = stopped
             self._write_status(status)
+            self._log_run(status)
         keep = [a for k, v in KEEP.items() for a in (f"--keep-{k}", str(v))]
         try:
             self.restic("forget", "--tag", "dahlia", *keep, "--prune")
         except BackupError as e:
             status["warning"] = f"thinning out old snapshots failed: {e}"
             self._write_status(status)
+        return status
+
+    # --- probe ----------------------------------------------------------------
+
+    def sample(self, snapshot: str, pick: random.Random) -> list[dict]:
+        """Random files of a snapshot, at most PROBE_FILES and PROBE_BYTES."""
+        files = []
+        for line in self.restic("ls", "--json", snapshot, timeout=1800).splitlines():
+            try:
+                node = json.loads(line)
+            except ValueError:
+                continue
+            if node.get("struct_type") == "node" and node.get("type") == "file" \
+                    and isinstance(node.get("path"), str) and type(node.get("size")) is int:
+                files.append({"path": node["path"], "size": node["size"]})
+        pick.shuffle(files)
+        out, total = [], 0
+        for f in files:
+            if len(out) == PROBE_FILES:
+                break
+            if total + f["size"] <= PROBE_BYTES:
+                out.append(f)
+                total += f["size"]
+        return out
+
+    def probe(self, pick: random.Random | None = None) -> dict:
+        """Check the repository and restore a sample of the newest snapshot."""
+        pick = pick or random.SystemRandom()
+        status = {"started": self.clock().strftime("%Y-%m-%dT%H:%M:%SZ"), "result": "failed"}
+        try:
+            data = json.loads(self.restic("snapshots", "--json", "--tag", "dahlia", "--latest",
+                                          "1", timeout=300) or "[]")
+            if not data:
+                raise BackupError("the repository has no snapshot yet")
+            newest = data[-1]
+            snapshot = newest.get("short_id") or newest.get("id", "")[:8]
+            status.update(snapshot=snapshot, snapshot_time=newest.get("time"))
+            self.restic("check", f"--read-data-subset={PROBE_READ}", timeout=6 * 3600)
+            files = self.sample(snapshot, pick)
+            shutil.rmtree(self.probe_dir, ignore_errors=True)
+            self.probe_dir.mkdir(mode=0o700, parents=True)
+            if files:
+                self.restic("restore", snapshot, "--target", str(self.probe_dir), "--verify",
+                            *[a for f in files for a in ("--include", f["path"])],
+                            timeout=3 * 3600)
+            missing = []
+            for f in files:
+                got = self.probe_dir / f["path"].lstrip("/")
+                if not got.is_file() or got.stat().st_size != f["size"]:
+                    missing.append(f["path"])
+            if missing:
+                raise BackupError(f"{len(missing)} of {len(files)} files came back wrong, "
+                                  f"for example {missing[0]}")
+            status.update(result="success", files=len(files),
+                          bytes=sum(f["size"] for f in files), read=PROBE_READ)
+        except (BackupError, ValueError, subprocess.TimeoutExpired) as e:
+            status["error"] = str(e)
+        finally:
+            shutil.rmtree(self.probe_dir, ignore_errors=True)
+            status["finished"] = self.clock().strftime("%Y-%m-%dT%H:%M:%SZ")
+            self.state.mkdir(parents=True, exist_ok=True)
+            tmp = self.probe_file.with_name("backup-probe.json.tmp")
+            tmp.write_text(json.dumps(status) + "\n")
+            tmp.replace(self.probe_file)
         return status
 
     def snapshots(self) -> list[dict]:
@@ -327,6 +435,7 @@ def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="backup", description="Dahlia backup (restic).")
     sub = p.add_subparsers(dest="command", required=True)
     sub.add_parser("run", help="back up now (backup.service)")
+    sub.add_parser("probe", help="check the repository and restore a sample (backup-probe.service)")
     sub.add_parser("snapshots", help="list snapshots as JSON")
     r = sub.add_parser("restore", help="restore app data or the configuration")
     r.add_argument("snapshot")
@@ -337,6 +446,8 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "run":
             status = b.backup()
             print(f"backup: snapshot {status.get('snapshot')}")
+        elif args.command == "probe":
+            return probe_main(b)
         elif args.command == "snapshots":
             print(json.dumps(b.snapshots(), indent=2))
         else:
@@ -344,6 +455,27 @@ def main(argv: list[str] | None = None) -> int:
     except BackupError as e:
         print(f"backup: {e}", file=sys.stderr)
         return 1
+    return 0
+
+
+def probe_main(b: Backup) -> int:
+    """Run the probe and report a failure, and the first success after one."""
+    from . import notify
+
+    before = b.probe_status().get("result")
+    status = b.probe()
+    ctx = Context()
+    if status["result"] != "success":
+        print(f"backup: probe failed: {status.get('error')}", file=sys.stderr)
+        notify.send(ctx, "warning", "Backup probe failed",
+                    f"Restoring a sample of the newest backup failed: {status.get('error')}",
+                    "jobs")
+        return 1
+    print(f"backup: probe restored {status['files']} files of snapshot {status['snapshot']}")
+    if before == "failed":
+        notify.send(ctx, "info", "Backup probe works again",
+                    f"{status['files']} files of snapshot {status['snapshot']} were restored "
+                    "and verified.", "jobs")
     return 0
 
 
@@ -393,6 +525,8 @@ def backup_get(ctx: Context):
         **b.settings(),
         "candidates": target_candidates(ctx),
         "last": b.status(),
+        "probe": b.probe_status(),
+        "probe_job": unit_state(ctx, "backup-probe.service"),
         "public_key": b.public_key(),
         "job": unit_state(ctx, "backup.service"),
         "restore": unit_state(ctx, RESTORE_UNIT),
@@ -414,9 +548,10 @@ def backup_set(ctx: Context, target: dict, stop_apps: bool, folders: list):
         result = b.configure(target, stop_apps, folders)
     except BackupError as e:
         raise AgentError(INVALID_PARAMS, str(e)) from None
-    s = schedules.saved_schedules(ctx)["backup"]
-    if s["frequency"] != "off":
-        schedules.settings_set_schedule(ctx, "backup", **s)
+    saved = schedules.saved_schedules(ctx)
+    for job in ("backup", "backup-probe"):
+        if saved[job]["frequency"] != "off":
+            schedules.settings_set_schedule(ctx, job, **saved[job])
     return {**result, "public_key": b.public_key()}
 
 

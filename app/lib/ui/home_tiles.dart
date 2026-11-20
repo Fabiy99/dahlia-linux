@@ -10,13 +10,20 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../src/controller.dart';
 import '../src/format.dart';
+import '../src/letters.dart';
+import 'app_tiles.dart';
 import 'area.dart';
+import 'letters.dart';
 import 'shell.dart';
 import 'theme.dart';
 
 /// Everything the tiles show; the page loads it and rebuilds the tiles.
 class HomeData {
   Map? stats, lastStats, system, health, hardware, jobs, history;
+
+  /// Newest weekly letter (or the running week) and the saved ones.
+  Map? letter;
+  List<Map> letters = const [];
   List<Map> apps = const [];
   List<Map> weather = const [];
   Object? weatherError;
@@ -68,6 +75,10 @@ class HomeTiles {
     'cpu': 'overview.cpu',
     'memory': 'overview.memory',
     'history': 'history.title',
+    'letter': 'letter.title',
+    'photos': 'home.widget_photos',
+    'media': 'home.widget_media',
+    'downloads': 'home.widget_downloads',
   };
 
   /// Content of tile [id] at [width] (inside the padding).
@@ -83,6 +94,12 @@ class HomeTiles {
         'cpu' => cpu(),
         'memory' => memory(),
         'history' => history(width),
+        'letter' => letter(),
+        'photos' || 'media' || 'downloads' => [
+            header(id),
+            const SizedBox(height: 12),
+            AppContentTile(c, id, apps: d.apps, key: ValueKey('tile-$id')),
+          ],
         _ => const [],
       };
 
@@ -364,6 +381,34 @@ class HomeTiles {
               return row(t('job.${e.key}'), when ?? t('jobs.never'), color: when != null ? p.ok : null);
             }(),
       ]),
+    ];
+  }
+
+  // --- weekly letter -----------------------------------------------------------------
+
+  List<Widget> letter() {
+    final l = d.letter;
+    final newest = d.letters.where((x) => x['kind'] == 'week').firstOrNull;
+    final all = TextButton(
+      style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 8), minimumSize: const Size(0, 32)),
+      onPressed: () => showDialog<void>(
+        context: context,
+        builder: (context) => LetterDialog(c, saved: d.letters, first: '${newest?['id'] ?? 'week'}'),
+      ),
+      child: Text(t('letter.all')),
+    );
+    if (l == null) return [header('letter', side: all)];
+    return [
+      Row(children: [
+        Expanded(
+          child: Text(letterTitle(l, t), style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: p.fg)),
+        ),
+        all,
+      ]),
+      const SizedBox(height: 2),
+      Text(letterWhen(l, t, c.settings.lang), style: TextStyle(color: p.muted, fontSize: 13)),
+      const SizedBox(height: 12),
+      LetterLines(c, l),
     ];
   }
 

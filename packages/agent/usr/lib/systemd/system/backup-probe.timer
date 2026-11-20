@@ -1,0 +1,11 @@
+[Unit]
+Description=Monthly Dahlia backup probe
+
+# Enabled by the agent together with backup.timer (backup.set).
+[Timer]
+OnCalendar=*-*-07 04:00:00
+RandomizedDelaySec=30min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

@@ -17,6 +17,8 @@ import 'shares.dart';
 import 'storage.dart';
 import 'terminal.dart';
 import 'theme.dart';
+import 'tour.dart';
+import 'vms.dart';
 
 const title = 'Dahlia, I love you ♥';
 
@@ -45,10 +47,13 @@ class DahliaApp extends StatelessWidget {
               home: c.stage == Stage.home && c.area == Area.home,
               look: c.settings.look,
               mood: c.stage == Stage.home ? c.mood : null,
-              child: AnimatedSwitcher(
-                duration: const Duration(milliseconds: 350),
-                child: KeyedSubtree(key: ValueKey((c.stage, c.area)), child: SizedBox.expand(child: _page())),
-              ),
+              child: Stack(children: [
+                AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 350),
+                  child: KeyedSubtree(key: ValueKey((c.stage, c.area)), child: SizedBox.expand(child: _page())),
+                ),
+                if (c.tourActive && c.area == Area.home) Positioned.fill(child: TourOverlay(c)),
+              ]),
             ),
           ),
         ),
@@ -69,6 +74,7 @@ class DahliaApp extends StatelessWidget {
           Area.parity => ParityPage(c),
           Area.backup => BackupPage(c),
           Area.docker => DockerPage(c),
+          Area.vms => VmsPage(c),
           Area.jobs => JobsPage(c),
           Area.log => LogPage(c),
           Area.settings => SettingsPage(c),

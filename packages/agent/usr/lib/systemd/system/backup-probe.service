@@ -1,0 +1,14 @@
+[Unit]
+Description=Dahlia backup probe: check the repository and restore a sample
+Documentation=https://github.com/Fabiy99/dahlia-linux
+After=storage.target network-online.target backup.service
+Wants=network-online.target
+
+# Started by backup-probe.timer or job.start backup-probe. The probe sends its
+# own notification (dahlia_agent/backup.py), so no OnFailure= here.
+[Service]
+Type=oneshot
+ExecStart=/usr/sbin/backup probe
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7

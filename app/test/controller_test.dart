@@ -27,11 +27,14 @@ void main() {
   late Directory dir;
   late MemorySecrets secrets;
 
+  final popped = <String>[];
+
   Controller make() => Controller(
         settingsFile: File('${dir.path}/settings.json'),
         loadAsset: (p) async => File(p).readAsString(),
         secrets: secrets,
         version: '1.4.0',
+        popup: (n) async => popped.add(n.title),
       );
 
   setUp(() async {
@@ -115,6 +118,51 @@ void main() {
     fake.pending = const [];
     await c.checkPendingUpdates();
     expect(c.pendingUpdates, 0);
+    c.dispose();
+  });
+
+  test('notifications: old ones are only marked, new ones go to the desktop', () async {
+    popped.clear();
+    Map n(int time, String title) => {'time': time, 'level': 'warning', 'title': title, 'message': 'm'};
+    fake.notices = [n(100, 'old')];
+    final c = make();
+    await c.start();
+    await c.choose(fake.host);
+    await c.confirmFingerprint();
+    await c.login('fabian', 'pw', save: false);
+    await c.checkNotices();
+    expect([popped, c.unreadNotices, c.settings.noticeSeen], [<String>[], 0, 100]);
+    fake.notices = [n(300, 'third'), n(200, 'second'), n(100, 'old')];
+    await c.checkNotices();
+    expect(popped, ['second', 'third']);
+    expect(c.unreadNotices, 2);
+    c.readNotices();
+    expect(c.unreadNotices, 0);
+    await c.checkNotices();
+    expect(popped, hasLength(2));
+    c.setDesktopNotices(false);
+    fake.notices = [n(400, 'fourth'), ...fake.notices];
+    await c.checkNotices();
+    expect([popped.length, c.unreadNotices], [2, 1]);
+    final saved = Settings.load(File('${dir.path}/settings.json'));
+    expect([saved.noticeSeen, saved.noticeRead, saved.desktopNotices], [400, 300, false]);
+    c.dispose();
+  });
+
+  test('the welcome tour runs once after the first sign-in and can be started again', () async {
+    final c = make();
+    await c.start();
+    expect(c.tourActive, isFalse);
+    await c.choose(fake.host);
+    await c.confirmFingerprint();
+    await c.login('fabian', 'pw', save: false);
+    expect(c.tourActive, isTrue);
+    c.go(Area.apps);
+    c.finishTour();
+    expect(c.tourActive, isFalse);
+    expect(Settings.load(File('${dir.path}/settings.json')).tourDone, isTrue);
+    c.restartTour();
+    expect([c.tourActive, c.area], [true, Area.home]);
     c.dispose();
   });
 

@@ -1037,3 +1037,100 @@ dem ersten Herunterladen gelöscht.
 - Das apt-Repo wird in CI gebaut, signiert und auf GitHub Pages veröffentlicht
   (`https://fabiy99.github.io/dahlia-linux/`). Der private Schlüssel existiert nur als
   GitHub-Secret. Details: [apt-repo.md](apt-repo.md).
+
+## Sichere App-Updates (ab Meilenstein 58)
+
+Vor einem App-Update stoppt `agent` die App und kopiert ihre Appdaten und Dateien nach
+`<Ort>/appdata/.rollback/<id>/` (`cp -a --reflink=auto`, auf Btrfs und XFS fast kostenlos).
+Das neue Image wird schon vorher gezogen, die App steht also nur für die Kopie. Es gibt eine
+Kopie pro App, die vor dem letzten Update. Reicht der freie Platz nicht, läuft das Update ohne
+Kopie; ohne Kopie zeigt das UI keinen Weg zurück. „Zurück zur alten Version“ (`apps.rollback`) legt Appdaten,
+Vorlage und Images von vorher zurück; Images, die nur noch die Kopie brauchte, werden mit ihr
+gelöscht.
+
+## Backup-Probe (ab Meilenstein 59)
+
+`backup-probe.timer` (am 7. jedes Monats, 04:00) startet `backup probe`: `restic check
+--read-data-subset=5%`, dann eine Stichprobe aus dem neuesten Snapshot (höchstens 20 Dateien
+und 512 MB) nach `/var/lib/dahlia/backup-probe` wiederherstellen und mit restic prüfen. Das
+Ergebnis steht in `/var/lib/dahlia/backup-probe.json` und im Backup-Bereich. Ein Fehler und der
+erste Erfolg danach gehen über `notify` (Meldungsart `backup`). Der Timer wird mit dem
+Backup-Timer ein- und ausgeschaltet.
+
+## Benachrichtigungen in der App (ab Meilenstein 60)
+
+`GET /api/notifications?since=` liefert die von `notify` gesendeten Meldungen (die letzten 100)
+mit Zeit, Stufe, Titel und Text. Die Desktop-App fragt im selben Takt wie den Status, zeigt sie
+in der Glocken-Liste der Leiste und als Meldung des Betriebssystems
+(`flutter_local_notifications`). Die Systemmeldungen lassen sich in der App abschalten.
+Gelesen wird lokal in der App vermerkt.
+
+## Wochenbrief und Jahresrückblick (ab Meilenstein 61)
+
+`letters.timer` startet täglich um 08:00 `letters run`. Montags entsteht der Brief der
+Vorwoche, am 1. Januar der Rückblick aufs Vorjahr, unter `/var/lib/dahlia/letters/`. Ein Brief
+enthält nur Zahlen (Last, Temperatur, Netz aus der Verlaufsdatenbank, belegter Platz,
+Backup-Läufe und Probe, apt-Verlauf, Apps, Meldungen); Dashboard und App machen daraus Sätze in
+der Sprache des Lesers. Jeder neue Brief geht zusätzlich als kurze Meldung (Art `letters`)
+raus.
+
+## App-Kacheln auf dem Startbildschirm (ab Meilenstein 62)
+
+Kacheln mit Inhalt aus Apps: Fotos aus Immich, Neues aus Jellyfin, laufende Downloads aus
+qBittorrent oder Transmission. `agent` (`tiles.*`) fragt die App auf ihrem lokalen Port
+(`127.0.0.1:<host_port>`), es verlässt also nichts den Server. API-Schlüssel und Logins liegen
+in `/etc/dahlia/tiles.json` (root, 0600) und gehen nie zurück ans Dashboard. Bilder holt ebenfalls
+der agent (`tiles.image`); der Browser lädt sie vom Dashboard, nie direkt von der App.
+
+## Willkommens-Tour (ab Meilenstein 63)
+
+Nach der ersten Anmeldung führt die Desktop-App Schritt für Schritt durch Startbildschirm,
+Anpassen, Apps, Platten, Dateien, „Mehr“, Glocke und Handy. Ein Overlay hebt das jeweilige
+Element hervor. Erledigt wird lokal gespeichert; im Kontomenü lässt sich die Tour neu starten.
+
+## VMs und Container mit Incus (ab Meilenstein 64)
+
+Incus kommt aus Debian (`incus`, `qemu-system-x86`, `ovmf`, `swtpm`) und wird erst bei Bedarf
+installiert: `vm.install` startet `incus-install.service` (`/usr/lib/dahlia/incus-install.sh`).
+Das Skript legt den Speicherpool `default` an (Treiber `dir`, auf der System-SSD unter
+`/var/lib/incus` oder auf dem Cache unter `/mnt/cache/incus`), die NAT-Brücke `incusbr0` und
+nimmt das Dashboard-Konto in `incus-admin` auf, damit `incus exec <name> -- bash` im Terminal
+geht. `incus-forward.service` lässt Verkehr von `incusbr0` durch Dockers FORWARD-Regel, die
+nftables-Regeln nehmen DNS und DHCP von `incusbr0` an.
+
+- Quellen: Abbilder von `images.linuxcontainers.org` (feste Liste: Debian, Ubuntu, Alpine, Arch,
+  Rocky, Alma) oder für VMs eine ISO-Datei auf dem Server (Auswahl über den Ordnerbaum). Die
+  ISO wird als Volume `<name>-install` importiert und bootet zuerst; „Auswerfen“ entfernt es.
+- Netz: `nat` = `incusbr0` (vom Server aus erreichbar), `lan` = macvlan auf der Schnittstelle
+  der Standardroute (eigene Adresse vom Router; der Server selbst erreicht sie nicht).
+- Windows: TPM, Root-Platte über NVMe, `image.os=Windows`; Secure Boot ist abschaltbar.
+- Anlegen läuft im Hintergrund (`vm-create-<name>.service`, `/usr/sbin/machines create`), weil
+  Abbilder geladen werden. Der Auftrag wartet in `/run/dahlia/vm-create/<name>.json`; schlägt es
+  fehl, wird die halbe Instanz gelöscht.
+- Aktionen: `vm.status`, `vm.install`, `vm.create`, `vm.op` (start, stop, restart, force-stop),
+  `vm.set` (Kerne, RAM, Autostart), `vm.eject`, `vm.delete` (nur gestoppt), `vm.console`.
+
+Grafische Konsole: Jede VM bekommt `raw.qemu` „`-vnc 127.0.0.1:D`“ mit eigenem Display D aus
+50–99 (Port 5950–5999, gespeichert als `user.dahlia.vnc`). Der Port bleibt auf 127.0.0.1. Das
+Dashboard leitet ihn als WebSocket weiter (`/api/vms/<name>/console`, nur Admins, Origin muss zum
+Host passen). Der Browser nutzt noVNC (MPL-2.0, unter `www/vendor/novnc`), die Desktop-App einen
+eigenen RFB-Client (`lib/src/rfb.dart`: RFB 3.8 ohne Passwort, Raw, CopyRect, DesktopSize und
+QEMUs erweiterte Tastenereignisse mit Scancodes, damit jedes Tastaturlayout passt).
+
+## USB Creator (ab Meilenstein 65)
+
+Die Desktop-App unter Windows hat auf der Verbindungsseite „USB-Stick erstellen“. Sie holt das
+neueste Release über die GitHub-API, lädt die ISO und prüft sie gegen die `.sha256`-Datei des
+Releases; eine eigene ISO-Datei geht auch. USB-Platten listet `Get-Disk` (BusType USB) ohne
+Adminrechte. Geschrieben wird von `assets/usb-writer.ps1` in einer PowerShell mit UAC-Abfrage
+(`Start-Process -Verb RunAs`). Das Skript lehnt Platten ab, die nicht am USB hängen oder deren
+Größe sich seit der Auswahl geändert hat, nimmt die Platte offline, schreibt roh auf
+`\\.\PhysicalDriveN` und liest den Stick zum Vergleich mit der ISO zurück (SHA-256). Den
+Fortschritt schreibt es als JSON in eine Datei, die die App abfragt. CI testet das Skript unter
+Windows gegen eine virtuelle Platte (VHD).
+
+## Handbuch und Website (ab Meilenstein 66)
+
+Handbuch: `docs/de/handbuch.md` und `docs/en/handbook.md`. Die Website auf GitHub Pages baut
+`tools/build-site.py` aus `site/` und dem Handbuch, neben dem apt-Repo. Details:
+[apt-repo.md](apt-repo.md).

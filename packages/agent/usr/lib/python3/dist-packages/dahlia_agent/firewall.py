@@ -8,6 +8,8 @@ WS-Discovery while shares exist, NFS while a share is exported, and the
 ports of installed apps.
 Container ports Docker forwards (lan_ports) are dropped for other sources.
 
+Incus (machines.py): DNS and DHCP from the bridge incusbr0 reach the host.
+
 WireGuard (vpn.py): while the tunnel is on, its UDP port is open from
 anywhere, and the tunnel subnet is masqueraded on the way into the LAN.
 The NAT stays loaded with the firewall turned off.
@@ -319,6 +321,9 @@ def ruleset(ports: list[Port], networks: list[str], vpn: dict | None = None,
         "        ip saddr @local4 icmp type echo-request accept",
         "        udp sport 67 udp dport 68 accept",
         "        ip6 saddr fe80::/10 udp sport 547 udp dport 546 accept",
+        # DNS and DHCP of the Incus bridge (machines.py); the name matches nothing without it.
+        '        iifname "incusbr0" udp dport { 53, 67 } accept',
+        '        iifname "incusbr0" tcp dport 53 accept',
     ]
     # Own rules first, so a drop also covers the ports Dahlia opens.
     for rule in rules or []:

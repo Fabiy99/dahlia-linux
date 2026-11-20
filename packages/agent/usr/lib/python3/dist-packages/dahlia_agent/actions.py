@@ -100,12 +100,13 @@ JOBS = {
     "snapraid-scrub": "snapraid-scrub.service",
     "update": "update.service",
     "backup": "backup.service",
+    "backup-probe": "backup-probe.service",
     "smart-short": "smart-test@short.service",
     "smart-long": "smart-test@long.service",
 }
 # Jobs job.start may start. Updates go through updates.apply.
-STARTABLE_JOBS = ("mover", "snapraid-sync", "snapraid-scrub", "backup", "smart-short",
-                  "smart-long")
+STARTABLE_JOBS = ("mover", "snapraid-sync", "snapraid-scrub", "backup", "backup-probe",
+                  "smart-short", "smart-long")
 
 
 @dataclass(frozen=True)
@@ -1105,6 +1106,12 @@ def apps_update(ctx: Context, id: str):
     return start_app_job(ctx, id, "update")
 
 
+@action("apps.rollback", mutating=True, params={"id": Param(str, pattern=APP_ID_RE)})
+def apps_rollback(ctx: Context, id: str):
+    """Go back to the version before the last update (data copy), in the background."""
+    return start_app_job(ctx, id, "rollback")
+
+
 def job_error(ctx: Context, unit: str) -> str:
     """Last error apps logged in the unit's journal, or ""."""
     out = ctx.runner.run(["journalctl", "-u", unit, "-n", "50", "-o", "cat", "--no-pager"]).stdout
@@ -1232,6 +1239,8 @@ from . import (  # noqa: E402, F401
     hardware,
     health,
     history,
+    letters,
+    machines,
     netlayout,
     network,
     notify,
@@ -1241,6 +1250,7 @@ from . import (  # noqa: E402, F401
     settings,
     smb,
     snapshots,
+    tiles,
     unattended,
     ups,
     vpn,

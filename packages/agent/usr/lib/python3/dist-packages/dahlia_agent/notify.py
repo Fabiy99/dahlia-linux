@@ -21,7 +21,7 @@ from .protocol import FAILED, INVALID_PARAMS, AgentError
 from .settings import read_json, write_file
 
 CHANNELS = ("email", "ntfy", "gotify")
-EVENTS = ("smart", "temperature", "usage", "jobs", "ups", "updates")
+EVENTS = ("smart", "temperature", "usage", "jobs", "ups", "updates", "letters")
 LEVELS = ("info", "warning", "critical")
 HISTORY_MAX = 100
 # Disk temperature (°C) that counts as a problem; SSDs run warmer.
@@ -229,6 +229,7 @@ JOB_NAMES = {
     "parity.service": "Parity repair",
     "rollback.service": "Rollback",
     "update.service": "System update",
+    "backup.service": "Backup",
     "tailscale-install.service": "Tailscale install",
     "smart-test@short.service": "SMART short self-test",
     "smart-test@long.service": "SMART long self-test",

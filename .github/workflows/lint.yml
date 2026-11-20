@@ -32,6 +32,9 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
+      - name: Install restic
+        # For the backup tests that run restic itself (tests/test_backup.py).
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends restic
       - name: Install tools
         # FastAPI as in Debian 13 (python3-fastapi 0.115); httpx for its TestClient.
         run: pip install ruff pytest pyyaml "fastapi==0.115.*" "httpx<0.28"

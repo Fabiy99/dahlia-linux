@@ -9,6 +9,7 @@ import 'package:flutter/foundation.dart';
 
 import 'home_layout.dart';
 import 'manifest.dart';
+import 'notices.dart';
 import 'pairing.dart';
 import 'server.dart';
 import 'settings.dart';
@@ -18,7 +19,7 @@ import 'system.dart';
 enum Stage { starting, connect, fingerprint, connecting, login, update, home }
 
 /// Area shown in Stage.home, picked in the top bar.
-enum Area { home, apps, storage, files, shares, parity, backup, docker, jobs, log, terminal, settings }
+enum Area { home, apps, storage, files, shares, parity, backup, docker, vms, jobs, log, terminal, settings }
 
 typedef Assets = Future<String> Function(String path);
 
@@ -28,7 +29,12 @@ class Controller extends ChangeNotifier {
     required this.loadAsset,
     Secrets? secrets,
     this.version = appVersion,
+    this.popup,
   }) : secrets = secrets ?? Secrets();
+
+  /// Shows a notification as a message of the operating system (main.dart);
+  /// null in tests.
+  final Future<void> Function(Notice)? popup;
 
   final File settingsFile;
   final Assets loadAsset;
@@ -48,6 +54,11 @@ class Controller extends ChangeNotifier {
 
   Server? server;
   String? user;
+
+  /// Role of the account (admin, viewer); the server checks it on every call.
+  String? role;
+
+  bool get isAdmin => role != 'viewer';
 
   /// Host and CA while the user compares the fingerprint.
   String? pendingHost;
@@ -85,11 +96,17 @@ class Controller extends ChangeNotifier {
       // Signed in: ask for pending updates now and then every hour.
       _pendingTimer?.cancel();
       _pendingTimer = Timer.periodic(const Duration(hours: 1), (_) => checkPendingUpdates());
+      _noticeTimer?.cancel();
+      _noticeTimer = Timer.periodic(const Duration(minutes: 1), (_) => checkNotices());
       unawaited(checkPendingUpdates());
       unawaited(loadHome());
+      unawaited(checkNotices());
+      unawaited(_loadRole());
     } else if (s != Stage.home) {
       _pendingTimer?.cancel();
       _pendingTimer = null;
+      _noticeTimer?.cancel();
+      _noticeTimer = null;
     }
     stage = s;
     error = err;
@@ -193,12 +210,13 @@ class Controller extends ChangeNotifier {
 
   void back() => _set(Stage.connect);
 
-  /// "Other server": keeps nothing of the old pairing but the language.
+  /// "Other server": keeps nothing of the old pairing but the language and
+  /// the app's own choices (desktop messages, tour).
   Future<void> otherServer() async {
     server?.close();
     server = null;
     user = null;
-    settings = Settings(lang: settings.lang);
+    settings = Settings(lang: settings.lang, desktopNotices: settings.desktopNotices, tourDone: settings.tourDone);
     settings.save(settingsFile);
     _set(Stage.connect);
   }
@@ -408,6 +426,91 @@ class Controller extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> _loadRole() async {
+    try {
+      final st = await server?.get('/api/state');
+      if (st is Map && st['role'] is String && !_disposed) {
+        role = st['role'] as String;
+        notifyListeners();
+      }
+    } on VersionMismatch {
+      return;
+    } on ApiError {
+      return;
+    }
+  }
+
+  // --- notifications -----------------------------------------------------------
+
+  /// Last notifications of the server, newest first.
+  List<Notice> notices = const [];
+  Timer? _noticeTimer;
+
+  /// Notifications not yet seen in the bell list.
+  int get unreadNotices => notices.where((n) => n.time > settings.noticeRead).length;
+
+  /// Fetches the notifications; new ones go to the desktop. The first check
+  /// after pairing only marks what is already there as seen.
+  Future<void> checkNotices() async {
+    final s = server;
+    if (s == null) return;
+    final List<Notice> all;
+    try {
+      all = parseNotices(await s.get('/api/notifications'));
+    } on VersionMismatch {
+      return;
+    } on ApiError {
+      return;
+    }
+    if (_disposed) return;
+    final seen = settings.noticeSeen;
+    final show = seen == null || !settings.desktopNotices ? const <Notice>[] : freshNotices(all, seen);
+    final newest = newestTime(all, seen ?? 0);
+    if (newest != seen) {
+      settings.noticeSeen = newest;
+      if (seen == null) settings.noticeRead = newest;
+      settings.save(settingsFile);
+    }
+    notices = all;
+    notifyListeners();
+    for (final n in show) {
+      await popup?.call(n);
+    }
+  }
+
+  /// The bell list was opened.
+  void readNotices() {
+    final newest = newestTime(notices, settings.noticeRead);
+    if (newest == settings.noticeRead) return;
+    settings.noticeRead = newest;
+    settings.save(settingsFile);
+    notifyListeners();
+  }
+
+  // --- welcome tour --------------------------------------------------------------
+
+  /// The tour runs on the first sign-in of this app.
+  bool get tourActive => stage == Stage.home && !settings.tourDone;
+
+  void finishTour() {
+    settings.tourDone = true;
+    settings.save(settingsFile);
+    notifyListeners();
+  }
+
+  void restartTour() {
+    settings.tourDone = false;
+    settings.save(settingsFile);
+    area = Area.home;
+    notifyListeners();
+  }
+
+  void setDesktopNotices(bool on) {
+    settings.desktopNotices = on;
+    settings.save(settingsFile);
+    notifyListeners();
+  }
+
   // --- version binding ---------------------------------------------------------
 
   void _mismatch(String server) {
@@ -421,6 +524,7 @@ class Controller extends ChangeNotifier {
   void dispose() {
     _disposed = true;
     _pendingTimer?.cancel();
+    _noticeTimer?.cancel();
     server?.close();
     super.dispose();
   }

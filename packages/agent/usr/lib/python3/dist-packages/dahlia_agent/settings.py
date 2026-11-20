@@ -196,6 +196,7 @@ SCHEDULE_TIMERS = {
     "snapraid-sync": "snapraid-sync.timer",
     "snapraid-scrub": "snapraid-scrub.timer",
     "backup": "backup.timer",
+    "backup-probe": "backup-probe.timer",
     "smart-short": "smart-short.timer",
     "smart-long": "smart-long.timer",
 }
@@ -208,6 +209,7 @@ DEFAULT_SCHEDULES = {
     "snapraid-sync": {"frequency": "daily", "time": "04:30", "weekday": "sun", "monthday": 1},
     "snapraid-scrub": {"frequency": "weekly", "time": "06:00", "weekday": "sun", "monthday": 1},
     "backup": {"frequency": "daily", "time": "02:00", "weekday": "sun", "monthday": 1},
+    "backup-probe": {"frequency": "monthly", "time": "04:00", "weekday": "sun", "monthday": 7},
     "smart-short": {"frequency": "weekly", "time": "05:00", "weekday": "sat", "monthday": 1},
     # Off by default: a long test of a large HDD takes a day and keeps it spinning.
     "smart-long": {"frequency": "off", "time": "05:00", "weekday": "sat", "monthday": 15},

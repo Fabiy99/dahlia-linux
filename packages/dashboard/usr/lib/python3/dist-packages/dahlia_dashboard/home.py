@@ -15,16 +15,17 @@ import urllib.request
 from collections.abc import Callable
 from pathlib import Path
 
-WIDGETS = ("weather", "apps", "storage", "system", "jobs", "network", "disks", "health",
-           "cpu", "memory", "history")
+WIDGETS = ("weather", "apps", "storage", "system", "jobs", "letter", "photos", "media",
+           "downloads", "network", "disks", "health", "cpu", "memory", "history")
 # Start screen of the design: weather, apps, storage, system, recently done.
-WIDGETS_OFF = ("network", "disks", "health", "cpu", "memory", "history")
+WIDGETS_OFF = ("photos", "media", "downloads", "network", "disks", "health", "cpu", "memory",
+               "history")
 DEFAULT_WIDGETS = {w: w not in WIDGETS_OFF for w in WIDGETS}
 # Tile widths: s small, m medium, l large, xl full row.
 SIZES = ("s", "m", "l", "xl")
 DEFAULT_SIZES = {"weather": "m", "apps": "l", "storage": "s", "system": "s", "jobs": "s",
                  "network": "s", "disks": "s", "health": "l", "cpu": "s", "memory": "s",
-                 "history": "l"}
+                 "history": "l", "letter": "m", "photos": "m", "media": "l", "downloads": "m"}
 # Appearance: colour scheme, accent colour, backdrop, weather effects.
 LOOK_CHOICES = {
     "theme": ("auto", "light", "dark"),

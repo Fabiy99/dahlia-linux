@@ -104,6 +104,18 @@ class _AppsPageState extends State<AppsPage> with AreaCalls {
     }
   }
 
+  /// Back to the copy from before the last update, after a question.
+  Future<void> _rollback(Map app) async {
+    final back = app['rollback'];
+    if (back is! Map) return;
+    final name = '${app['name'] ?? app['id']}';
+    if (!await ask(c.t('apps.confirm_rollback', {'name': name, 'version': back['version']}), 'apps.rollback',
+        danger: true)) {
+      return;
+    }
+    if (mounted) await _job(app, 'rollback');
+  }
+
   Future<void> _startStop(Map app, String op) async {
     final m = ScaffoldMessenger.of(context);
     final id = '${app['id']}';
@@ -210,6 +222,7 @@ class _AppsPageState extends State<AppsPage> with AreaCalls {
                 onStart: () => _startStop(a, 'start'),
                 onStop: () => _startStop(a, 'stop'),
                 onUpdate: () => _job(a, 'update'),
+                onRollback: () => _rollback(a),
                 onRemove: () => _remove(a),
               ),
             ),
@@ -378,13 +391,14 @@ class _InstalledCard extends StatelessWidget {
     required this.onStart,
     required this.onStop,
     required this.onUpdate,
+    required this.onRollback,
     required this.onRemove,
   });
 
   final Controller c;
   final Map app;
   final bool gpu, busy;
-  final VoidCallback onStart, onStop, onUpdate, onRemove;
+  final VoidCallback onStart, onStop, onUpdate, onRollback, onRemove;
 
   @override
   Widget build(BuildContext context) {
@@ -394,6 +408,7 @@ class _InstalledCard extends StatelessWidget {
     final notes = localized(app['notes'], c.settings.lang);
     final link = appUrl(c, app);
     final login = app['login'];
+    final back = app['rollback'];
     final running = status == 'running';
     return Glass(
       padding: const EdgeInsets.all(18),
@@ -408,6 +423,18 @@ class _InstalledCard extends StatelessWidget {
           Text(notes, style: TextStyle(color: p.muted, fontSize: 13, height: 1.45)),
         ],
         if (login is Map) _Login(c: c, login: login),
+        if (back is Map) ...[
+          const SizedBox(height: 12),
+          Wrap(spacing: 10, runSpacing: 6, crossAxisAlignment: WrapCrossAlignment.center, children: [
+            Text(
+                c.t('apps.rollback_kept', {
+                  'version': back['version'],
+                  'date': _stamp(context, back['time']),
+                }),
+                style: TextStyle(color: p.muted, fontSize: 13)),
+            OutlinedButton(onPressed: busy ? null : onRollback, child: Text(c.t('apps.rollback'))),
+          ]),
+        ],
         const SizedBox(height: 14),
         Row(children: [
           if (busy)
@@ -448,6 +475,14 @@ class _InstalledCard extends StatelessWidget {
       ]),
     );
   }
+}
+
+/// Date and time of a UTC stamp in the local time zone.
+String _stamp(BuildContext context, Object? iso) {
+  final t = DateTime.tryParse('$iso')?.toLocal();
+  if (t == null) return '';
+  final l = MaterialLocalizations.of(context);
+  return '${l.formatMediumDate(t)}, ${l.formatTimeOfDay(TimeOfDay.fromDateTime(t), alwaysUse24HourFormat: true)}';
 }
 
 /// Default login of an app, hidden until asked for.
@@ -693,11 +728,13 @@ class _InstallDialogState extends State<_InstallDialog> {
 
 /// Folder tree of one location; pops with the chosen folder or null.
 /// Files are listed greyed out for orientation, a folder is what gets picked.
+/// With [fileExt] (".iso"), files with that ending are picked instead.
 class FolderPicker extends StatefulWidget {
-  const FolderPicker({super.key, required this.c, required this.start});
+  const FolderPicker({super.key, required this.c, required this.start, this.fileExt});
 
   final Controller c;
   final Place start;
+  final String? fileExt;
 
   @override
   State<FolderPicker> createState() => _FolderPickerState();
@@ -707,6 +744,7 @@ class _FolderPickerState extends State<FolderPicker> {
   late Place at = Place(widget.start.root, widget.start.parent);
   Map? data;
   String? error;
+  String? file;
   final _name = TextEditingController();
 
   Controller get c => widget.c;
@@ -734,6 +772,7 @@ class _FolderPickerState extends State<FolderPicker> {
         at = to;
         data = r;
         error = null;
+        file = null;
       });
       return true;
     } on ApiError catch (e) {
@@ -773,8 +812,9 @@ class _FolderPickerState extends State<FolderPicker> {
     final files = d == null || d['files'] is! List ? const <String>[] : (d['files'] as List).whereType<String>().toList();
     final parts = at.path.isEmpty ? const <String>[] : at.path.split('/');
     final canCreate = d != null && d['mounted'] == true && !(at.root == remotesRoot && at.path.isEmpty);
+    final ext = widget.fileExt;
     return AlertDialog(
-      title: Text(c.t('folder.title')),
+      title: Text(ext == null ? c.t('folder.title') : c.t('folder.file_title', {'ext': ext})),
       content: SizedBox(
         width: 520,
         height: 460,
@@ -813,12 +853,22 @@ class _FolderPickerState extends State<FolderPicker> {
                           onTap: () => _open(Place(at.root, joinPath(at.path, name))),
                         ),
                       for (final name in files)
-                        ListTile(
-                          dense: true,
-                          enabled: false,
-                          leading: Icon(Icons.description_outlined, color: p.muted),
-                          title: Text(name, style: TextStyle(color: p.muted)),
-                        ),
+                        if (ext != null && name.toLowerCase().endsWith(ext))
+                          ListTile(
+                            dense: true,
+                            selected: name == file,
+                            selectedTileColor: p.navActive,
+                            leading: Icon(Icons.album_outlined, color: p.accent),
+                            title: Text(name),
+                            onTap: () => setState(() => file = name),
+                          )
+                        else
+                          ListTile(
+                            dense: true,
+                            enabled: false,
+                            leading: Icon(Icons.description_outlined, color: p.muted),
+                            title: Text(name, style: TextStyle(color: p.muted)),
+                          ),
                     ]),
                   ),
                 ),
@@ -844,10 +894,16 @@ class _FolderPickerState extends State<FolderPicker> {
       ),
       actions: [
         TextButton(onPressed: () => Navigator.pop(context), child: Text(c.t('common.cancel'))),
-        FilledButton(
-          onPressed: d != null && at.path.isNotEmpty ? () => Navigator.pop(context, at) : null,
-          child: Text(c.t('folder.choose')),
-        ),
+        if (ext == null)
+          FilledButton(
+            onPressed: d != null && at.path.isNotEmpty ? () => Navigator.pop(context, at) : null,
+            child: Text(c.t('folder.choose')),
+          )
+        else
+          FilledButton(
+            onPressed: file == null ? null : () => Navigator.pop(context, Place(at.root, joinPath(at.path, file!))),
+            child: Text(c.t('folder.choose')),
+          ),
       ],
     );
   }

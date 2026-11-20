@@ -14,6 +14,7 @@ import '../src/server.dart';
 import 'home_tiles.dart';
 import 'shell.dart';
 import 'theme.dart';
+import 'tour.dart';
 import 'widgets.dart';
 
 /// Samples kept for the processor and memory sparklines (HISTORY in app.js).
@@ -124,7 +125,19 @@ class _HomePageState extends State<HomePage> {
       _loadHealth(),
       _loadWeather(),
       _loadHistory(),
+      _loadLetter(),
     ]);
+  }
+
+  Future<void> _loadLetter() async {
+    final r = await _call(() => s.get('/api/letters'));
+    final saved = r is Map && r['letters'] is List ? (r['letters'] as List).whereType<Map>().toList() : <Map>[];
+    final newest = saved.where((x) => x['kind'] == 'week').firstOrNull;
+    final l = await _call(() => s.get('/api/letters/${newest?['id'] ?? 'week'}'));
+    _put(() {
+      d.letters = saved;
+      d.letter = l is Map ? l : null;
+    });
   }
 
   void _put(VoidCallback f) {
@@ -271,6 +284,7 @@ class _HomePageState extends State<HomePage> {
   Widget _customizeButton(Palette p) {
     final on = editing;
     return Material(
+      key: tourKey(c, 'customize'),
       color: on ? p.accent : p.glass,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(14),
@@ -328,6 +342,7 @@ class _HomePageState extends State<HomePage> {
             HomeTile('storage', 's', true),
             HomeTile('system', 's', true),
             HomeTile('jobs', 's', true),
+            HomeTile('letter', 'm', true),
           ]
         : c.home.shown;
     final builder = HomeTiles(

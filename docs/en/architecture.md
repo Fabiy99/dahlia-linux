@@ -1011,3 +1011,98 @@ is placed in the dashboard's runtime directory and deleted after the first downl
 - The apt repository is built and signed in CI and published on GitHub Pages
   (`https://fabiy99.github.io/dahlia-linux/`). The private key exists only as a GitHub
   secret. Details: [apt-repo.md](apt-repo.md).
+
+## Safe app updates (from milestone 58)
+
+Before an app update `agent` stops the app and copies its app data and files to
+`<location>/appdata/.rollback/<id>/` (`cp -a --reflink=auto`, nearly free on Btrfs and XFS).
+The new image is pulled first, so the app is down only for the copy. There is one copy per app,
+the one before the last update. Without enough free space the update runs without a copy, and
+the UI offers no way back. "Back to the old version" (`apps.rollback`) puts back app data, template and
+images from before; images only the copy still needed are deleted with it.
+
+## Backup probe (from milestone 59)
+
+`backup-probe.timer` (on the 7th of every month, 04:00) runs `backup probe`: `restic check
+--read-data-subset=5%`, then a sample of the newest snapshot (at most 20 files and 512 MB) is
+restored to `/var/lib/dahlia/backup-probe` and verified by restic. The result is kept in
+`/var/lib/dahlia/backup-probe.json` and shown in the Backup area. A failure and the first
+success after one go through `notify` (event `backup`). The timer is enabled and disabled
+together with the backup timer.
+
+## Notifications in the app (from milestone 60)
+
+`GET /api/notifications?since=` returns the messages `notify` sent (the last 100) with time,
+level, title and text. The desktop app polls it along with the status and shows them in the
+bell list of the bar and as operating system messages (`flutter_local_notifications`).
+System messages can be turned off in the app; read state is kept locally in the app.
+
+## Weekly letter and year review (from milestone 61)
+
+`letters.timer` runs `letters run` daily at 08:00. On Mondays it writes the letter of the past
+week, on 1 January the review of the past year, under `/var/lib/dahlia/letters/`. A letter holds
+numbers only (load, temperature, network from the history database, space used, backup runs
+and probe, apt history, apps, notifications); the dashboard and the app turn them into
+sentences in the reader's language. Each new letter is also sent as a short notification
+(event `letters`).
+
+## App tiles on the start screen (from milestone 62)
+
+Tiles with content from apps: photos from Immich, new in Jellyfin, running downloads from
+qBittorrent or Transmission. `agent` (`tiles.*`) asks the app on its local port
+(`127.0.0.1:<host_port>`), so nothing leaves the server. API keys and logins are kept in
+`/etc/dahlia/tiles.json` (root, 0600) and never sent back to the dashboard. Pictures also go
+through the agent (`tiles.image`); the browser loads them from the dashboard, never from the
+app directly.
+
+## Welcome tour (from milestone 63)
+
+After the first sign-in the desktop app walks step by step through start screen, Customize,
+Apps, Disks, Files, "More", the bell and the phone. An overlay highlights each element. Done
+is stored locally; the account menu starts the tour again.
+
+## VMs and containers with Incus (from milestone 64)
+
+Incus comes from Debian (`incus`, `qemu-system-x86`, `ovmf`, `swtpm`) and is installed on
+demand: `vm.install` starts `incus-install.service` (`/usr/lib/dahlia/incus-install.sh`). The
+script creates the storage pool `default` (driver `dir`, on the system SSD under
+`/var/lib/incus` or on the cache under `/mnt/cache/incus`), the NAT bridge `incusbr0`, and adds
+the dashboard account to `incus-admin`, so `incus exec <name> -- bash` works in the terminal.
+`incus-forward.service` lets `incusbr0` traffic pass Docker's FORWARD rule; the nftables rules
+accept DNS and DHCP from `incusbr0`.
+
+- Sources: images from `images.linuxcontainers.org` (a fixed list: Debian, Ubuntu, Alpine, Arch,
+  Rocky, Alma) or, for VMs, an ISO file on the server (picked in the folder tree). The ISO is
+  imported as volume `<name>-install` and boots first; "Eject" removes it.
+- Network: `nat` = `incusbr0` (reachable from the server), `lan` = macvlan on the interface of
+  the default route (own address from the router; the server itself cannot reach it).
+- Windows: TPM, root disk on NVMe, `image.os=Windows`; Secure Boot can be turned off.
+- Creating runs in the background (`vm-create-<name>.service`, `/usr/sbin/machines create`)
+  because images are downloaded. The request waits in `/run/dahlia/vm-create/<name>.json`; on
+  failure the partial instance is deleted.
+- Actions: `vm.status`, `vm.install`, `vm.create`, `vm.op` (start, stop, restart, force-stop),
+  `vm.set` (cores, RAM, autostart), `vm.eject`, `vm.delete` (stopped only), `vm.console`.
+
+Graphical console: every VM gets `raw.qemu` "`-vnc 127.0.0.1:D`" with its own display D from
+50–99 (port 5950–5999, stored as `user.dahlia.vnc`). The port stays on 127.0.0.1. The
+dashboard relays it as a WebSocket (`/api/vms/<name>/console`, admins only, Origin must match
+the host). The browser uses noVNC (MPL-2.0, in `www/vendor/novnc`), the desktop app its own RFB
+client (`lib/src/rfb.dart`: RFB 3.8 without password, Raw, CopyRect, DesktopSize and QEMU's
+extended key events with scan codes, so every keyboard layout fits).
+
+## USB Creator (from milestone 65)
+
+On Windows the desktop app has "Make a USB stick" on the connect page. It gets the latest
+release from the GitHub API, downloads the ISO and checks it against the release's `.sha256`
+file; an own ISO file works too. `Get-Disk` (BusType USB) lists USB disks without admin rights.
+Writing is done by `assets/usb-writer.ps1` in a PowerShell with a UAC prompt
+(`Start-Process -Verb RunAs`). The script refuses disks that are not on USB or whose size
+changed since they were picked, takes the disk offline, writes raw to `\\.\PhysicalDriveN` and
+reads the stick back to compare it with the ISO (SHA-256). It writes its progress as JSON to a
+file the app polls. CI tests the script on Windows against a virtual disk (VHD).
+
+## Handbook and website (from milestone 66)
+
+Handbook: `docs/de/handbuch.md` and `docs/en/handbook.md`. `tools/build-site.py` builds the
+website on GitHub Pages from `site/` and the handbook, next to the apt repository. Details:
+[apt-repo.md](apt-repo.md).
