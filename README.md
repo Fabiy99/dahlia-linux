@@ -195,6 +195,13 @@ Nach 1.0 (1.x):
 64. VMs und LXC-Container über Incus, grafische Konsole in Browser und App
 65. USB Creator für Windows in der Desktop-App
 66. Handbuch (DE/EN) und Website auf GitHub Pages
+67. Umzug von Unraid: Umzugshelfer als Unraid-App, Übernahme von Platten, Freigaben, SMB-Benutzern, Containern und WireGuard
+68. Installation ohne Bildschirm: Stick aus dem USB Creator, Plattenwahl und Kopplung in der App
+69. Platte tauschen mit Assistent
+70. Familienkonten
+71. Bilderrahmen am Server-Monitor
+72. Snapshots und Backup für VMs und Container
+73. Strom und Kosten im Wochenbrief
 
 Später: Code-Signierung der Desktop-App (SignPath).
 
@@ -409,6 +416,13 @@ After 1.0 (1.x):
 64. VMs and LXC containers through Incus, graphical console in browser and app
 65. USB Creator for Windows in the desktop app
 66. Handbook (DE/EN) and website on GitHub Pages
+67. Moving from Unraid: migration helper as an Unraid app, takeover of disks, shares, SMB users, containers and WireGuard
+68. Install without a screen: stick from the USB Creator, disk choice and pairing in the app
+69. Disk replacement wizard
+70. Family accounts
+71. Photo frame on the server monitor
+72. Snapshots and backup for VMs and containers
+73. Power and cost in the weekly letter
 
 Later: code signing of the desktop app (SignPath).
 
