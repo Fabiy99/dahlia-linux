@@ -4,11 +4,13 @@
 
 import 'dart:math' as math;
 
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../src/controller.dart';
+import '../src/family.dart';
 import '../src/format.dart';
 import '../src/letters.dart';
 import 'app_tiles.dart';
@@ -79,6 +81,7 @@ class HomeTiles {
     'photos': 'home.widget_photos',
     'media': 'home.widget_media',
     'downloads': 'home.widget_downloads',
+    'family-shares': 'family.shares',
   };
 
   /// Content of tile [id] at [width] (inside the padding).
@@ -95,6 +98,7 @@ class HomeTiles {
         'memory' => memory(),
         'history' => history(width),
         'letter' => letter(),
+        'family-shares' => familySharesTile(),
         'photos' || 'media' || 'downloads' => [
             header(id),
             const SizedBox(height: 12),
@@ -102,6 +106,47 @@ class HomeTiles {
           ],
         _ => const [],
       };
+
+  /// Shares a family account may open, with the path to copy.
+  List<Widget> familySharesTile() {
+    final host = '${c.family['host'] ?? c.settings.host ?? ''}';
+    final shares = familyShares(c.family);
+    final name = '${c.family['name'] ?? c.user ?? ''}';
+    return [
+      header('family-shares'),
+      if (shares.isEmpty) empty(t('family.no_shares')),
+      for (final sh in shares)
+        Row(children: [
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('${sh['name']}', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+              Text(
+                '${sh['comment'] ?? ''}'.isNotEmpty ? '${sh['comment']}' : smbPath(host, '${sh['name']}'),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(color: p.muted, fontSize: 12.5),
+              ),
+            ]),
+          ),
+          Tag(t('family.access_${sh['access']}'), sh['access'] == 'rw' ? p.ok : infoColor(context)),
+          const SizedBox(width: 8),
+          TextButton(
+            onPressed: () async {
+              final path = smbPath(host, '${sh['name']}');
+              await Clipboard.setData(ClipboardData(text: path));
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(t('family.copied', {'path': path}))));
+              }
+            },
+            child: Text(t('family.copy')),
+          ),
+        ]),
+      Text(
+        c.family['smb'] == true ? t('family.smb_hint', {'name': displayName(name)}) : t('family.no_smb'),
+        style: TextStyle(color: p.muted, fontSize: 12.5),
+      ),
+    ];
+  }
 
   // --- pieces ------------------------------------------------------------------
 
@@ -225,7 +270,7 @@ class HomeTiles {
     return [
       header('apps', note: list.isEmpty ? null : t('home.apps_running', {'n': running, 'total': list.length})),
       if (list.isEmpty)
-        empty(t('apps.none_installed'))
+        empty(t(c.isFamily ? 'family.no_apps' : 'apps.none_installed'))
       else
         Wrap(spacing: 14, runSpacing: 14, children: [for (final a in list) SizedBox(width: cell, child: AppTile(c, a))]),
     ];
@@ -742,7 +787,9 @@ class AppTile extends StatelessWidget {
     final state = update ? c.t('apps.update_short') : tv(c, 'app_status', status);
     final color = update ? p.warn : (const ['running'].contains(status) ? p.ok : (const ['busy', 'partial', 'restarting'].contains(status) ? p.warn : p.muted));
     // A running app opens its web interface; anything else goes to Apps.
-    final open = link != null && status == 'running' ? () => launchUrl(link) : () => c.go(Area.apps);
+    final open = link != null && status == 'running'
+        ? () => launchUrl(link)
+        : (c.isFamily ? null : () => c.go(Area.apps));
     return Material(
       color: p.sub,
       borderRadius: BorderRadius.circular(18),

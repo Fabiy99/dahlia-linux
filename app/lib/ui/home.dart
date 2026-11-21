@@ -8,6 +8,7 @@ import 'dart:async';
 import 'package:material_ui/material_ui.dart';
 
 import '../src/controller.dart';
+import '../src/family.dart';
 import '../src/format.dart';
 import '../src/home_layout.dart';
 import '../src/server.dart';
@@ -41,13 +42,18 @@ class _HomePageState extends State<HomePage> {
   @override
   void initState() {
     super.initState();
+    _timers.add(Timer.periodic(const Duration(seconds: 30), (_) => setState(() => now = DateTime.now())));
+    if (c.isFamily) {
+      // Own start screen: weather, the given apps and own shares; the server refuses the rest.
+      _loadWeather();
+      return;
+    }
     _loadStats();
     _loadApps();
     _once();
     _timers
       ..add(Timer.periodic(const Duration(seconds: 3), (_) => _loadStats()))
-      ..add(Timer.periodic(const Duration(seconds: 20), (_) => _loadApps()))
-      ..add(Timer.periodic(const Duration(seconds: 30), (_) => setState(() => now = DateTime.now())));
+      ..add(Timer.periodic(const Duration(seconds: 20), (_) => _loadApps()));
   }
 
   @override
@@ -161,7 +167,7 @@ class _HomePageState extends State<HomePage> {
       return;
     }
     try {
-      final r = await s.get('/api/weather');
+      final r = await s.get(c.homePath('weather'));
       final list = r is Map && r['places'] is List ? (r['places'] as List).whereType<Map>().toList() : <Map>[];
       _put(() {
         d.weather = list;
@@ -249,8 +255,8 @@ class _HomePageState extends State<HomePage> {
                         _greeting(),
                         style: TextStyle(fontSize: big.clamp(34.0, 56.0), fontWeight: FontWeight.w700, letterSpacing: -1, height: 1.05),
                       ),
-                      const SizedBox(height: 10),
-                      Row(
+                      if (!c.isFamily) const SizedBox(height: 10),
+                      if (!c.isFamily) Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Container(
@@ -334,7 +340,10 @@ class _HomePageState extends State<HomePage> {
   // --- tiles -------------------------------------------------------------------------
 
   Widget _tiles(double width) {
-    final shown = c.home.tiles.isEmpty
+    if (c.isFamily) d.apps = familyApps(c.family);
+    final shown = c.isFamily
+        ? const [HomeTile('family-shares', 'l', true), HomeTile('weather', 'm', true), HomeTile('apps', 'xl', true)]
+        : c.home.tiles.isEmpty
         // Before the server answered: the standard start screen.
         ? const [
             HomeTile('weather', 'm', true),
@@ -393,12 +402,12 @@ class _HomePageState extends State<HomePage> {
     final body = Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (editing) TileToolbar(c: c, tile: tile, first: pos == 0, last: pos == count - 1, save: _save),
+        if (editing && !c.isFamily) TileToolbar(c: c, tile: tile, first: pos == 0, last: pos == count - 1, save: _save),
         for (var i = 0; i < children.length; i++) ...[if (i > 0 || editing) const SizedBox(height: 16), children[i]],
       ],
     );
     final card = Glass(radius: 22, padding: const EdgeInsets.all(24), child: body);
-    if (!editing) return Rise(delay: 50 * index.clamp(0, 6), child: card);
+    if (!editing || c.isFamily) return Rise(delay: 50 * index.clamp(0, 6), child: card);
     // Edit mode: dashed outline, drag onto another tile to move it there.
     final outlined = CustomPaint(foregroundPainter: DashedBorder(p.accent.withValues(alpha: .45), 22, width: 2, dash: 6), child: card);
     return DragTarget<String>(
@@ -579,7 +588,7 @@ class _CustomizePanelState extends State<CustomizePanel> {
     if (q.length < 2) return;
     setState(() => searching = true);
     try {
-      final r = await c.server!.get('/api/weather/search?q=${Uri.encodeQueryComponent(q)}&lang=${c.settings.lang}');
+      final r = await c.server!.get('${c.homePath('weather/search')}?q=${Uri.encodeQueryComponent(q)}&lang=${c.settings.lang}');
       setState(() => results = r is Map && r['results'] is List ? (r['results'] as List).whereType<Map>().toList() : const []);
     } on ApiError catch (e) {
       if (mounted) {
@@ -645,9 +654,10 @@ class _CustomizePanelState extends State<CustomizePanel> {
               padding: const EdgeInsets.only(top: 6, bottom: 6),
               child: Text(c.t('home.customize_title'), style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
             ),
-            Text(c.t('home.customize_hint'), style: TextStyle(color: p.muted, fontSize: 13.2, height: 1.45)),
-            h2('home.tiles'),
-            Wrap(
+            Text(c.t(c.isFamily ? 'family.customize_hint' : 'home.customize_hint'),
+                style: TextStyle(color: p.muted, fontSize: 13.2, height: 1.45)),
+            if (!c.isFamily) h2('home.tiles'),
+            if (!c.isFamily) Wrap(
               spacing: 7,
               runSpacing: 7,
               children: [
@@ -752,6 +762,10 @@ class _CustomizePanelState extends State<CustomizePanel> {
             const SizedBox(height: 16),
             Row(
               children: [
+                if (c.isFamily) ...[
+                  OutlinedButton(onPressed: () => c.go(Area.settings), child: Text(c.t('family.password'))),
+                  const SizedBox(width: 10),
+                ],
                 OutlinedButton(onPressed: widget.reset, child: Text(c.t('home.reset'))),
                 const Spacer(),
                 FilledButton(onPressed: widget.done, child: Text(c.t('home.done'))),

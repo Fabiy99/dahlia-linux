@@ -64,6 +64,8 @@ class TopBar extends StatelessWidget {
           ]),
         );
     final inMore = _more.where((e) => e.$1 == c.area).firstOrNull;
+    // A family account: only its start screen; password and sign-in sit in the account menu.
+    final family = c.isFamily;
     return Glass(
       radius: 18,
       padding: const EdgeInsets.fromLTRB(18, 10, 12, 10),
@@ -77,7 +79,7 @@ class TopBar extends StatelessWidget {
               Text(c.settings.host ?? '', overflow: TextOverflow.ellipsis, style: TextStyle(color: p.muted, fontSize: 12)),
           ]),
         ),
-        for (final (view, key) in _areas)
+        for (final (view, key) in family ? _areas.take(1) : _areas)
           Padding(
             padding: const EdgeInsets.only(left: 4),
             child: Material(
@@ -86,7 +88,7 @@ class TopBar extends StatelessWidget {
             ),
           ),
         // The chosen area of the menu takes its place in the bar.
-        Padding(
+        if (!family) Padding(
           padding: const EdgeInsets.only(left: 4),
           child: PopupMenuButton<Area>(
             key: tourKey(c, 'more'),
@@ -105,10 +107,12 @@ class TopBar extends StatelessWidget {
           ),
         ),
         const SizedBox(width: 12),
-        NoticeBell(c, key: tourKey(c, 'bell')),
-        const SizedBox(width: 4),
+        if (!family) ...[
+          NoticeBell(c, key: tourKey(c, 'bell')),
+          const SizedBox(width: 4),
+        ],
         // Phone and pairing of other desktop apps, like the dashboard's "Phone" button.
-        Tooltip(
+        if (!family) Tooltip(
           key: tourKey(c, 'phone'),
           message: c.t('phone.open'),
           child: Material(
@@ -150,6 +154,8 @@ class TopBar extends StatelessWidget {
             switch (v) {
               case 'en' || 'de':
                 c.setLanguage(v);
+              case 'account':
+                c.go(Area.settings);
               case 'tour':
                 c.restartTour();
               case 'server':
@@ -164,7 +170,8 @@ class TopBar extends StatelessWidget {
             CheckedPopupMenuItem(value: 'en', checked: c.settings.lang == 'en', child: const Text('English')),
             CheckedPopupMenuItem(value: 'de', checked: c.settings.lang == 'de', child: const Text('Deutsch')),
             const PopupMenuDivider(),
-            PopupMenuItem(value: 'tour', child: Text(c.t('tour.restart'))),
+            if (family) PopupMenuItem(value: 'account', child: Text(c.t('family.password'))),
+            if (!family) PopupMenuItem(value: 'tour', child: Text(c.t('tour.restart'))),
             PopupMenuItem(value: 'server', child: Text(c.t('menu.other_server'))),
             PopupMenuItem(value: 'logout', child: Text(c.t('menu.logout'), style: TextStyle(color: p.danger))),
           ],
