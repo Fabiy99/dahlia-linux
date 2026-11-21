@@ -10,12 +10,16 @@ and never sent back to the dashboard.
 
 Pictures go through the agent too (tiles.image): the dashboard serves them
 from its own origin, the browser never talks to the app.
+
+The photo frame on the server's monitor (tiles.frame) takes its pictures
+from Immich the same way: an album, or random photos of the library.
 """
 
 import base64
 import datetime
 import http.cookiejar
 import json
+import random
 import re
 import urllib.error
 import urllib.parse
@@ -29,7 +33,8 @@ from .settings import read_json, write_file
 
 TIMEOUT = 8
 MAX_JSON = 2 * 1024 * 1024
-MAX_IMAGE = 768 * 1024
+# Immich previews (about 1440 px) for the photo frame are larger than tile thumbnails.
+MAX_IMAGE = 3 * 1024 * 1024
 # Tile -> apps that can fill it, in order of preference.
 TILES = {"photos": ("immich",), "media": ("jellyfin",),
          "downloads": ("qbittorrent", "transmission")}
@@ -41,6 +46,8 @@ IMMICH_ID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-
 JELLYFIN_ID_RE = re.compile(r"^[0-9a-f]{32}$")
 ITEM_RE = re.compile(r"^[0-9a-f-]{32,36}$")
 MAX_ITEMS = 6
+FRAME_PHOTOS = 30
+MAX_ALBUMS = 200
 
 
 class TileError(Exception):
@@ -150,6 +157,36 @@ def immich_total(ctx: Context, c: dict) -> int | None:
     stats = client(ctx, "immich").json("GET", "/api/assets/statistics", {"x-api-key": c["key"]})
     total = stats.get("total") if isinstance(stats, dict) else None
     return total if isinstance(total, int) else None
+
+
+def immich_frame(ctx: Context, c: dict, album: str) -> list[str]:
+    """Photo ids for the frame: from [album], else random ones of the library."""
+    h = {"x-api-key": c["key"]}
+    cl = client(ctx, "immich")
+    if album:
+        data = cl.json("GET", f"/api/albums/{album}", h)
+        assets = data.get("assets", []) if isinstance(data, dict) else []
+        ids = [a["id"] for a in assets if isinstance(a, dict) and a.get("type") == "IMAGE"
+               and IMMICH_ID_RE.fullmatch(str(a.get("id", "")))]
+        return random.sample(ids, min(len(ids), FRAME_PHOTOS))
+    found = cl.json("POST", "/api/search/random", h, {"size": FRAME_PHOTOS, "type": "IMAGE"})
+    return [a["id"] for a in found if isinstance(a, dict)
+            and IMMICH_ID_RE.fullmatch(str(a.get("id", "")))] if isinstance(found, list) else []
+
+
+def immich_albums(ctx: Context, c: dict) -> list[dict]:
+    data = client(ctx, "immich").json("GET", "/api/albums", {"x-api-key": c["key"]})
+    out = [{"id": a["id"], "name": str(a.get("albumName") or "")[:120],
+            "count": a.get("assetCount") if isinstance(a.get("assetCount"), int) else 0}
+           for a in data if isinstance(a, dict) and IMMICH_ID_RE.fullmatch(str(a.get("id", "")))] \
+        if isinstance(data, list) else []
+    return sorted(out, key=lambda a: a["name"].lower())[:MAX_ALBUMS]
+
+
+def immich_ready(ctx: Context) -> dict | None:
+    """Immich settings when it is installed and has its key, else None."""
+    cfg = load_config(ctx).get("immich")
+    return cfg if cfg is not None and "immich" in installed(ctx) else None
 
 
 # --- Jellyfin --------------------------------------------------------------------
@@ -362,3 +399,29 @@ def tiles_image(ctx: Context, app: str, item: str):
     except TileError as e:
         raise AgentError(FAILED, str(e)) from None
     return {"type": kind, "data": base64.b64encode(data).decode()}
+
+
+@action("tiles.frame", mutating=False,
+        params={"album": Param(str, required=False, default="",
+                               pattern=re.compile(rf"^(|{IMMICH_ID_RE.pattern[1:-1]})$"))})
+def tiles_frame(ctx: Context, album: str):
+    """Photo ids for the photo frame on the server's monitor."""
+    cfg = immich_ready(ctx)
+    if cfg is None:
+        return {"state": "setup" if "immich" in installed(ctx) else "missing", "photos": []}
+    try:
+        return {"state": "ok", "photos": immich_frame(ctx, cfg, album)}
+    except (TileError, KeyError, TypeError, ValueError, AttributeError) as e:
+        return {"state": "error", "error": str(e)[:300], "photos": []}
+
+
+@action("tiles.albums", mutating=False)
+def tiles_albums(ctx: Context):
+    """Immich albums to choose for the photo frame."""
+    cfg = immich_ready(ctx)
+    if cfg is None:
+        return {"state": "setup" if "immich" in installed(ctx) else "missing", "albums": []}
+    try:
+        return {"state": "ok", "albums": immich_albums(ctx, cfg)}
+    except (TileError, KeyError, TypeError, ValueError, AttributeError) as e:
+        return {"state": "error", "error": str(e)[:300], "albums": []}

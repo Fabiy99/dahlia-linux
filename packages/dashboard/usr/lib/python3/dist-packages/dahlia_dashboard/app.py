@@ -269,6 +269,13 @@ class UserAppsBody(BaseModel):
     apps: list[str]
 
 
+class FrameBody(BaseModel):
+    enabled: bool | None = None
+    interval: int | None = None
+    album: str | None = None
+    clock: bool | None = None
+
+
 class ResetPasswordBody(BaseModel):
     password: str
 
@@ -638,6 +645,7 @@ def create_app(cfg: Config | None = None) -> FastAPI:
     setup_lock = threading.Lock()
     home_store = home.HomeStore(cfg.state_dir / "home.json")
     family_dir = cfg.state_dir / "family"
+    frame_store = home.FrameStore(cfg.state_dir / "frame.json")
     weather = home.Weather(fetch=cfg.weather_fetch, clock=cfg.clock)
     pairing_codes = pairing.Codes()
 
@@ -1071,6 +1079,40 @@ def create_app(cfg: Config | None = None) -> FastAPI:
         screen_cache[key] = (now, value)
         return value
 
+    def local_only(request: Request) -> None:
+        if "x-forwarded-for" in request.headers or client_ip(request) not in ("127.0.0.1", "::1"):
+            raise ApiError(404, "error.not_found")
+
+    def frame_view(setup_code: str | None) -> dict | None:
+        """The photo frame for the local screen; not while the setup code is shown."""
+        frame = frame_store.get()
+        if not frame["enabled"] or setup_code:
+            return None
+        album = frame["album"]
+        got = cached(f"frame:{album}", 600, lambda: agent("tiles.frame", {"album": album})) or {}
+        return {"interval": frame["interval"], "clock": frame["clock"],
+                "photos": got.get("photos") or []}
+
+    @app.get("/api/screen/photo/{item}")
+    def screen_photo(item: str, request: Request):
+        local_only(request)
+        if not home.ALBUM_RE.fullmatch(item) or not item:
+            raise ApiError(404, "error.not_found")
+        got = agent("tiles.image", {"app": "immich", "item": item})
+        return Response(base64.b64decode(got["data"]), media_type=got["type"],
+                        headers={"Cache-Control": "private, max-age=86400"})
+
+    @app.get("/api/frame", dependencies=admin)
+    def frame_get():
+        return {**frame_store.get(), "albums": agent("tiles.albums")}
+
+    @app.post("/api/frame", dependencies=changing)
+    def frame_set(body: FrameBody):
+        try:
+            return frame_store.set(body.model_dump(exclude_none=True))
+        except ValueError as e:
+            raise ApiError(400, "error.request", str(e)) from None
+
     @app.get("/api/screen")
     def screen(request: Request):
         """Start screen on the monitor attached to the server (screen.service).
@@ -1079,8 +1121,7 @@ def create_app(cfg: Config | None = None) -> FastAPI:
         on 127.0.0.1:8090 for the local browser; requests through nginx's
         network site carry X-Forwarded-For.
         """
-        if "x-forwarded-for" in request.headers or client_ip(request) not in ("127.0.0.1", "::1"):
-            raise ApiError(404, "error.not_found")
+        local_only(request)
         info = cached("info", 300, lambda: agent("system.info")) or {}
         stats = cached("stats", 5, lambda: agent("system.stats")) or {}
         address = lan_address(stats)
@@ -1108,6 +1149,7 @@ def create_app(cfg: Config | None = None) -> FastAPI:
                      "total": len(apps)},
             "widgets": cfg_home["widgets"],
             "weather": weather.all(cfg_home["places"]),
+            "frame": frame_view(setup_code),
         }
 
     # --- phone and desktop app ------------------------------------------------------

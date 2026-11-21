@@ -1345,6 +1345,51 @@ async function loadWeather() {
   renderWeather();
 }
 
+// --- photo frame on the server's monitor --------------------------------------------
+
+const FRAME_INTERVALS = [10, 30, 60, 300, 900];
+
+function frameIntervalLabel(s) {
+  const n = Number(s);
+  if (n < 60) return t("frame.seconds", { n });
+  return n === 60 ? t("frame.minute") : t("frame.minutes", { n: Math.round(n / 6) / 10 });
+}
+
+async function loadFrame() {
+  const f = await api("GET", "frame");
+  const albums = f.albums.albums || [];
+  const ready = f.albums.state === "ok";
+  document.getElementById("frame-hint").textContent = t(ready ? "frame.hint" : `frame.state_${f.albums.state}`);
+  const enabled = document.getElementById("frame-enabled");
+  enabled.checked = f.enabled;
+  enabled.disabled = !ready && !f.enabled;
+  const album = document.getElementById("frame-album");
+  album.replaceChildren(el("option", "", t("frame.random")),
+    ...albums.map((a) => {
+      const o = el("option", "", `${a.name} (${a.count})`);
+      o.value = a.id;
+      return o;
+    }));
+  album.firstElementChild.value = "";
+  album.value = albums.some((a) => a.id === f.album) ? f.album : "";
+  const interval = document.getElementById("frame-interval");
+  const choices = FRAME_INTERVALS.includes(f.interval) ? FRAME_INTERVALS : [...FRAME_INTERVALS, f.interval].sort((a, b) => a - b);
+  fillOptions(interval, choices.map(String), frameIntervalLabel);
+  interval.value = String(f.interval);
+  document.getElementById("frame-clock").checked = f.clock;
+}
+
+function bindFrame() {
+  const save = (change) => guarded(null, async () => {
+    await api("POST", "frame", change);
+    say(t("frame.saved"), "ok");
+  });
+  document.getElementById("frame-enabled").addEventListener("change", (e) => save({ enabled: e.target.checked }));
+  document.getElementById("frame-album").addEventListener("change", (e) => save({ album: e.target.value }));
+  document.getElementById("frame-interval").addEventListener("change", (e) => save({ interval: Number(e.target.value) }));
+  document.getElementById("frame-clock").addEventListener("change", (e) => save({ clock: e.target.checked }));
+}
+
 // --- family start screen ---------------------------------------------------------
 // Greeting, weather, the apps an admin gave the account and the shares its
 // SMB user may open. The server refuses everything else for this role.
@@ -1421,7 +1466,9 @@ function bindHome() {
     panel.hidden = !homeEditing;
     btn.setAttribute("aria-pressed", String(homeEditing));
     applyWidgets();
+    if (homeEditing && userRole === "admin") loadFrame().catch(sayError);
   };
+  bindFrame();
   btn.addEventListener("click", toggle);
   document.getElementById("home-done").addEventListener("click", toggle);
   const reset = document.getElementById("home-reset");

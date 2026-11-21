@@ -195,3 +195,36 @@ def test_stopped_app_and_photo_total(ctx):
     FakeClient.routes = {("GET", "/api/assets/statistics"): ok({"images": 9, "videos": 1,
                                                                 "total": 10})}
     assert tiles.photo_total(ctx) == 10
+
+
+UUID2 = "0b2e3c4d-1111-2222-3333-444455557777"
+
+
+def test_frame_photos_from_album_or_random(ctx):
+    assert run(ctx, "tiles.frame", {})["result"] == {"state": "missing", "photos": []}
+    install(ctx, "immich", 41001)
+    assert run(ctx, "tiles.frame", {})["result"]["state"] == "setup"
+    run(ctx, "tiles.set", {"app": "immich", "settings": {"key": "k1"}})
+    FakeClient.routes = {("POST", "/api/search/random"):
+                         ok([{"id": UUID, "type": "IMAGE"}, {"id": "../etc"}])}
+    assert run(ctx, "tiles.frame", {})["result"] == {"state": "ok", "photos": [UUID]}
+    assert json.loads(FakeClient.seen[-1][4])["size"] == tiles.FRAME_PHOTOS
+    FakeClient.routes = {("GET", f"/api/albums/{UUID2}"): ok({"assets": [
+        {"id": UUID, "type": "IMAGE"}, {"id": UUID2, "type": "VIDEO"}]})}
+    assert run(ctx, "tiles.frame", {"album": UUID2})["result"]["photos"] == [UUID]
+    assert not run(ctx, "tiles.frame", {"album": "../x"})["ok"]
+    FakeClient.routes = {("GET", "/api/albums"): (500, {}, b"{}")}
+    assert run(ctx, "tiles.frame", {"album": UUID2})["result"]["state"] == "error"
+
+
+def test_albums_for_the_frame(ctx):
+    install(ctx, "immich", 41001)
+    run(ctx, "tiles.set", {"app": "immich", "settings": {"key": "k1"}})
+    FakeClient.routes = {("GET", "/api/albums"): ok([
+        {"id": UUID2, "albumName": "Urlaub", "assetCount": 12},
+        {"id": UUID, "albumName": "Dahlia", "assetCount": 40},
+        {"id": "bad", "albumName": "x"}])}
+    got = run(ctx, "tiles.albums", {})["result"]
+    assert got == {"state": "ok", "albums": [{"id": UUID, "name": "Dahlia", "count": 40},
+                                             {"id": UUID2, "name": "Urlaub", "count": 12}]}
+

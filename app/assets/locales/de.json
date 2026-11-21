@@ -225,5 +225,19 @@
   "users.apps_saved": "Apps für {name} gespeichert.",
   "users.family_smb": "Freigabe-Benutzer {name} mit demselben Passwort angelegt. Ordner gibst du unter Freigaben frei.",
   "users.family_smb_failed": "Freigabe-Benutzer {name} konnte nicht angelegt werden; unter Freigaben nachholen.",
-  "family.customize_hint": "Farben, Hintergrund und Wetter-Orte gelten nur für dein Konto."
+  "family.customize_hint": "Farben, Hintergrund und Wetter-Orte gelten nur für dein Konto.",
+  "frame.title": "Bilderrahmen am Server-Bildschirm",
+  "frame.hint": "Der Bildschirm am Server zeigt Fotos aus Immich statt der Übersicht. Solange der Einrichtungscode angezeigt wird, bleibt die Übersicht.",
+  "frame.state_missing": "Dafür braucht es die App Immich.",
+  "frame.state_setup": "Immich braucht zuerst einen API-Schlüssel: auf dem Startbildschirm in der Kachel Fotos eintragen.",
+  "frame.state_error": "Immich antwortet nicht. Läuft die App und stimmt der Schlüssel?",
+  "frame.enabled": "Bilderrahmen einschalten",
+  "frame.album": "Fotos aus",
+  "frame.random": "Zufällig aus allen Fotos",
+  "frame.interval": "Wechsel alle",
+  "frame.seconds": "{n} Sekunden",
+  "frame.minutes": "{n} Minuten",
+  "frame.clock": "Uhrzeit über den Fotos zeigen",
+  "frame.saved": "Bilderrahmen gespeichert.",
+  "frame.minute": "1 Minute"
 }

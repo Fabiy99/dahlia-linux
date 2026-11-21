@@ -10,6 +10,7 @@ import 'package:material_ui/material_ui.dart';
 import '../src/controller.dart';
 import '../src/family.dart';
 import '../src/format.dart';
+import '../src/frame.dart';
 import '../src/home_layout.dart';
 import '../src/server.dart';
 import 'home_tiles.dart';
@@ -759,6 +760,7 @@ class _CustomizePanelState extends State<CustomizePanel> {
                   ],
                 ),
               ),
+            if (c.isAdmin) FrameSettings(c),
             const SizedBox(height: 16),
             Row(
               children: [
@@ -777,3 +779,113 @@ class _CustomizePanelState extends State<CustomizePanel> {
     );
   }
 }
+
+/// Photo frame of the monitor attached to the server (/api/frame), like the
+/// dashboard's section in the customize panel.
+class FrameSettings extends StatefulWidget {
+  const FrameSettings(this.c, {super.key});
+
+  final Controller c;
+
+  @override
+  State<FrameSettings> createState() => _FrameSettingsState();
+}
+
+class _FrameSettingsState extends State<FrameSettings> {
+  Map? frame;
+
+  Controller get c => widget.c;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final r = await c.server!.get('/api/frame');
+      if (mounted && r is Map) setState(() => frame = r);
+    } on ApiError {
+      return;
+    } on VersionMismatch {
+      return;
+    }
+  }
+
+  Future<void> _save(Map<String, Object> change) async {
+    final m = ScaffoldMessenger.of(context);
+    final danger = context.palette.danger;
+    try {
+      final r = await c.server!.post('/api/frame', change);
+      if (r is Map && mounted) setState(() => frame = {...?frame, ...r});
+      m.showSnackBar(SnackBar(content: Text(c.t('frame.saved'))));
+    } on ApiError catch (e) {
+      m.showSnackBar(SnackBar(content: Text(c.t(e.key)), backgroundColor: danger));
+    } on VersionMismatch {
+      return;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+    final f = frame;
+    if (f == null) return const SizedBox.shrink();
+    final albumsState = f['albums'] is Map ? f['albums'] as Map : const {};
+    final ready = albumsState['state'] == 'ok';
+    final albums = albumsState['albums'] is List ? (albumsState['albums'] as List).whereType<Map>().toList() : <Map>[];
+    final album = albums.any((a) => a['id'] == f['album']) ? '${f['album']}' : '';
+    final interval = (f['interval'] as num?)?.toInt() ?? 30;
+    final intervals = frameIntervals.contains(interval) ? frameIntervals : ([...frameIntervals, interval]..sort());
+    return Padding(
+      padding: const EdgeInsets.only(top: 14),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(c.t('frame.title'), style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+        const SizedBox(height: 6),
+        Text(c.t(ready ? 'frame.hint' : 'frame.state_${albumsState['state']}'),
+            style: TextStyle(color: p.muted, fontSize: 13.2, height: 1.45)),
+        CheckboxListTile(
+          value: f['enabled'] == true,
+          contentPadding: EdgeInsets.zero,
+          controlAffinity: ListTileControlAffinity.leading,
+          title: Text(c.t('frame.enabled')),
+          onChanged: !ready && f['enabled'] != true ? null : (v) => _save({'enabled': v ?? false}),
+        ),
+        Wrap(spacing: 16, runSpacing: 10, children: [
+          SizedBox(
+            width: 280,
+            child: DropdownButtonFormField<String>(
+              initialValue: album,
+              decoration: InputDecoration(labelText: c.t('frame.album'), isDense: true),
+              borderRadius: BorderRadius.circular(12),
+              items: [
+                DropdownMenuItem(value: '', child: Text(c.t('frame.random'))),
+                for (final a in albums) DropdownMenuItem(value: '${a['id']}', child: Text('${a['name']} (${a['count']})')),
+              ],
+              onChanged: (v) => _save({'album': v ?? ''}),
+            ),
+          ),
+          SizedBox(
+            width: 200,
+            child: DropdownButtonFormField<int>(
+              initialValue: interval,
+              decoration: InputDecoration(labelText: c.t('frame.interval'), isDense: true),
+              borderRadius: BorderRadius.circular(12),
+              items: [for (final n in intervals) DropdownMenuItem(value: n, child: Text(frameIntervalLabel(n, c.t)))],
+              onChanged: (v) => v == null ? null : _save({'interval': v}),
+            ),
+          ),
+        ]),
+        CheckboxListTile(
+          value: f['clock'] != false,
+          contentPadding: EdgeInsets.zero,
+          controlAffinity: ListTileControlAffinity.leading,
+          title: Text(c.t('frame.clock')),
+          onChanged: (v) => _save({'clock': v ?? true}),
+        ),
+      ]),
+    );
+  }
+}
+

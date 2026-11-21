@@ -192,6 +192,16 @@
             <button type="submit" data-i18n="weather.search"></button>
           </form>
           <ul id="place-results" class="place-results"></ul>
+          <div id="frame-settings" class="admin-only not-family frame-settings">
+            <h2 data-i18n="frame.title"></h2>
+            <p class="hint" id="frame-hint"></p>
+            <label class="check"><input type="checkbox" id="frame-enabled"><span data-i18n="frame.enabled"></span></label>
+            <div class="frame-row">
+              <label><span data-i18n="frame.album"></span><select id="frame-album"></select></label>
+              <label><span data-i18n="frame.interval"></span><select id="frame-interval"></select></label>
+            </div>
+            <label class="check"><input type="checkbox" id="frame-clock"><span data-i18n="frame.clock"></span></label>
+          </div>
           <div class="panel-actions">
             <button type="button" id="family-account" class="family-only" data-i18n="family.password"></button>
             <button type="button" id="home-reset" data-i18n="home.reset"></button>

@@ -225,5 +225,19 @@
   "users.apps_saved": "Apps for {name} saved.",
   "users.family_smb": "Share user {name} created with the same password. Share folders under Shares.",
   "users.family_smb_failed": "Share user {name} could not be created; add it under Shares.",
-  "family.customize_hint": "Colours, background and weather places apply to your account only."
+  "family.customize_hint": "Colours, background and weather places apply to your account only.",
+  "frame.title": "Photo frame on the server's monitor",
+  "frame.hint": "The monitor attached to the server shows photos from Immich instead of the overview. While the setup code is shown, the overview stays.",
+  "frame.state_missing": "This needs the Immich app.",
+  "frame.state_setup": "Immich first needs an API key: enter it in the Photos tile on the start screen.",
+  "frame.state_error": "Immich does not answer. Is the app running and the key right?",
+  "frame.enabled": "Turn on the photo frame",
+  "frame.album": "Photos from",
+  "frame.random": "Random from all photos",
+  "frame.interval": "Change every",
+  "frame.seconds": "{n} seconds",
+  "frame.minutes": "{n} minutes",
+  "frame.clock": "Show the time over the photos",
+  "frame.saved": "Photo frame saved.",
+  "frame.minute": "1 minute"
 }
