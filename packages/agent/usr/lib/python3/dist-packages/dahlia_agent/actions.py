@@ -1252,6 +1252,7 @@ from . import (  # noqa: E402, F401
     snapshots,
     tiles,
     unattended,
+    unraid,
     ups,
     vpn,
 )

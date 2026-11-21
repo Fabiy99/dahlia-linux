@@ -356,6 +356,17 @@
         <div id="pool-summary" class="tiles pools"></div>
         <p class="hint" data-i18n="storage.hint"></p>
         <div id="import-status" class="notice" hidden></div>
+        <article class="card" id="unraid-card" hidden>
+          <h2 data-i18n="unraid.title"></h2>
+          <p class="hint" data-i18n="unraid.intro"></p>
+          <form id="unraid-form">
+            <div id="unraid-body"></div>
+            <div class="actions" id="unraid-actions">
+              <button type="submit" class="primary" data-i18n="unraid.start"></button>
+              <button type="button" id="unraid-dismiss" data-i18n="unraid.dismiss"></button>
+            </div>
+          </form>
+        </article>
         <article class="card" id="crypt-card" hidden>
           <h2 data-i18n="crypt.title"></h2>
           <ul id="crypt-disks" class="crypt-list"></ul>

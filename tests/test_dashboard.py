@@ -1006,6 +1006,23 @@ def test_vpn_endpoints(env):
     assert client.post("/api/vpn/tailscale/install").status_code == 403
 
 
+def test_unraid_endpoints(env):
+    client, agent, _ = logged_in(env)
+    agent.calls.clear()
+    assert client.get("/api/unraid").json() == {"action": "unraid.status"}
+    client.post("/api/unraid/import", json={"parity": True, "tags": {"ha": "2025.11.3"}},
+                headers=CSRF)
+    client.post("/api/unraid/import", json={}, headers=CSRF)
+    client.post("/api/unraid/dismiss", json={"dismissed": True}, headers=CSRF)
+    assert agent.calls == [
+        ("unraid.status", {}),
+        ("unraid.import", {"parity": True, "tags": {"ha": "2025.11.3"}}),
+        ("unraid.import", {"parity": False, "tags": {}}),
+        ("unraid.dismiss", {"dismissed": True}),
+    ]
+    assert client.post("/api/unraid/import", json={}).status_code == 403
+
+
 def test_disk_tests_routes(env):
     client, agent, _ = logged_in(env)
     agent.calls.clear()

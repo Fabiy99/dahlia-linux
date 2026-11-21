@@ -1392,7 +1392,7 @@ const CHECK_LEVEL = { critical: "crit", warning: "warn", info: "info" };
 // Where the problem is fixed.
 const CHECK_VIEW = { disks: "storage", usage: "storage", array: "storage", parity: "parity",
                      services: "log", time: "account", updates: "updates", backup: "backup",
-                     notify: "account", firewall: "account" };
+                     notify: "account", firewall: "account", unraid: "storage" };
 
 function loadHealth() {
   const summary = document.getElementById("health-summary");
@@ -1909,6 +1909,119 @@ function bindImport() {
   });
 }
 
+// --- Unraid import -----------------------------------------------------------------
+
+// What the migration helper brought from Unraid; the plan and the running import.
+let unraidTimer = null;
+const UNRAID_MARK = { ready: "ok", done: "ok", confirm: "info", needs_tag: "info", skip: "bad" };
+const UNRAID_SECTIONS = ["disks", "shares", "users", "wireguard", "containers"];
+
+function unraidLine(kind, item) {
+  const name = kind === "disks"
+    ? t("unraid.disk", { slot: item.name, role: t(`unraid.role_${item.role}`) })
+    : kind === "wireguard" ? t("unraid.wireguard", { n: (item.peers || []).length }) : item.name;
+  const parts = [t(`unraid.state_${item.state}`)];
+  if (item.reason) parts.push(t(`unraid.reason_${item.reason}`));
+  for (const n of item.notes || []) parts.push(t(`unraid.note_${n.key}`, { value: n.value }));
+  if (item.image) parts.push(item.image);
+  return `${name}: ${parts.join(" · ")}`;
+}
+
+function renderUnraid(data) {
+  const card = document.getElementById("unraid-card");
+  card.hidden = !data.found || (data.dismissed && !data.job);
+  if (card.hidden) return;
+  const body = document.getElementById("unraid-body");
+  const actions = document.getElementById("unraid-actions");
+  body.replaceChildren();
+  const job = data.job;
+  const running = job?.state === "running";
+  if (job) {
+    const box = el("div", `notice ${job.state === "failed" ? "bad" : ""}`);
+    box.append(el("b", "", t(`unraid.job_${job.state}`, { step: t(`unraid.step_${job.step}`) })));
+    const list = el("ul", "checks");
+    for (const i of job.items) {
+      list.append(checkItem(i.state === "done" ? "ok" : "bad",
+        `${i.name}: ${t(`unraid.item_${i.state}`)}${i.error ? ` (${i.error})` : ""}`));
+    }
+    box.append(list);
+    body.append(box);
+  }
+  actions.hidden = running;
+  if (!data.plan) return;
+  const plan = data.plan;
+  for (const kind of UNRAID_SECTIONS) {
+    const items = kind === "wireguard" ? (plan.wireguard ? [plan.wireguard] : []) : plan[kind];
+    if (!items.length) continue;
+    body.append(el("h3", "", t(`unraid.section_${kind}`)));
+    const list = el("ul", "checks");
+    for (const item of items) {
+      const li = checkItem(UNRAID_MARK[item.state] || "info", unraidLine(kind, item));
+      if (item.state === "needs_tag") {
+        const label = el("label");
+        const input = el("input");
+        input.name = `tag:${item.name}`;
+        input.required = true;
+        input.pattern = "[A-Za-z0-9_][A-Za-z0-9_.\\-]{0,127}";
+        input.placeholder = t("unraid.tag_placeholder");
+        label.append(el("span", "", t("unraid.tag", { repo: item.repo })), input);
+        li.append(label);
+      }
+      list.append(li);
+    }
+    body.append(list);
+  }
+  if (plan.disks.some((d) => d.state === "confirm")) {
+    const label = el("label", "check");
+    const box = el("input");
+    box.type = "checkbox";
+    box.name = "parity";
+    label.append(box, el("span", "", t("unraid.parity_confirm")));
+    body.append(label, el("p", "hint", t("unraid.parity_hint")));
+  }
+  if (plan.not_taken.length) {
+    body.append(el("h3", "", t("unraid.section_not_taken")));
+    const list = el("ul", "checks");
+    for (const k of plan.not_taken) list.append(checkItem("bad", t(`unraid.not_${k}`)));
+    body.append(list);
+  }
+  const done = job?.state === "done";
+  document.querySelector("#unraid-form button[type=submit]").textContent =
+    t(done || job?.state === "failed" ? "unraid.again" : "unraid.start");
+}
+
+async function loadUnraid() {
+  clearTimeout(unraidTimer);
+  const data = await api("GET", "unraid");
+  renderUnraid(data);
+  if (data.job?.state === "running" && current === "storage") {
+    unraidTimer = setTimeout(() => loadUnraid().catch(sayError), 3000);
+  }
+}
+
+function bindUnraid() {
+  const form = document.getElementById("unraid-form");
+  form.addEventListener("submit", (e) => {
+    e.preventDefault();
+    guarded(e.submitter, async () => {
+      const tags = {};
+      for (const input of form.querySelectorAll("input[name^='tag:']")) {
+        tags[input.name.slice(4)] = input.value.trim();
+      }
+      const parity = Boolean(form.elements.parity?.checked);
+      if (!(await ask(t(parity ? "unraid.ask_parity" : "unraid.ask"), "unraid.start"))) return;
+      await api("POST", "unraid/import", { parity, tags });
+      say(t("unraid.started"), "ok");
+      await loadUnraid();
+    });
+  });
+  const dismiss = document.getElementById("unraid-dismiss");
+  dismiss.addEventListener("click", () => guarded(dismiss, async () => {
+    await api("POST", "unraid/dismiss", { dismissed: true });
+    await loadUnraid();
+  }));
+}
+
 // --- storage settings -------------------------------------------------------------
 
 const MOVER_AGES = [0, 60, 360, 720, 1440, 4320, 10080, 43200];
@@ -2012,7 +2125,7 @@ async function loadStorage() {
     box.append(card);
   }
   if (!groups.size) box.append(el("p", "empty", t("storage.none")));
-  await Promise.all([pollImport(), loadCrypt()]);
+  await Promise.all([pollImport(), loadCrypt(), loadUnraid()]);
 }
 
 // --- encryption -----------------------------------------------------------------
@@ -5919,6 +6032,7 @@ async function start() {
   bindRemotes();
   bindBurnin();
   bindImport();
+  bindUnraid();
   bindFolderPicker();
   bindVms();
   bindNotifyUps();

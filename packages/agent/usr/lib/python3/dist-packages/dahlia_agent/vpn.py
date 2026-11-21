@@ -139,8 +139,10 @@ def render_conf(cfg: dict, private: str) -> str:
         f"PostDown = {FORWARD_SCRIPT} down %i",
     ]
     for p in cfg["peers"]:
-        lines += ["", f"# {p['name']}", "[Peer]", f"PublicKey = {p['public_key']}",
-                  f"PresharedKey = {p['psk']}", f"AllowedIPs = {p['address']}"]
+        # Peers taken over from Unraid may have no preshared key.
+        psk = [f"PresharedKey = {p['psk']}"] if p["psk"] else []
+        lines += ["", f"# {p['name']}", "[Peer]", f"PublicKey = {p['public_key']}", *psk,
+                  f"AllowedIPs = {p['address']}"]
     return "\n".join(lines) + "\n"
 
 

@@ -12,8 +12,8 @@ person already knows it without reading a screen.
 """
 
 import hmac
-import re
 import os
+import re
 import secrets
 from pathlib import Path
 

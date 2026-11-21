@@ -510,6 +510,15 @@ class PeerBody(BaseModel):
     name: str
 
 
+class UnraidImportBody(BaseModel):
+    parity: bool = False
+    tags: dict[str, str] = {}
+
+
+class UnraidDismissBody(BaseModel):
+    dismissed: bool
+
+
 class TailscaleBody(BaseModel):
     routes: bool
     exit_node: bool
@@ -1461,6 +1470,18 @@ def create_app(cfg: Config | None = None) -> FastAPI:
     @app.post("/api/settings/firewall/rules", dependencies=changing)
     def settings_set_firewall_rules(body: FirewallRulesBody):
         return agent("settings.set_firewall_rules", {"rules": body.rules})
+
+    @app.get("/api/unraid", dependencies=authed)
+    def unraid_status():
+        return agent("unraid.status")
+
+    @app.post("/api/unraid/import", dependencies=changing)
+    def unraid_import(body: UnraidImportBody):
+        return agent("unraid.import", body.model_dump())
+
+    @app.post("/api/unraid/dismiss", dependencies=changing)
+    def unraid_dismiss(body: UnraidDismissBody):
+        return agent("unraid.dismiss", body.model_dump())
 
     @app.get("/api/vpn", dependencies=authed)
     def vpn_status():
