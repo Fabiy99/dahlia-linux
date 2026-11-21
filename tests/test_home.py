@@ -351,7 +351,8 @@ def test_photo_frame_on_the_local_screen(tmp_path, monkeypatch):
     assert c.get("/api/screen").json()["frame"] == {"interval": 45, "clock": True,
                                                     "photos": [PHOTO]}
     r = c.get(f"/api/screen/photo/{PHOTO}")
-    assert r.status_code == 200 and r.content == b"\xff\xd8" and r.headers["content-type"] == "image/jpeg"
+    assert r.status_code == 200 and r.content == b"\xff\xd8"
+    assert r.headers["content-type"] == "image/jpeg"
     assert c.get("/api/screen/photo/nope").status_code == 404
     assert c.get(f"/api/screen/photo/{PHOTO}",
                  headers={"X-Forwarded-For": "192.168.1.50"}).status_code == 404
