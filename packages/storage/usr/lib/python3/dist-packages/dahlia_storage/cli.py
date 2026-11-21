@@ -1,7 +1,8 @@
 """disk: manage Dahlia storage from the command line.
 
     disk list [--json]
-    disk add UUID --role data|parity|cache|external
+    disk add UUID --role data|parity|cache|external [--index N]
+    disk managed [--json]
     disk remove UUID [--force]
     disk apply
     disk snapraid-config [--write]
@@ -210,6 +211,19 @@ def cmd_list(args) -> int:
     return 0
 
 
+def cmd_managed(args) -> int:
+    st = state.load()
+    out = [{**asdict(d), "mountpoint": d.mountpoint, "mounted": is_mounted(d.mountpoint)}
+           for d in st.disks]
+    if args.json:
+        print(json.dumps(out, indent=2))
+    else:
+        for d in out:
+            print(f"{d['role']:<8} {d['mountpoint']:<24} {d['uuid']}  "
+                  f"{'mounted' if d['mounted'] else 'NOT MOUNTED'}")
+    return 0
+
+
 def cmd_add(args) -> int:
     with state.locked():
         st = state.load()
@@ -237,10 +251,18 @@ def cmd_add(args) -> int:
             if name in taken:
                 name = f"{name}-{args.uuid.replace('-', '')[:4].lower()}"
 
+        index = 0 if args.role in ("external", "cache") else st.next_index(args.role)
+        if args.index is not None:
+            # A replaced disk keeps its number, so SnapRAID can rebuild it.
+            if args.role not in ("data", "parity"):
+                raise DiskError("--index is only for data and parity disks")
+            if any(d.role == args.role and d.index == args.index for d in st.disks):
+                raise DiskError(f"{args.role} {args.index} is in use")
+            index = args.index
         disk = state.Disk(
             uuid=args.uuid,
             role=args.role,
-            index=0 if args.role in ("external", "cache") else st.next_index(args.role),
+            index=index,
             fstype=dev.fstype or "",
             name=name,
             serial=dev.serial,
@@ -600,7 +622,13 @@ def build_parser() -> argparse.ArgumentParser:
     s = sub.add_parser("add", help="mount an existing filesystem without formatting")
     s.add_argument("uuid")
     s.add_argument("--role", choices=state.ROLES, required=True)
+    s.add_argument("--index", type=int, choices=range(1, 100), metavar="N",
+                   help="number of a data or parity disk (default: the lowest free)")
     s.set_defaults(func=cmd_add)
+
+    s = sub.add_parser("managed", help="disks in storage.json and whether they are mounted")
+    s.add_argument("--json", action="store_true")
+    s.set_defaults(func=cmd_managed)
 
     s = sub.add_parser("format", help="partition and format a blank disk")
     s.add_argument("device")

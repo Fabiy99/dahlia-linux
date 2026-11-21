@@ -1247,6 +1247,7 @@ from . import (  # noqa: E402, F401
     power,
     remotelog,
     remotes,
+    replace,
     settings,
     smb,
     snapshots,
