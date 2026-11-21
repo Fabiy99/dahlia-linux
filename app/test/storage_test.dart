@@ -113,4 +113,28 @@ void main() {
           .having((e) => e.detail, 'detail', contains('--force'))),
     );
   });
+
+  test('replacement wizard offers big enough blank disks', () {
+    final managed = <Map>[
+      {'uuid': 'd1', 'role': 'data', 'size': 4000},
+      {'uuid': 'd2', 'role': 'data', 'size': 8000},
+      {'uuid': 'p1', 'role': 'parity', 'size': 8000},
+      {'uuid': 'c1', 'role': 'cache', 'size': 1000},
+    ];
+    final blank = <Map>[
+      {'path': '/dev/sdx', 'disk': '/dev/sdx', 'kind': 'disk', 'status': 'empty', 'size': 6000},
+      {'path': '/dev/sdy', 'disk': '/dev/sdy', 'kind': 'disk', 'status': 'empty', 'size': 8000},
+      {'path': '/dev/sdz', 'disk': '/dev/sdz', 'kind': 'disk', 'status': 'empty', 'size': 9000, 'removable': true},
+      {'path': '/dev/sdw1', 'disk': '/dev/sdw', 'kind': 'part', 'status': 'empty', 'size': 9000},
+    ];
+    expect(replaceable(managed).map((d) => d['uuid']), ['d1', 'd2', 'p1']);
+    expect(replaceCandidates(managed[0], managed, blank).map((d) => d['disk']), ['/dev/sdx', '/dev/sdy']);
+    // Parity: at least the largest data disk.
+    expect(replaceCandidates({'uuid': 'p1', 'role': 'parity', 'size': 0}, managed, blank).map((d) => d['disk']), [
+      '/dev/sdy',
+    ]);
+    expect(canReplace(managed[0], managed), isTrue);
+    expect(canReplace(managed[0], managed.where((d) => d['role'] != 'parity').toList()), isFalse);
+    expect(canReplace(managed[2], managed), isTrue);
+  });
 }

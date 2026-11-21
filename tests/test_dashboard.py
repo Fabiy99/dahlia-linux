@@ -248,6 +248,9 @@ def test_actions_go_to_agent(env):
                                              "confirm": "sdb"}, headers=CSRF)
     client.post("/api/storage/import", json={"uuid": "1234-ABCD", "target": "old"}, headers=CSRF)
     client.get("/api/storage/import")
+    client.get("/api/storage/managed")
+    client.post("/api/storage/replace", json={"uuid": "1234-ABCD", "device": "/dev/sde",
+                                              "confirm": "sde"}, headers=CSRF)
     client.post("/api/jobs/mover/start", headers=CSRF)
     client.post("/api/updates/apply", headers=CSRF)
     client.get("/api/updates/progress")
@@ -259,6 +262,8 @@ def test_actions_go_to_agent(env):
         ("storage.format", {"device": "/dev/sdb", "filesystem": "xfs", "confirm": "sdb"}),
         ("storage.import", {"uuid": "1234-ABCD", "target": "old"}),
         ("storage.import_status", {}),
+        ("storage.managed", {}),
+        ("storage.replace", {"uuid": "1234-ABCD", "device": "/dev/sde", "confirm": "sde"}),
         ("job.start", {"job": "mover"}),
         ("updates.apply", {}),
         ("updates.progress", {}),

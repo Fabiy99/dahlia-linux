@@ -190,5 +190,19 @@
   "headless.pair_mismatch": "The server shows a different certificate than during the install. So the app does not connect on its own.",
   "headless.pair_timeout": "The server cannot be reached yet.",
   "headless.manual": "By hand: open https://{host} in the browser and set it up with the setup code {code}.",
-  "headless.pair_again": "Connect again"
+  "headless.pair_again": "Connect again",
+  "replace.title": "Replace a disk",
+  "replace.intro": "A broken or missing data or parity disk is replaced by a new blank disk. It gets the same number and is rebuilt from the parity.",
+  "replace.mounted": "mounted",
+  "replace.missing": "missing",
+  "replace.button": "Replace",
+  "replace.no_parity": "Without a parity disk a data disk cannot be rebuilt.",
+  "replace.dialog_title": "Replace {path}",
+  "replace.text_data": "The new disk is formatted, mounted as {path} and restored from the parity. Depending on the size this takes hours; files on {path} are incomplete until then.",
+  "replace.text_parity": "The new disk is formatted, mounted as {path} and the parity is computed anew. Until that is done the data is not protected.",
+  "replace.new_disk": "New disk",
+  "replace.warning": "Everything on {path} is erased.",
+  "replace.no_disk": "No blank disk of at least {size} found. Install a new disk and reload the page.",
+  "replace.start": "Replace and rebuild",
+  "replace.started": "{path} is being rebuilt. Progress under Parity."
 }

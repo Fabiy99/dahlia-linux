@@ -2070,6 +2070,101 @@ function bindStorageSettings() {
   });
 }
 
+// Disk replacement: a managed data or parity disk (also a missing one) gets a
+// new blank disk under the same number, rebuilt from the parity.
+let replaceState = { managed: [], blank: [] };
+
+function renderReplace() {
+  const card = document.getElementById("replace-card");
+  const list = document.getElementById("replace-disks");
+  list.replaceChildren();
+  const disks = replaceState.managed.filter((d) => d.role === "data" || d.role === "parity");
+  const hasParity = disks.some((d) => d.role === "parity");
+  card.hidden = !disks.length;
+  for (const d of disks) {
+    const li = el("li");
+    const model = [d.model, d.serial && t("storage.serial", { serial: d.serial })].filter(Boolean).join(" · ");
+    li.append(el("b", "", d.mountpoint), el("span", "hint", tv("role", d.role)));
+    if (model) li.append(el("span", "hint", model));
+    li.append(d.mounted ? badge(t("replace.mounted"), "ok") : badge(t("replace.missing"), "warn"));
+    const b = button("replace.button", () => openReplaceDialog(d), "danger");
+    if (d.role === "data" && !hasParity) {
+      b.disabled = true;
+      b.title = t("replace.no_parity");
+    }
+    li.append(b);
+    list.append(li);
+  }
+}
+
+function replaceCandidates(old) {
+  const largest = Math.max(0, ...replaceState.managed.filter((d) => d.role === "data").map((d) => d.size || 0));
+  const min = old.role === "parity" ? Math.max(old.size || 0, largest) : (old.size || 0);
+  return replaceState.blank.filter((d) => d.size >= min);
+}
+
+function openReplaceDialog(old) {
+  const form = document.getElementById("replace-form");
+  form.reset();
+  form.dataset.uuid = old.uuid;
+  document.getElementById("replace-title").textContent = t("replace.dialog_title", { path: old.mountpoint });
+  document.getElementById("replace-text").textContent = t(
+    old.role === "parity" ? "replace.text_parity" : "replace.text_data", { path: old.mountpoint });
+  const select = form.elements.device;
+  select.replaceChildren();
+  const candidates = replaceCandidates(old);
+  for (const d of candidates) {
+    const label = [d.disk.replace("/dev/", ""), formatBytes(d.size), d.model, d.serial].filter(Boolean).join(" · ");
+    const o = el("option", "", label);
+    o.value = d.disk;
+    select.append(o);
+  }
+  const none = !candidates.length;
+  select.disabled = none;
+  form.querySelector('button[value="ok"]').disabled = none;
+  const pass = document.getElementById("replace-pass");
+  pass.hidden = !old.luks;
+  form.elements.passphrase.required = Boolean(old.luks);
+  const update = () => {
+    const name = (select.value || "").replace("/dev/", "");
+    document.getElementById("replace-warning").textContent = none
+      ? t("replace.no_disk", { size: formatBytes(old.size || 0) })
+      : t("replace.warning", { path: select.value });
+    document.getElementById("replace-confirm-label").textContent = t("storage.format_confirm", { name });
+    form.elements.confirm.pattern = name;
+  };
+  select.onchange = update;
+  update();
+  document.getElementById("replace-dialog").showModal();
+}
+
+function bindReplace() {
+  const form = document.getElementById("replace-form");
+  form.addEventListener("submit", (e) => {
+    if (e.submitter?.value === "cancel") return;
+    e.preventDefault();
+    const body = { uuid: form.dataset.uuid, device: form.elements.device.value,
+                   confirm: form.elements.confirm.value.trim() };
+    if (form.elements.passphrase.required) body.passphrase = form.elements.passphrase.value;
+    guarded(e.submitter, async () => {
+      const res = await api("POST", "storage/replace", body);
+      document.getElementById("replace-dialog").close();
+      say(t("replace.started", { path: res.mountpoint }), "ok");
+      await loadStorage();
+    });
+  });
+}
+
+async function loadReplace(data) {
+  const res = await api("GET", "storage/managed").catch(() => ({ disks: [] }));
+  replaceState = {
+    managed: res.disks,
+    blank: data.disks.filter((d) => d.kind === "disk" && d.status === "empty" && d.path === d.disk
+                              && !d.removable),
+  };
+  renderReplace();
+}
+
 async function loadStorage() {
   const [data, stats] = await Promise.all([api("GET", "storage"), api("GET", "stats")]);
   // SMART is slow on many disks; the cards fill in their health when it arrives.
@@ -2125,7 +2220,7 @@ async function loadStorage() {
     box.append(card);
   }
   if (!groups.size) box.append(el("p", "empty", t("storage.none")));
-  await Promise.all([pollImport(), loadCrypt(), loadUnraid()]);
+  await Promise.all([pollImport(), loadCrypt(), loadUnraid(), loadReplace(data)]);
 }
 
 // --- encryption -----------------------------------------------------------------
@@ -6028,6 +6123,7 @@ async function start() {
   bindButtons();
   bindShares();
   bindFormat();
+  bindReplace();
   bindCrypt();
   bindRemotes();
   bindBurnin();

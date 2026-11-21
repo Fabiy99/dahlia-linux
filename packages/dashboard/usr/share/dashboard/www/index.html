@@ -367,6 +367,11 @@
             </div>
           </form>
         </article>
+        <article class="card" id="replace-card" hidden>
+          <h2 data-i18n="replace.title"></h2>
+          <p class="hint" data-i18n="replace.intro"></p>
+          <ul id="replace-disks" class="crypt-list"></ul>
+        </article>
         <article class="card" id="crypt-card" hidden>
           <h2 data-i18n="crypt.title"></h2>
           <ul id="crypt-disks" class="crypt-list"></ul>
@@ -1304,6 +1309,21 @@
     <div class="dialog-actions">
       <button value="cancel" formnovalidate data-i18n="common.cancel"></button>
       <button value="ok" class="danger" data-i18n="storage.format_now"></button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="replace-dialog">
+  <form id="replace-form" method="dialog">
+    <h2 id="replace-title"></h2>
+    <p class="hint" id="replace-text"></p>
+    <label><span data-i18n="replace.new_disk"></span><select name="device" required></select></label>
+    <p class="hint" id="replace-warning"></p>
+    <label id="replace-pass"><span data-i18n="crypt.passphrase"></span><input name="passphrase" type="password" autocomplete="current-password" minlength="8" maxlength="512"></label>
+    <label><span id="replace-confirm-label"></span><input name="confirm" autocomplete="off" required></label>
+    <div class="dialog-actions">
+      <button value="cancel" formnovalidate data-i18n="common.cancel"></button>
+      <button value="ok" class="danger" data-i18n="replace.start"></button>
     </div>
   </form>
 </dialog>

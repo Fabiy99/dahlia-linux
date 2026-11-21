@@ -118,8 +118,7 @@ final shareNameRe = RegExp(r'^[A-Za-z0-9][A-Za-z0-9._\-]{0,63}$');
 }
 
 /// The ages to offer, including a value set elsewhere.
-List<int> moverAgesWith(int current) =>
-    moverAges.contains(current) ? moverAges : ([...moverAges, current]..sort());
+List<int> moverAgesWith(int current) => moverAges.contains(current) ? moverAges : ([...moverAges, current]..sort());
 
 String moverAgeLabel(int m, Translate t) {
   if (m == 0) return t('storage.mover_age_none');
@@ -131,3 +130,34 @@ String moverAgeLabel(int m, Translate t) {
 /// Whether removing failed only because a cache still holds files, which
 /// needs a second yes (the agent's message names --force).
 bool needsForce(int status, String detail) => status == 422 && detail.contains('--force');
+
+/// Disks the replacement wizard offers: managed data and parity disks.
+List<Map> replaceable(List<Map> managed) => [
+  for (final d in managed)
+    if (d['role'] == 'data' || d['role'] == 'parity') d,
+];
+
+/// Whole blank disks (storage list) that can take [old]'s place: at least its
+/// size and, for a parity disk, at least the largest data disk (as storage.replace).
+List<Map> replaceCandidates(Map old, List<Map> managed, List<Map> disks) {
+  num size(Map d) => (d['size'] as num?) ?? 0;
+  var min = size(old);
+  if (old['role'] == 'parity') {
+    for (final d in managed) {
+      if (d['role'] == 'data' && size(d) > min) min = size(d);
+    }
+  }
+  return [
+    for (final d in disks)
+      if (d['kind'] == 'disk' &&
+          d['status'] == 'empty' &&
+          d['path'] == d['disk'] &&
+          d['removable'] != true &&
+          size(d) >= min)
+        d,
+  ];
+}
+
+/// A data disk can only be rebuilt when a parity disk exists.
+bool canReplace(Map old, List<Map> managed) =>
+    old['role'] == 'parity' || managed.any((d) => d['role'] == 'parity' && d['uuid'] != old['uuid']);

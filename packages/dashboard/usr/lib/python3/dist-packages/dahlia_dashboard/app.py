@@ -345,6 +345,13 @@ class DiskRemoveBody(BaseModel):
     force: bool = False
 
 
+class DiskReplaceBody(BaseModel):
+    uuid: str
+    device: str
+    confirm: str
+    passphrase: str | None = None
+
+
 class TimeBody(BaseModel):
     timezone: str
     ntp: bool
@@ -1085,6 +1092,14 @@ def create_app(cfg: Config | None = None) -> FastAPI:
         if op not in ("stop", "clear"):
             raise ApiError(404, "error.not_found")
         return agent(f"disks.burnin_{op}", body.model_dump())
+
+    @app.get("/api/storage/managed", dependencies=authed)
+    def storage_managed():
+        return agent("storage.managed")
+
+    @app.post("/api/storage/replace", dependencies=changing)
+    def storage_replace(body: DiskReplaceBody):
+        return agent("storage.replace", body.model_dump(exclude_none=True))
 
     @app.post("/api/storage/remove", dependencies=changing)
     def storage_remove(body: DiskRemoveBody):

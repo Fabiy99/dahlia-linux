@@ -190,5 +190,19 @@
   "headless.pair_mismatch": "Der Server meldet ein anderes Zertifikat als bei der Installation. Die App verbindet sich deshalb nicht von selbst.",
   "headless.pair_timeout": "Der Server ist noch nicht erreichbar.",
   "headless.manual": "Von Hand: im Browser https://{host} öffnen und mit dem Einrichtungscode {code} einrichten.",
-  "headless.pair_again": "Noch einmal verbinden"
+  "headless.pair_again": "Noch einmal verbinden",
+  "replace.title": "Platte tauschen",
+  "replace.intro": "Eine defekte oder fehlende Daten- oder Parity-Platte wird durch eine neue, leere Platte ersetzt. Sie bekommt dieselbe Nummer und wird aus der Parity wiederhergestellt.",
+  "replace.mounted": "eingehängt",
+  "replace.missing": "fehlt",
+  "replace.button": "Tauschen",
+  "replace.no_parity": "Ohne Parity-Platte lässt sich eine Datenplatte nicht wiederherstellen.",
+  "replace.dialog_title": "{path} tauschen",
+  "replace.text_data": "Die neue Platte wird formatiert, als {path} eingebunden und aus der Parity wiederhergestellt. Das dauert je nach Größe Stunden; Dateien auf {path} sind bis dahin nicht vollständig.",
+  "replace.text_parity": "Die neue Platte wird formatiert, als {path} eingebunden und die Parity neu berechnet. Bis das fertig ist, sind die Daten nicht geschützt.",
+  "replace.new_disk": "Neue Platte",
+  "replace.warning": "Alles auf {path} wird gelöscht.",
+  "replace.no_disk": "Keine leere Platte mit mindestens {size} gefunden. Neue Platte einbauen und die Seite neu laden.",
+  "replace.start": "Tauschen und wiederherstellen",
+  "replace.started": "{path} wird wiederhergestellt. Fortschritt unter Parity."
 }
