@@ -15,6 +15,7 @@ import '../src/storage.dart';
 import 'area.dart';
 import 'shell.dart';
 import 'theme.dart';
+import 'unraid.dart';
 import 'widgets.dart';
 
 class StoragePage extends StatefulWidget {
@@ -226,6 +227,7 @@ class _StoragePageState extends State<StoragePage> with AreaCalls {
           SizedBox(width: grid.unit, child: Rise(delay: 60 * i, child: _pool(p, mp, name, hint))),
       ]),
       if (job != null) ...[const SizedBox(height: 18), _importBox(p, job)],
+      UnraidCard(c),
       if (_list(crypt['disks']).isNotEmpty) ...[
         const SizedBox(height: 18),
         _CryptCard(c: c, crypt: crypt, reload: _load, area: this),

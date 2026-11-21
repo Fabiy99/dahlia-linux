@@ -44,7 +44,7 @@ SUMMARY = {
          "paths": [{"host": "/mnt/user/appdata/Plex-Media-Server", "container": "/config",
                     "readonly": False},
                    {"host": "/mnt/user/Filme", "container": "/media", "readonly": True},
-                   {"host": "/tmp", "container": "/transcode", "readonly": False}],
+                   {"host": "/var/cache/plex", "container": "/transcode", "readonly": False}],
          "env": {"TZ": "Europe/Berlin", "PLEX_CLAIM": "", "BAD": "{X}"},
          "devices": ["/dev/dri"], "privileged": False},
         {"name": "qbittorrent", "image": "lscr.io/linuxserver/qbittorrent:4.6.7",

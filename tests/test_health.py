@@ -210,3 +210,22 @@ def test_broken_check_is_skipped(ctx, monkeypatch):
     out = run(ctx, "system.health")["result"]
     assert out["skipped"] == ["time"]
     assert "time" not in out["passed"]
+
+
+def test_unraid_offer(tmp_path):
+    from dahlia_agent import unraid
+    from test_agent import INACTIVE, FakeRunner
+
+    ctx = actions.Context(runner=FakeRunner({("systemctl", "show"): (0, INACTIVE, "")}),
+                          var=tmp_path)
+    assert health.check_unraid(ctx) == []
+    (tmp_path / "unraid").mkdir()
+    unraid.summary_file(ctx).write_text(json.dumps({"found": True}))
+    assert [f["id"] for f in health.check_unraid(ctx)] == ["unraid_found"]
+    unraid.progress_file(ctx).write_text(json.dumps({"state": "failed"}))
+    assert [f["id"] for f in health.check_unraid(ctx)] == ["unraid_failed"]
+    unraid.progress_file(ctx).write_text(json.dumps({"state": "done"}))
+    assert health.check_unraid(ctx) == []
+    unraid.progress_file(ctx).unlink()
+    unraid.dismissed_file(ctx).write_text("")
+    assert health.check_unraid(ctx) == []

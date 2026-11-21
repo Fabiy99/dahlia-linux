@@ -473,6 +473,7 @@ class HomeTiles {
     'backup': Area.backup,
     'notify': Area.settings,
     'firewall': Area.settings,
+    'unraid': Area.storage,
   };
 
   Color levelOf(String? level) => switch (level) { 'critical' => p.danger, 'warning' => p.warn, _ => infoColor(context) };
