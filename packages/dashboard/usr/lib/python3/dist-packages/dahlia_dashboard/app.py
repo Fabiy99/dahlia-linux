@@ -186,6 +186,36 @@ class ApiError(Exception):
         self.detail = detail
 
 
+# What a family account may call; the middleware refuses everything else.
+FAMILY_ROUTES = frozenset({
+    ("GET", "/api/state"),
+    ("POST", "/api/logout"),
+    ("POST", "/api/account/password"),
+    ("GET", "/api/account/totp"),
+    ("POST", "/api/account/totp/begin"),
+    ("POST", "/api/account/totp/confirm"),
+    ("POST", "/api/account/totp/disable"),
+    ("GET", "/api/family"),
+    ("POST", "/api/family/home"),
+    ("POST", "/api/family/home/reset"),
+    ("GET", "/api/family/weather"),
+    ("GET", "/api/family/weather/search"),
+})
+
+
+def family_access(share: dict, smb_user: str | None) -> str:
+    """"rw", "ro" or "" for a family account on a share (smb.py's rules):
+    public is open to everyone, secure readable by everyone and writable by
+    the listed users, private only for the listed users."""
+    listed = (share.get("users") or {}).get(smb_user, "") if smb_user else ""
+    security = share.get("security")
+    if security == "public":
+        return "rw"
+    if security == "secure":
+        return listed or "ro"
+    return listed
+
+
 # --- request bodies -----------------------------------------------------------
 
 # Account names are Linux user names and stored in lower case; "Fabian" in a
@@ -233,6 +263,10 @@ class UserBody(BaseModel):
 
 class RoleBody(BaseModel):
     role: str
+
+
+class UserAppsBody(BaseModel):
+    apps: list[str]
 
 
 class ResetPasswordBody(BaseModel):
@@ -603,11 +637,23 @@ def create_app(cfg: Config | None = None) -> FastAPI:
     agent_open_call = cfg.agent_open or default_agent_open(cfg.agent_socket)
     setup_lock = threading.Lock()
     home_store = home.HomeStore(cfg.state_dir / "home.json")
+    family_dir = cfg.state_dir / "family"
     weather = home.Weather(fetch=cfg.weather_fetch, clock=cfg.clock)
     pairing_codes = pairing.Codes()
 
     app = FastAPI(title="Dahlia Dashboard", docs_url=None, redoc_url=None, openapi_url=None)
     app.add_middleware(VersionHeader, version=cfg.version)
+
+    @app.middleware("http")
+    async def family_only(request: Request, call_next):
+        # A family account reaches only its own start screen: everything else
+        # under /api is refused, also what a viewer may read.
+        path = request.url.path
+        if path.startswith("/api/") and (request.method, path) not in FAMILY_ROUTES:
+            session = sessions.get(request.cookies.get(COOKIE))
+            if session is not None and users.role(session.username) == "family":
+                return JSONResponse({"error": "error.family_only", "detail": ""}, status_code=403)
+        return await call_next(request)
 
     @app.exception_handler(ApiError)
     def api_error(_request: Request, exc: ApiError):
@@ -755,6 +801,7 @@ def create_app(cfg: Config | None = None) -> FastAPI:
             users.change_password(session.username, body.old, body.new)
         except AuthError as e:
             raise ApiError(400, f"error.{e}") from None
+        family_smb_password(session.username, body.new)
         # Other browsers logged in with the old password are logged out.
         sessions.drop_user(session.username, keep=request.cookies.get(COOKIE))
         return {}
@@ -830,7 +877,36 @@ def create_app(cfg: Config | None = None) -> FastAPI:
             users.create(body.name, body.password, body.role)
         except AuthError as e:
             raise user_error(e) from None
-        return {"name": body.name, "role": body.role}
+        out = {"name": body.name, "role": body.role}
+        if body.role == "family":
+            out["smb"] = family_smb_user(body.name, body.password)
+        return out
+
+    def family_smb_user(name: str, password: str) -> str:
+        """A family account gets an SMB user of the same name and password,
+        so the shares open with what the person already knows."""
+        try:
+            if name in agent("shares.list")["users"]:
+                return "exists"
+            agent("shares.user_add", {"name": name, "password": password})
+        except ApiError:
+            return "failed"
+        return "created"
+
+    def family_smb_password(name: str, password: str) -> None:
+        # Keeps the SMB password of a family account equal to its own.
+        if users.role(name) != "family":
+            return
+        with contextlib.suppress(ApiError):
+            if name in agent("shares.list")["users"]:
+                agent("shares.user_password", {"name": name, "password": password})
+
+    @app.post("/api/users/{name}/apps", dependencies=changing)
+    def users_apps(name: str, body: UserAppsBody):
+        try:
+            return {"name": name, "apps": users.set_apps(name, body.apps)}
+        except AuthError as e:
+            raise user_error(e) from None
 
     @app.post("/api/users/{name}/role", dependencies=changing)
     def users_role(name: str, body: RoleBody):
@@ -846,6 +922,7 @@ def create_app(cfg: Config | None = None) -> FastAPI:
             users.reset_password(name, body.password)
         except AuthError as e:
             raise user_error(e) from None
+        family_smb_password(name, body.password)
         sessions.drop_user(name)
         return {}
 
@@ -857,6 +934,7 @@ def create_app(cfg: Config | None = None) -> FastAPI:
             users.delete(name)
         except AuthError as e:
             raise user_error(e) from None
+        (family_dir / f"{name}.json").unlink(missing_ok=True)
         sessions.drop_user(name)
         return {}
 
@@ -912,6 +990,66 @@ def create_app(cfg: Config | None = None) -> FastAPI:
 
     @app.get("/api/weather/search", dependencies=changing[1:])
     def weather_search(q: str, lang: str = "en"):
+        try:
+            return {"results": home.search(q, lang, cfg.weather_fetch)}
+        except home.WeatherError as e:
+            raise ApiError(502, "error.weather", str(e)) from None
+
+    # --- family start screen ------------------------------------------------------
+
+    def require_family(request: Request) -> Session:
+        session = require_user(request)
+        if users.role(session.username) != "family":
+            raise ApiError(403, "error.family_role")
+        return session
+
+    def family_home(name: str) -> home.HomeStore:
+        family_dir.mkdir(mode=0o700, exist_ok=True)
+        return home.HomeStore(family_dir / f"{name}.json")
+
+    @app.get("/api/family")
+    def family_get(session: Annotated[Session, Depends(require_family)]):
+        """The apps an admin gave this account and the shares its SMB user may open."""
+        name = session.username
+        given = set(users.apps(name))
+        installed = [a for a in agent("apps.list")["apps"] if a["id"] in given]
+        apps_out = [{k: a.get(k) for k in ("id", "name", "icon", "status", "public_port", "urls")}
+                    for a in installed]
+        listed = agent("shares.list")
+        smb = name in listed["users"]
+        shares_out = []
+        for sh in listed["shares"]:
+            access = family_access(sh, name if smb else None)
+            if access and sh.get("exists", True):
+                shares_out.append({"name": sh["name"], "comment": sh.get("comment", ""),
+                                   "access": access})
+        try:
+            host = agent("system.info").get("hostname") or socket.gethostname()
+        except ApiError:
+            host = socket.gethostname()
+        return {"name": name, "host": f"{host}.local", "apps": apps_out, "shares": shares_out,
+                "smb": smb, "home": family_home(name).get()}
+
+    @app.post("/api/family/home", dependencies=[Depends(require_csrf)])
+    def family_home_set(body: HomeBody, session: Annotated[Session, Depends(require_family)]):
+        try:
+            return family_home(session.username).set(
+                places=[p.model_dump() for p in body.places] if body.places is not None else None,
+                look=body.look)
+        except ValueError as e:
+            raise ApiError(400, "error.request", str(e)) from None
+
+    @app.post("/api/family/home/reset", dependencies=[Depends(require_csrf)])
+    def family_home_reset(session: Annotated[Session, Depends(require_family)]):
+        return family_home(session.username).reset()
+
+    @app.get("/api/family/weather")
+    def family_weather(session: Annotated[Session, Depends(require_family)]):
+        return {"places": weather.all(family_home(session.username).get()["places"])}
+
+    @app.get("/api/family/weather/search")
+    def family_weather_search(q: str, session: Annotated[Session, Depends(require_family)],
+                              lang: str = "en"):
         try:
             return {"results": home.search(q, lang, cfg.weather_fetch)}
         except home.WeatherError as e:

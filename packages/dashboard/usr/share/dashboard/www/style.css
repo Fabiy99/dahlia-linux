@@ -571,6 +571,18 @@ body.viewer main :is(button, input, select, textarea) { pointer-events: none; op
 body.viewer main :is(.viewer-ok, .viewer-ok *, [data-viewer-ok], [data-goto], .link-btn, .seg button) {
   pointer-events: auto; opacity: 1;
 }
+/* family accounts: own start screen, own password; nothing of the server */
+.family-only { display: none; }
+body.family .family-only { display: revert; }
+body.family :is(.admin-only, .not-family, #phone, #nav > button[data-view]:not([data-view="overview"]), #menu ~ div .more-views,
+  .tile-edit):not(.family-ok) { display: none !important; }
+body.family #view-account article.card:not(.viewer-ok) { display: none; }
+body.family .home-tiles { cursor: default; }
+body.family #hero-status { display: none; }
+#family-shares .row { align-items: center; }
+#family-shares .share-main { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+#family-shares .share-main small { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
 body.viewer .admin-only, body.viewer #nav [data-view="terminal"],
 body.viewer #nav [data-view="files"] { display: none; }
 

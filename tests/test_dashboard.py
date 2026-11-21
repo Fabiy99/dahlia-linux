@@ -1144,8 +1144,8 @@ def test_viewer_account_reads_but_cannot_change(env):
                                         "role": "viewer"}, headers=CSRF)
     assert r.status_code == 200
     users = client.get("/api/users").json()["users"]
-    assert users == [{"name": "anna", "role": "viewer", "totp": False},
-                     {"name": "fabian", "role": "admin", "totp": False}]
+    assert users == [{"name": "anna", "role": "viewer", "totp": False, "apps": []},
+                     {"name": "fabian", "role": "admin", "totp": False, "apps": []}]
     login_as(client, "anna", "lesen-only-123")
     assert client.get("/api/state").json()["role"] == "viewer"
     assert client.get("/api/system").status_code == 200
@@ -1165,6 +1165,70 @@ def test_viewer_account_reads_but_cannot_change(env):
     assert client.post("/api/account/password", json={"old": "lesen-only-123",
                                                       "new": "neues-passwort-1"},
                        headers=CSRF).status_code == 200
+
+
+def test_family_account_sees_only_its_start_screen(env):
+    client, agent, cfg = logged_in(env)
+    agent.replies["shares.list"] = {"users": ["mia"], "shares": [
+        {"name": "fotos", "comment": "Familie", "security": "private", "users": {"mia": "rw"}},
+        {"name": "filme", "security": "secure", "users": {}},
+        {"name": "offen", "security": "public", "users": {}},
+        {"name": "papa", "security": "private", "users": {"fabian": "rw"}},
+    ]}
+    r = client.post("/api/users", json={"name": "mia", "password": "familie-1234",
+                                        "role": "family"}, headers=CSRF)
+    # The SMB user exists already: not created twice.
+    assert r.json() == {"name": "mia", "role": "family", "smb": "exists"}
+    agent.replies["shares.list"]["users"] = []
+    r = client.post("/api/users", json={"name": "leo", "password": "familie-5678",
+                                        "role": "family"}, headers=CSRF)
+    assert r.json()["smb"] == "created"
+    assert ("shares.user_add", {"name": "leo", "password": "familie-5678"}) in agent.calls
+    agent.replies["shares.list"]["users"] = ["mia", "leo"]
+    assert client.post("/api/users/mia/apps", json={"apps": ["immich", "jellyfin", "immich"]},
+                       headers=CSRF).json() == {"name": "mia", "apps": ["immich", "jellyfin"]}
+    assert client.post("/api/users/mia/apps", json={"apps": ["../x"]},
+                       headers=CSRF).status_code == 400
+    agent.replies["apps.list"] = {"apps": [
+        {"id": "immich", "name": "Immich", "icon": "", "status": "running", "public_port": 2283,
+         "urls": {"mdns": "http://immich.local"}, "login": {"password": "x"}},
+        {"id": "kuma", "name": "Uptime Kuma", "status": "running", "public_port": 3001},
+    ]}
+
+    login_as(client, "mia", "familie-1234")
+    assert client.get("/api/state").json()["role"] == "family"
+    fam = client.get("/api/family").json()
+    assert [a["id"] for a in fam["apps"]] == ["immich"]
+    assert "login" not in fam["apps"][0]
+    assert fam["shares"] == [{"name": "fotos", "comment": "Familie", "access": "rw"},
+                             {"name": "filme", "comment": "", "access": "ro"},
+                             {"name": "offen", "comment": "", "access": "rw"}]
+    # Everything else is refused, also what a viewer may read.
+    agent.calls.clear()
+    for path in ("/api/system", "/api/storage", "/api/apps", "/api/shares", "/api/home",
+                 "/api/users", "/api/stats", "/api/files/list"):
+        r = client.get(path)
+        assert r.status_code == 403 and r.json()["error"] == "error.family_only", path
+    assert client.post("/api/system/reboot", headers=CSRF).status_code == 403
+    assert agent.calls == []
+    # Own look and weather places, apart from the server's start screen.
+    r = client.post("/api/family/home", json={"look": {"theme": "dark", "accent": "teal",
+                                                       "background": "still",
+                                                       "weather_fx": False}}, headers=CSRF)
+    assert r.status_code == 200 and r.json()["look"]["accent"] == "teal"
+    assert (cfg.state_dir / "family" / "mia.json").exists()
+    assert not (cfg.state_dir / "home.json").exists()
+    assert client.get("/api/family").json()["home"]["look"]["theme"] == "dark"
+    # The password change also changes the SMB password.
+    assert client.post("/api/account/password", json={"old": "familie-1234",
+                                                      "new": "familie-neu-99"},
+                       headers=CSRF).status_code == 200
+    assert ("shares.user_password", {"name": "mia", "password": "familie-neu-99"}) in agent.calls
+
+    login_as(client, "fabian", PASSWORD)
+    assert client.get("/api/family").json()["error"] == "error.family_role"
+    assert client.post("/api/users/mia/remove", headers=CSRF).status_code == 200
+    assert not (cfg.state_dir / "family" / "mia.json").exists()
 
 
 def test_user_management_guards(env):

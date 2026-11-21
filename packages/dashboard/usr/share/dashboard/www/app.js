@@ -360,7 +360,16 @@ function applyRole(role, name) {
   userRole = role;
   userName = name;
   document.body.classList.toggle("viewer", role === "viewer");
+  document.body.classList.toggle("family", role === "family");
   document.getElementById("viewer-banner").hidden = role !== "viewer";
+  // A family account has its own start screen and nothing else.
+  loaders.overview = role === "family" ? loadFamily : loadOverview;
+  loaders.account = role === "family" ? loadTotp : loadAccount;
+}
+
+// Start screen calls: a family account keeps its own look and weather places.
+function homePath(path) {
+  return userRole === "family" ? `family/${path}` : path;
 }
 
 // After setup or login: role from the server, then the overview.
@@ -656,7 +665,7 @@ function renderOverviewApps(installed) {
     } else {
       tile = el("button", "");
       tile.type = "button";
-      tile.addEventListener("click", () => open("apps"));
+      if (userRole !== "family") tile.addEventListener("click", () => open("apps"));
     }
     tile.classList.add("app-tile");
     const state = app.update
@@ -665,7 +674,7 @@ function renderOverviewApps(installed) {
     tile.append(avatar(app.id, app.name, app.icon), el("span", "name", app.name), state);
     return tile;
   }));
-  if (!installed.length) box.append(el("p", "empty", t("apps.none_installed")));
+  if (!installed.length) box.append(el("p", "empty", t(userRole === "family" ? "family.no_apps" : "apps.none_installed")));
 }
 
 const RESULT_KIND = { success: "ok", "exit-code": "crit", signal: "warn", timeout: "crit" };
@@ -1086,8 +1095,11 @@ function applyWidgets() {
     box.append(card);
     card.hidden = !tile.on;
     for (const size of TILE_SIZES) card.classList.toggle(`size-${size}`, tile.size === size);
-    card.draggable = homeEditing;
+    card.draggable = homeEditing && userRole !== "family";
     tileToolbar(card, tile, shown.indexOf(tile), shown.length);
+  }
+  if (userRole === "family") {
+    for (const c of cards.values()) c.hidden = !FAMILY_TILES.includes(c.dataset.widget);
   }
   box.classList.toggle("editing", homeEditing);
 }
@@ -1198,7 +1210,7 @@ function bindTileDrag() {
 // Sends only the changed part; the server keeps the rest (home.py).
 async function saveHome(change) {
   const before = homeCfg.widgets.weather;
-  homeCfg = await api("POST", "home", change);
+  homeCfg = await api("POST", homePath("home"), change);
   applyLook(homeCfg.look);
   applyWidgets();
   renderHomePanel();
@@ -1258,7 +1270,7 @@ function placeLabel(p) {
 
 async function searchPlaces(q) {
   const list = document.getElementById("place-results");
-  const res = await api("GET", `weather/search?q=${encodeURIComponent(q)}&lang=${lang}`);
+  const res = await api("GET", homePath(`weather/search?q=${encodeURIComponent(q)}&lang=${lang}`));
   list.replaceChildren(...res.results.map((p) => {
     const li = el("li");
     const b = el("button", "", p.name);
@@ -1324,13 +1336,60 @@ async function loadWeather() {
   const card = document.getElementById("weather-card");
   if (card.hidden) { setMood(null); return; }
   try {
-    weatherData = (await api("GET", "weather")).places;
+    weatherData = (await api("GET", homePath("weather"))).places;
   } catch (err) {
     weatherData = [];
     document.getElementById("weather-now").replaceChildren(el("p", "empty", errorText(err)));
     return;
   }
   renderWeather();
+}
+
+// --- family start screen ---------------------------------------------------------
+// Greeting, weather, the apps an admin gave the account and the shares its
+// SMB user may open. The server refuses everything else for this role.
+
+function renderFamilyShares(data) {
+  const box = document.getElementById("family-shares");
+  box.replaceChildren();
+  for (const s of data.shares) {
+    const row = el("div", "row");
+    const path = `\\\\${data.host}\\${s.name}`;
+    const main = el("div", "share-main");
+    main.append(el("b", "", s.name), el("small", "", s.comment || path));
+    const copy = el("button", "link-btn", t("family.copy"));
+    copy.type = "button";
+    copy.title = path;
+    copy.addEventListener("click", async () => {
+      try {
+        await navigator.clipboard.writeText(path);
+        say(t("family.copied", { path }), "ok");
+      } catch (_) {
+        say(path, "info");
+      }
+    });
+    row.append(main, badge(t(`family.access_${s.access}`), s.access === "rw" ? "ok" : "info"), copy);
+    box.append(row);
+  }
+  if (!data.shares.length) box.append(el("p", "empty", t("family.no_shares")));
+  document.getElementById("family-smb-hint").textContent = data.smb
+    ? t("family.smb_hint", { name: shownName(data.name) }) : t("family.no_smb");
+}
+
+const FAMILY_TILES = ["weather", "apps", "family-shares"];
+
+async function loadFamily() {
+  renderGreeting();
+  const status = document.getElementById("hero-status");
+  status.lastElementChild.textContent = "";
+  const data = await api("GET", "family");
+  homeCfg = data.home;
+  applyLook(homeCfg.look);
+  applyWidgets();
+  renderHomePanel();
+  renderOverviewApps(data.apps);
+  renderFamilyShares(data);
+  await loadWeather();
 }
 
 async function loadHome() {
@@ -1368,13 +1427,14 @@ function bindHome() {
   const reset = document.getElementById("home-reset");
   reset.addEventListener("click", () => guarded(reset, async () => {
     if (!(await ask(t("home.reset_ask"), "home.reset"))) return;
-    homeCfg = await api("POST", "home/reset");
+    homeCfg = await api("POST", homePath("home/reset"));
     applyLook(homeCfg.look);
     applyWidgets();
     renderHomePanel();
     await loadWeather();
   }));
   bindTileDrag();
+  document.getElementById("family-account").addEventListener("click", () => open("account"));
   document.getElementById("backdoor-close").addEventListener("click", () => {
     document.getElementById("backdoor-notice").hidden = true;
     try { localStorage.setItem("dahlia-backdoor-closed", "1"); } catch (_) { /* storage blocked */ }
@@ -5619,7 +5679,7 @@ async function loadUsers() {
     const tr = el("tr");
     cell(tr, el("b", "", shownName(u.name)));
     const role = el("select");
-    fillOptions(role, ["admin", "viewer"], (r) => t(`role_name.${r}`));
+    fillOptions(role, ["admin", "viewer", "family"], (r) => t(`role_name.${r}`));
     role.value = u.role;
     role.addEventListener("change", () => guarded(role, async () => {
       try {
@@ -5632,6 +5692,7 @@ async function loadUsers() {
     cell(tr, role);
     cell(tr, u.totp ? badge(t("users.totp_on"), "ok") : "–");
     const ops = el("div", "row-ops");
+    if (u.role === "family") ops.append(button("users.apps", () => openUserApps(u)));
     ops.append(button("users.reset", () => {
       const form = document.getElementById("user-reset-form");
       form.elements.name.value = u.name;
@@ -5652,14 +5713,51 @@ async function loadUsers() {
   }
 }
 
+// Apps a family account sees on its start screen.
+async function openUserApps(u) {
+  const form = document.getElementById("user-apps-form");
+  const { installed } = await api("GET", "apps?catalog=false");
+  const chosen = new Set(u.apps || []);
+  form.elements.name.value = u.name;
+  document.getElementById("user-apps-title").textContent = t("users.apps_prompt", { name: shownName(u.name) });
+  const list = document.getElementById("user-apps-list");
+  list.replaceChildren(...installed.map((a) => {
+    const label = el("label", "check");
+    const box = el("input");
+    box.type = "checkbox";
+    box.value = a.id;
+    box.checked = chosen.has(a.id);
+    label.append(box, el("span", "", a.name));
+    return label;
+  }));
+  if (!installed.length) list.append(el("p", "hint", t("apps.none_installed")));
+  form.hidden = false;
+}
+
 function bindUsers() {
+  const appsForm = document.getElementById("user-apps-form");
+  appsForm.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const name = appsForm.elements.name.value;
+    const apps = [...appsForm.querySelectorAll("#user-apps-list input:checked")].map((b) => b.value);
+    guarded(e.submitter, async () => {
+      await api("POST", `users/${encodeURIComponent(name)}/apps`, { apps });
+      appsForm.hidden = true;
+      say(t("users.apps_saved", { name: shownName(name) }), "ok");
+      await loadUsers();
+    });
+  });
+  document.getElementById("user-apps-cancel").addEventListener("click", () => { appsForm.hidden = true; });
   document.getElementById("user-form").addEventListener("submit", (e) => {
     e.preventDefault();
     const f = formData(e.target);
     guarded(e.submitter, async () => {
-      await api("POST", "users", { name: f.name.trim(), password: f.password, role: f.role });
+      const res = await api("POST", "users", { name: f.name.trim(), password: f.password, role: f.role });
       e.target.reset();
-      say(t("users.added", { name: shownName(f.name.trim().toLowerCase()) }), "ok");
+      const shown = shownName(f.name.trim().toLowerCase());
+      say(t("users.added", { name: shown }), "ok");
+      if (res.smb === "created") say(t("users.family_smb", { name: shown }), "ok");
+      if (res.smb === "failed") say(t("users.family_smb_failed", { name: shown }), "error");
       await loadUsers();
     });
   });

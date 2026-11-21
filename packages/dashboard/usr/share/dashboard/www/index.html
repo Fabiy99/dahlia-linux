@@ -175,13 +175,14 @@
             <h2 id="hero-greeting" class="hero-greeting"></h2>
             <p id="hero-status" class="hero-status"><span class="dot"></span><span></span></p>
           </div>
-          <button type="button" id="home-customize" class="hero-btn admin-only" aria-pressed="false"><span data-i18n="home.customize"></span></button>
+          <button type="button" id="home-customize" class="hero-btn admin-only family-ok" aria-pressed="false"><span data-i18n="home.customize"></span></button>
         </div>
         <article id="home-panel" class="card home-panel" hidden>
           <h2 data-i18n="home.customize_title"></h2>
-          <p class="hint" data-i18n="home.customize_hint"></p>
-          <h2 data-i18n="home.tiles"></h2>
-          <div id="home-widgets" class="chip-row" role="group"></div>
+          <p class="hint not-family" data-i18n="home.customize_hint"></p>
+          <p class="hint family-only" data-i18n="family.customize_hint"></p>
+          <h2 data-i18n="home.tiles" class="not-family"></h2>
+          <div id="home-widgets" class="chip-row not-family" role="group"></div>
           <h2 data-i18n="home.look"></h2>
           <div id="home-look" class="look-grid"></div>
           <h2 data-i18n="weather.places"></h2>
@@ -192,6 +193,7 @@
           </form>
           <ul id="place-results" class="place-results"></ul>
           <div class="panel-actions">
+            <button type="button" id="family-account" class="family-only" data-i18n="family.password"></button>
             <button type="button" id="home-reset" data-i18n="home.reset"></button>
             <button type="button" id="home-done" class="primary" data-i18n="home.done"></button>
           </div>
@@ -207,6 +209,12 @@
           <article class="card tile" data-widget="apps">
             <header><h2 data-i18n="overview.apps"></h2><span id="overview-apps-count" class="tile-note"></span></header>
             <div id="overview-apps" class="app-tiles"></div>
+          </article>
+
+          <article class="card tile size-l" data-widget="family-shares" hidden>
+            <header><h2 data-i18n="family.shares"></h2></header>
+            <div id="family-shares" class="rows"></div>
+            <p id="family-smb-hint" class="tile-note"></p>
           </article>
 
           <article class="card tile" data-widget="storage">
@@ -1055,11 +1063,22 @@
                 <button type="button" id="user-reset-cancel" data-i18n="common.cancel"></button>
               </div>
             </form>
+            <form id="user-apps-form" class="inline-form" hidden>
+              <p class="hint" id="user-apps-title"></p>
+              <input type="hidden" name="name">
+              <div id="user-apps-list" class="chip-row"></div>
+              <div class="actions">
+                <button type="submit" class="primary" data-i18n="common.save"></button>
+                <button type="button" id="user-apps-cancel" data-i18n="common.cancel"></button>
+              </div>
+            </form>
+            <p class="hint" data-i18n="users.family_hint"></p>
             <form id="user-form" class="inline-form">
               <label><span data-i18n="users.name"></span><input name="name" autocomplete="off" required pattern="[A-Za-z][A-Za-z0-9_\-]{1,31}"></label>
               <label><span data-i18n="field.password"></span><input name="password" type="password" autocomplete="new-password" required minlength="10"></label>
               <label><span data-i18n="users.role"></span><select name="role">
                 <option value="viewer" data-i18n="role_name.viewer"></option>
+                <option value="family" data-i18n="role_name.family"></option>
                 <option value="admin" data-i18n="role_name.admin"></option>
               </select></label>
               <div class="actions"><button type="submit" class="primary" data-i18n="users.add"></button></div>
