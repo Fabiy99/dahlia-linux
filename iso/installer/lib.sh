@@ -91,3 +91,36 @@ format_size() {
 answer() {
     sed -n "s/^$1=//p" "$2" | head -n1
 }
+
+# Token of a stick prepared by the USB Creator: 32 lower-case hex digits.
+valid_token() {
+    case "$1" in
+        *[!0-9a-f]*) return 1 ;;
+    esac
+    [ "${#1}" -eq 32 ]
+}
+
+# Address of the Dahlia app on the PC: IPv4:port.
+valid_endpoint() {
+    port="${1##*:}"
+    case "$port" in
+        ''|*[!0-9]*|0*) return 1 ;;
+    esac
+    [ "$port" -ge 1024 ] && [ "$port" -le 65535 ] && valid_ipv4 "${1%:*}"
+}
+
+# Hex digits in pairs (the password travels hex-encoded), 2 to 512 digits.
+valid_hex() {
+    case "$1" in
+        ''|*[!0-9a-f]*) return 1 ;;
+    esac
+    [ $(( ${#1} % 2 )) -eq 0 ] && [ "${#1}" -le 512 ]
+}
+
+# Setup code as the dashboard makes it: ABCDE-FGHJK without 0, 1, I, L, O.
+valid_setup_code() {
+    case "$1" in
+        [2-9A-HJKMNP-Z][2-9A-HJKMNP-Z][2-9A-HJKMNP-Z][2-9A-HJKMNP-Z][2-9A-HJKMNP-Z]-[2-9A-HJKMNP-Z][2-9A-HJKMNP-Z][2-9A-HJKMNP-Z][2-9A-HJKMNP-Z][2-9A-HJKMNP-Z]) return 0 ;;
+    esac
+    return 1
+}

@@ -30,6 +30,7 @@ if [ -f "$ANSWERS" ]; then
     log "guided answers applied: $(tr '\n' ' ' < "$ANSWERS")"
 fi
 
+sh "$DIR/report.sh" packages
 mkdir -p "$STAGE"
 cp /cdrom/dahlia/pool/*.deb "$STAGE/"
 
@@ -67,3 +68,31 @@ if [ ! -f "$ANSWERS" ]; then
 fi
 
 rm -rf "$STAGE"
+
+# Install without a screen: the password and the setup code came from the
+# app on the PC (headless.sh). The password is hex-encoded, so no character
+# of it needs quoting on the way.
+if [ -f /tmp/dahlia-password.hex ]; then
+    cp /tmp/dahlia-password.hex /target/root/.dahlia-password.hex
+    chmod 0600 /target/root/.dahlia-password.hex
+    if ! in-target python3 -I -c '
+import subprocess, sys
+pw = bytes.fromhex(open("/root/.dahlia-password.hex").read().strip()).decode()
+subprocess.run(["chpasswd"], input=f"{sys.argv[1]}:{pw}\n", text=True, check=True)
+' "$ACCOUNT"; then
+        rm -f /target/root/.dahlia-password.hex
+        log "FAILED: setting the password from the app"
+        exit 1
+    fi
+    rm -f /target/root/.dahlia-password.hex /tmp/dahlia-password.hex
+fi
+if [ -f /tmp/dahlia-setup-code ]; then
+    install -d -m 0700 /target/var/lib/dashboard
+    install -m 0600 /tmp/dahlia-setup-code /target/var/lib/dashboard/setup-code.preset
+    in-target chown -R ui:ui /var/lib/dashboard
+fi
+if [ -f /tmp/dahlia-headless-pc ]; then
+    # The app pins the server's CA by this SHA-256 (DER), so it pairs on its own.
+    fp="$(in-target sh -c "sed '/-----/d' /etc/dahlia/tls/ca.crt | base64 -d | sha256sum" | cut -d' ' -f1)"
+    sh "$DIR/report.sh" finished "$fp"
+fi

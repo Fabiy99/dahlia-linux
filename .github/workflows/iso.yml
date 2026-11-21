@@ -34,6 +34,8 @@ jobs:
           - {firmware: uefi, install: auto}
           - {firmware: bios, install: guided}
           - {firmware: uefi, install: guided}
+          - {firmware: bios, install: headless}
+          - {firmware: uefi, install: headless}
     steps:
       - uses: actions/checkout@v4
 

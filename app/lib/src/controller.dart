@@ -210,6 +210,31 @@ class Controller extends ChangeNotifier {
 
   void back() => _set(Stage.connect);
 
+  /// After an install without a screen: pins the CA the installer reported
+  /// (SHA-256, lower-case hex), runs the dashboard setup with the code and
+  /// the account from the USB Creator and signs in. Throws PairingError
+  /// while the server is not up yet or the CA does not match.
+  Future<void> pairHeadless(String host, String fingerprintHex, String code, String account, String password) async {
+    final pem = await fetchCa(host);
+    final fp = fingerprint(pemToDer(pem)).replaceAll(':', '').toLowerCase();
+    if (fp != fingerprintHex) throw PairingError('certificate');
+    settings
+      ..host = host
+      ..pem = pem
+      ..username = null;
+    settings.save(settingsFile);
+    await connect();
+    final s = server;
+    if (s == null || stage == Stage.update) return;
+    try {
+      await s.post('/api/setup', {'code': code, 'username': account, 'password': password});
+    } on ApiError catch (e) {
+      // Done already (a second try): the login below is all that is left.
+      if (e.key != 'error.setup_done') rethrow;
+    }
+    await login(account, password);
+  }
+
   /// "Other server": keeps nothing of the old pairing but the language and
   /// the app's own choices (desktop messages, tour).
   Future<void> otherServer() async {

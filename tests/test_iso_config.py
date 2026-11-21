@@ -85,18 +85,19 @@ def isolinux_labels():
 
 
 def test_boot_menus_offer_both_modes():
-    # Same four entries in the same order in both menus.
+    # Same five entries in the same order in both menus.
     grub = [line for _, line in grub_entries()]
     labels = isolinux_labels()
     syslinux = [labels[n] for n in ("dahlia", "dahlia-serial", "dahlia-auto",
-                                    "dahlia-auto-serial")]
-    assert len(grub) == 4
+                                    "dahlia-auto-serial", "dahlia-headless")]
+    assert len(grub) == 5
     for g, i in zip(grub, syslinux, strict=True):
         assert g.split(" ", 1)[1] == i.split(" ", 1)[1]
     for line in grub[:2]:
         assert "priority=high" in line and "dahlia.mode" not in line
-    for line in grub[2:]:
+    for line in grub[2:4]:
         assert "auto=true priority=critical dahlia.mode=auto ---" in line
+    assert "auto=true priority=critical dahlia.mode=headless ---" in grub[4]
     # Installer-only parameters stay before "---".
     for line in grub:
         assert "dahlia.mode" not in line.split("---", 1)[1]
@@ -114,7 +115,7 @@ def test_default_boot_entries_do_not_use_serial_console():
     # ttyS0 and leave the screen black, so only the extra entries may use it.
     entries = grub_entries()
     assert entries[0][0] == "Install Dahlia Linux"
-    assert [("ttyS0" in line) for _, line in entries] == [False, True, False, True]
+    assert [("ttyS0" in line) for _, line in entries] == [False, True, False, True, False]
     grub = (ROOT / "iso" / "grub.cfg").read_text(encoding="utf-8")
     assert re.search(r"^set default=0$", grub, re.M)
 
@@ -129,6 +130,21 @@ def test_build_ships_installer_files():
     build = (ROOT / "iso" / "build-iso.sh").read_text(encoding="utf-8")
     for f in (ROOT / "iso" / "installer").iterdir():
         assert f.name in build, f.name
+
+
+def test_headless_slots():
+    # The USB Creator (app/lib/src/headless.dart) fills these slots; grub
+    # entry 4 is the install without a screen.
+    build = (ROOT / "iso" / "build-iso.sh").read_text(encoding="utf-8")
+    for name, size in (("headless", 4096), ("grub", 512), ("isolinux", 512)):
+        assert f"slot {name} {size} " in build
+    grub = (ROOT / "iso" / "grub.cfg").read_text(encoding="utf-8")
+    assert "source $prefix/dahlia-boot.cfg" in grub
+    assert grub_entries()[4][0].startswith("Install without screen")
+    isolinux = (ROOT / "iso" / "isolinux.cfg").read_text(encoding="utf-8")
+    assert isolinux.rstrip().endswith("include dahlia-boot.cfg")
+    dart = (ROOT / "app" / "lib" / "src" / "headless.dart").read_text(encoding="utf-8")
+    assert "#DAHLIA-SLOT:" in dart and "set default=4" in dart
 
 
 def test_preseed_does_not_force_serial_console():
