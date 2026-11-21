@@ -6,7 +6,7 @@ step="$1"
 fp="${2:-}"
 pc="$(cat /tmp/dahlia-headless-pc 2>/dev/null || true)"
 token="$(cat /tmp/dahlia-headless-token 2>/dev/null || true)"
-[ -n "$pc" ] && [ -n "$token" ] || exit 0
+if [ -z "$pc" ] || [ -z "$token" ]; then exit 0; fi
 case "$step$fp" in
     *[!a-z0-9_]*) exit 0 ;;
 esac

@@ -23,9 +23,9 @@ mkdir -p "$OUT"
 
 cleanup() {
     docker rm -f dahlia-migrate-test >/dev/null 2>&1 || true
-    [ -n "${repo_pid:-}" ] && kill "$repo_pid" 2>/dev/null || true
-    [ -n "${qemu_pid:-}" ] && kill "$qemu_pid" 2>/dev/null || true
-    [ -n "${LOOP:-}" ] && losetup -d "$LOOP" 2>/dev/null || true
+    if [ -n "${repo_pid:-}" ]; then kill "$repo_pid" 2>/dev/null || true; fi
+    if [ -n "${qemu_pid:-}" ]; then kill "$qemu_pid" 2>/dev/null || true; fi
+    if [ -n "${LOOP:-}" ]; then losetup -d "$LOOP" 2>/dev/null || true; fi
 }
 trap cleanup EXIT
 

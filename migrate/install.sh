@@ -57,7 +57,9 @@ part() { case "$DISK" in *[0-9]) echo "${DISK}p$1" ;; *) echo "$DISK$1" ;; esac;
 
 cleanup() {
     for m in dev/pts dev proc sys run boot/efi ""; do
-        mountpoint -q "$TARGET/$m" 2>/dev/null && umount -l "$TARGET/$m" || true
+        if mountpoint -q "$TARGET/$m" 2>/dev/null; then
+            umount -l "$TARGET/$m" || true
+        fi
     done
 }
 trap cleanup EXIT
