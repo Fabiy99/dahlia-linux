@@ -19,9 +19,14 @@ with its own display D (user.dahlia.vnc); the dashboard relays it as a
 WebSocket. The port stays on 127.0.0.1, like the ports of Docker apps.
 Creating runs in the background (vm-create-<name>.service) because images
 are downloaded; the request waits in /run/dahlia/vm-create/<name>.json.
+
+Snapshots are Incus snapshots of an instance (vm.snapshot*), by hand or on
+a schedule: snapshots.schedule @daily (kept 7 days) or @weekly (kept 4
+weeks), named auto-N. Backups of instances go through restic (backup.py).
 """
 
 import argparse
+import datetime
 import json
 import re
 import sys
@@ -48,6 +53,9 @@ ISO_VOLUME = "{name}-install"
 MAX_CPUS = 64
 MAX_MEMORY = 1024 * 1024  # MiB
 MAX_DISK = 16384  # GiB
+SNAP_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,40}$")
+# Snapshot schedule -> (snapshots.schedule, snapshots.expiry).
+SCHEDULES = {"daily": ("@daily", "7d"), "weekly": ("@weekly", "4w")}
 
 
 def incus(ctx: Context, *args: str, timeout: int = 120, check: bool = True):
@@ -141,7 +149,15 @@ def instance(raw: dict) -> dict:
         "iso": "install" in (raw.get("devices") or {}),
         "memory_used": ((state.get("memory") or {}).get("usage")) or 0,
         "created": raw.get("created_at", ""),
+        "snapshot_schedule": schedule_name(config.get("snapshots.schedule", "")),
     }
+
+
+def schedule_name(value: str) -> str:
+    for name, (cron, _) in SCHEDULES.items():
+        if value == cron:
+            return name
+    return "custom" if value else "off"
 
 
 def raw_list(ctx: Context) -> list[dict]:
@@ -391,6 +407,102 @@ def vm_console(ctx: Context, name: str):
     if str(raw.get("status", "")).lower() != "running":
         raise AgentError(FAILED, f"{name} is not running")
     return {"name": name, "port": 5900 + display}
+
+
+# --- snapshots ----------------------------------------------------------------------
+
+
+def snapshots_of(ctx: Context, name: str) -> list[dict]:
+    proc = incus(ctx, "query", f"/1.0/instances/{name}/snapshots?recursion=1", check=False)
+    try:
+        data = json.loads(proc.stdout or "[]") if proc.returncode == 0 else []
+    except ValueError:
+        data = []
+    out = [{"name": str(sn.get("name", "")).rsplit("/", 1)[-1], "created": sn.get("created_at", ""),
+            "stateful": sn.get("stateful") is True}
+           for sn in data if isinstance(sn, dict)]
+    return sorted(out, key=lambda sn: sn["created"])
+
+
+def known_snapshot(ctx: Context, name: str, snapshot: str) -> None:
+    if snapshot not in {sn["name"] for sn in snapshots_of(ctx, name)}:
+        raise AgentError(FAILED, f"{name} has no snapshot {snapshot}")
+
+
+@action("vm.snapshots", mutating=False, params={"name": Param(str, pattern=NAME_RE)})
+def vm_snapshots(ctx: Context, name: str):
+    """Snapshots of an instance, oldest first, and its snapshot schedule."""
+    require_installed()
+    raw = find(ctx, name)
+    return {"name": name, "snapshots": snapshots_of(ctx, name),
+            "schedule": instance(raw)["snapshot_schedule"]}
+
+
+@action(
+    "vm.snapshot",
+    mutating=True,
+    params={"name": Param(str, pattern=NAME_RE),
+            "snapshot": Param(str, required=False, default="", pattern=re.compile(
+                rf"^(|{SNAP_RE.pattern[1:-1]})$"))},
+)
+def vm_snapshot(ctx: Context, name: str, snapshot: str):
+    """Take a snapshot now; without a name it is named by the time."""
+    require_installed()
+    find(ctx, name)
+    now = datetime.datetime.fromtimestamp(ctx.clock())
+    snapshot = snapshot or now.strftime("snap-%Y%m%d-%H%M%S")
+    if snapshot in {sn["name"] for sn in snapshots_of(ctx, name)}:
+        raise AgentError(FAILED, f"{name} has a snapshot {snapshot} already")
+    incus(ctx, "snapshot", "create", "--", name, snapshot, timeout=1800)
+    return {"name": name, "snapshot": snapshot}
+
+
+@action(
+    "vm.snapshot_restore",
+    mutating=True,
+    params={"name": Param(str, pattern=NAME_RE), "snapshot": Param(str, pattern=SNAP_RE)},
+)
+def vm_snapshot_restore(ctx: Context, name: str, snapshot: str):
+    """Put an instance back to a snapshot; what changed since is lost."""
+    require_installed()
+    find(ctx, name)
+    known_snapshot(ctx, name, snapshot)
+    incus(ctx, "snapshot", "restore", "--", name, snapshot, timeout=1800)
+    return {"name": name, "snapshot": snapshot}
+
+
+@action(
+    "vm.snapshot_delete",
+    mutating=True,
+    params={"name": Param(str, pattern=NAME_RE), "snapshot": Param(str, pattern=SNAP_RE)},
+)
+def vm_snapshot_delete(ctx: Context, name: str, snapshot: str):
+    """Delete one snapshot of an instance."""
+    require_installed()
+    find(ctx, name)
+    known_snapshot(ctx, name, snapshot)
+    incus(ctx, "snapshot", "delete", "--", name, snapshot, timeout=600)
+    return {"name": name, "snapshot": snapshot}
+
+
+@action(
+    "vm.snapshot_schedule",
+    mutating=True,
+    params={"name": Param(str, pattern=NAME_RE),
+            "every": Param(str, choices=("off", *SCHEDULES))},
+)
+def vm_snapshot_schedule(ctx: Context, name: str, every: str):
+    """Automatic snapshots: daily (kept 7 days), weekly (kept 4 weeks) or off."""
+    require_installed()
+    find(ctx, name)
+    if every == "off":
+        incus(ctx, "config", "unset", name, "snapshots.schedule")
+        incus(ctx, "config", "unset", name, "snapshots.expiry", check=False)
+    else:
+        cron, expiry = SCHEDULES[every]
+        incus(ctx, "config", "set", name, f"snapshots.schedule={cron}",
+              f"snapshots.expiry={expiry}", "snapshots.pattern=auto-%d")
+    return {"name": name, "schedule": every}
 
 
 # --- create (runs as vm-create-<name>.service) ------------------------------------

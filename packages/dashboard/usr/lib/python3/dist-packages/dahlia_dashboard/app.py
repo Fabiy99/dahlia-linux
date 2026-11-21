@@ -409,6 +409,15 @@ class BackupBody(BaseModel):
     target: dict
     stop_apps: bool = True
     folders: list[str] = []
+    machines: list[str] = []
+
+
+class VmSnapshotBody(BaseModel):
+    snapshot: str = ""
+
+
+class SnapshotScheduleBody(BaseModel):
+    every: str
 
 
 class RestoreBody(BaseModel):
@@ -1558,6 +1567,26 @@ def create_app(cfg: Config | None = None) -> FastAPI:
     @app.post("/api/vms/{name}/delete", dependencies=changing)
     def vm_delete(name: str):
         return agent("vm.delete", {"name": name})
+
+    @app.get("/api/vms/{name}/snapshots", dependencies=authed)
+    def vm_snapshots(name: str):
+        return agent("vm.snapshots", {"name": name})
+
+    @app.post("/api/vms/{name}/snapshots", dependencies=changing)
+    def vm_snapshot(name: str, body: VmSnapshotBody):
+        return agent("vm.snapshot", {"name": name, "snapshot": body.snapshot})
+
+    @app.post("/api/vms/{name}/snapshots/{snapshot}/restore", dependencies=changing)
+    def vm_snapshot_restore(name: str, snapshot: str):
+        return agent("vm.snapshot_restore", {"name": name, "snapshot": snapshot})
+
+    @app.post("/api/vms/{name}/snapshots/{snapshot}/delete", dependencies=changing)
+    def vm_snapshot_delete(name: str, snapshot: str):
+        return agent("vm.snapshot_delete", {"name": name, "snapshot": snapshot})
+
+    @app.post("/api/vms/{name}/snapshot-schedule", dependencies=changing)
+    def vm_snapshot_schedule(name: str, body: SnapshotScheduleBody):
+        return agent("vm.snapshot_schedule", {"name": name, "every": body.every})
 
     @app.post("/api/vms/{name}/{op}", dependencies=changing)
     def vm_op(name: str, op: str):

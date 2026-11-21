@@ -1,7 +1,7 @@
 [Unit]
 Description=Dahlia backup of app data and configuration
 Documentation=https://github.com/Fabiy99/dahlia-linux
-After=storage.target network-online.target docker.service
+After=storage.target network-online.target docker.service incus.service
 Wants=network-online.target
 
 # Started by backup.timer or job.start backup. Settings in

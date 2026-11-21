@@ -3271,6 +3271,7 @@ function vmRow(v) {
     if (v.iso) ops.append(op("eject", "download", "vms.eject"));
     ops.append(op("delete", "trash", "vms.delete", true));
   }
+  ops.append(button("snap.button", () => openVmSnapshots(v.name)));
   ops.append(button("vms.settings", () => vmSettings(v)));
   row.append(ops);
   return row;
@@ -3370,6 +3371,67 @@ async function vmCreate() {
   await api("POST", "vms", body);
   say(t("vms.create_started", { name: body.name }), "ok");
   await loadVms();
+}
+
+// Incus snapshots of one instance: list, take, restore, delete, schedule.
+let vmSnapName = "";
+
+async function renderVmSnapshots() {
+  const name = vmSnapName;
+  const data = await api("GET", `vms/${encodeURIComponent(name)}/snapshots`);
+  const sched = document.getElementById("vm-snap-schedule");
+  sched.value = ["off", "daily", "weekly"].includes(data.schedule) ? data.schedule : "off";
+  const tbody = document.getElementById("vm-snap-list");
+  tbody.replaceChildren();
+  for (const s of [...data.snapshots].reverse()) {
+    const tr = el("tr");
+    cell(tr, el("code", "", s.name));
+    cell(tr, s.created ? new Date(s.created).toLocaleString(lang) : "–");
+    const ops = el("div", "row-ops");
+    const base = `vms/${encodeURIComponent(name)}/snapshots/${encodeURIComponent(s.name)}`;
+    ops.append(button("snap.restore", async () => {
+      if (!await ask(t("snap.restore_confirm", { name, snap: s.name }), "snap.restore", true)) return;
+      await api("POST", `${base}/restore`);
+      say(t("snap.restored", { name, snap: s.name }), "ok");
+      await loadVms();
+    }), button("snap.delete", async () => {
+      if (!await ask(t("snap.delete_confirm", { snap: s.name }), "snap.delete", true)) return;
+      await api("POST", `${base}/delete`);
+      await renderVmSnapshots();
+    }, "danger"));
+    cell(tr, ops);
+    tbody.append(tr);
+  }
+  if (!data.snapshots.length) {
+    const tr = el("tr");
+    cell(tr, t("snap.none")).colSpan = 3;
+    tbody.append(tr);
+  }
+}
+
+async function openVmSnapshots(name) {
+  vmSnapName = name;
+  document.getElementById("vm-snap-title").textContent = t("snap.title", { name });
+  document.getElementById("vm-snap-name").value = "";
+  await renderVmSnapshots();
+  document.getElementById("vm-snap-dialog").showModal();
+}
+
+function bindVmSnapshots() {
+  const take = document.getElementById("vm-snap-take");
+  take.addEventListener("click", () => guarded(take, async () => {
+    const input = document.getElementById("vm-snap-name");
+    if (!input.checkValidity()) { input.reportValidity(); return; }
+    const res = await api("POST", `vms/${encodeURIComponent(vmSnapName)}/snapshots`, { snapshot: input.value.trim() });
+    input.value = "";
+    say(t("snap.taken", { snap: res.snapshot }), "ok");
+    await renderVmSnapshots();
+  }));
+  const sched = document.getElementById("vm-snap-schedule");
+  sched.addEventListener("change", () => guarded(sched, async () => {
+    await api("POST", `vms/${encodeURIComponent(vmSnapName)}/snapshot-schedule`, { every: sched.value });
+    say(t("snap.schedule_saved"), "ok");
+  }));
 }
 
 async function vmSettings(v) {
@@ -3993,6 +4055,9 @@ function renderBackupType() {
   for (const n of ["host", "user", "spath"]) f.elements[n].required = sftp;
 }
 
+let backupFolders = [];
+let backupMachines = [];
+
 async function loadBackup() {
   clearTimeout(backupTimer);
   const [data, list] = await Promise.all([api("GET", "backup"), api("GET", "apps?catalog=false")]);
@@ -4018,6 +4083,20 @@ async function loadBackup() {
     f.elements.spath.value = target.path;
   }
   f.elements.stop_apps.checked = data.stop_apps;
+  backupFolders = data.folders || [];
+  backupMachines = data.instances || [];
+  // VMs and containers (Incus) to include; the ones saved stay even if gone.
+  const names = [...new Set([...backupMachines, ...(data.machines || [])])].sort();
+  document.getElementById("backup-machines-box").hidden = !names.length;
+  document.getElementById("backup-machines").replaceChildren(...names.map((n) => {
+    const label = el("label", "check");
+    const box = el("input");
+    box.type = "checkbox";
+    box.value = n;
+    box.checked = (data.machines || []).includes(n);
+    label.append(box, el("span", "", n));
+    return label;
+  }));
   const key = document.getElementById("backup-pubkey");
   key.hidden = !data.public_key;
   key.textContent = data.public_key || "";
@@ -4069,8 +4148,13 @@ function renderProbe(data) {
   return running;
 }
 
+// Names a VM restore can be asked for: the ones picked for the backup and the existing ones.
+let backupSnapshotMachines = [];
+
 async function loadSnapshots() {
   const { snapshots } = await api("GET", "backup/snapshots");
+  backupSnapshotMachines = [...new Set([...backupMachines,
+    ...[...document.querySelectorAll("#backup-machines input")].map((b) => b.value)])].sort();
   const card = document.getElementById("backup-snapshots-card");
   const tbody = document.getElementById("backup-snapshots");
   card.hidden = false;
@@ -4080,13 +4164,22 @@ async function loadSnapshots() {
     cell(tr, new Date(s.time).toLocaleString(lang));
     cell(tr, el("code", "", s.id));
     const sel = el("select");
-    fillOptions(sel, ["config", ...backupApps.map((a) => a.id)],
-      (v) => (v === "config" ? t("backup.what_config") : backupApps.find((a) => a.id === v).name));
+    // VMs and containers whose export this snapshot holds.
+    const vms = (s.paths || []).some((p) => p.endsWith("/backup-machines")) ? backupSnapshotMachines : [];
+    const whatName = (v) => {
+      if (v === "config") return t("backup.what_config");
+      if (v.startsWith("vm:")) return t("backup.what_vm", { name: v.slice(3) });
+      return backupApps.find((a) => a.id === v).name;
+    };
+    fillOptions(sel, ["config", ...backupApps.map((a) => a.id), ...vms.map((n) => `vm:${n}`)], whatName);
     const go = iconButton("reboot", "backup.restore", async () => {
       const what = sel.value;
-      const name = what === "config" ? t("backup.what_config") : backupApps.find((a) => a.id === what).name;
-      if (!await ask(t("backup.restore_confirm", { what: name, time: new Date(s.time).toLocaleString(lang) }),
-                     "backup.restore", true)) return;
+      const name = whatName(what);
+      const time = new Date(s.time).toLocaleString(lang);
+      const text = what.startsWith("vm:")
+        ? t("backup.restore_vm_confirm", { what: name, time, name: what.slice(3) })
+        : t("backup.restore_confirm", { what: name, time });
+      if (!await ask(text, "backup.restore", true)) return;
       await api("POST", "backup/restore", { snapshot: s.id, what });
       say(t("backup.restore_started", { what: name }), "ok");
       await loadBackup();
@@ -4116,7 +4209,8 @@ function bindBackup() {
       : { type: "folder", path: el_.path.value };
     guarded(e.submitter, async () => {
       if (!target.path) { say(t("backup.choose_target"), "error"); return; }
-      await api("POST", "backup", { target, stop_apps: el_.stop_apps.checked });
+      const machines = [...document.querySelectorAll("#backup-machines input:checked")].map((b) => b.value);
+      await api("POST", "backup", { target, stop_apps: el_.stop_apps.checked, folders: backupFolders, machines });
       say(t("backup.saved"), "ok");
       await loadBackup();
     });
@@ -6269,6 +6363,7 @@ async function start() {
   bindShares();
   bindFormat();
   bindReplace();
+  bindVmSnapshots();
   bindCrypt();
   bindRemotes();
   bindBurnin();

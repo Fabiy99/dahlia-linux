@@ -249,6 +249,11 @@ def test_actions_go_to_agent(env):
     client.post("/api/storage/import", json={"uuid": "1234-ABCD", "target": "old"}, headers=CSRF)
     client.get("/api/storage/import")
     client.get("/api/storage/managed")
+    client.get("/api/vms/web/snapshots")
+    client.post("/api/vms/web/snapshots", json={}, headers=CSRF)
+    client.post("/api/vms/web/snapshots/auto-1/restore", headers=CSRF)
+    client.post("/api/vms/web/snapshots/auto-1/delete", headers=CSRF)
+    client.post("/api/vms/web/snapshot-schedule", json={"every": "daily"}, headers=CSRF)
     client.post("/api/storage/replace", json={"uuid": "1234-ABCD", "device": "/dev/sde",
                                               "confirm": "sde"}, headers=CSRF)
     client.post("/api/jobs/mover/start", headers=CSRF)
@@ -263,6 +268,11 @@ def test_actions_go_to_agent(env):
         ("storage.import", {"uuid": "1234-ABCD", "target": "old"}),
         ("storage.import_status", {}),
         ("storage.managed", {}),
+        ("vm.snapshots", {"name": "web"}),
+        ("vm.snapshot", {"name": "web", "snapshot": ""}),
+        ("vm.snapshot_restore", {"name": "web", "snapshot": "auto-1"}),
+        ("vm.snapshot_delete", {"name": "web", "snapshot": "auto-1"}),
+        ("vm.snapshot_schedule", {"name": "web", "every": "daily"}),
         ("storage.replace", {"uuid": "1234-ABCD", "device": "/dev/sde", "confirm": "sde"}),
         ("job.start", {"job": "mover"}),
         ("updates.apply", {}),
@@ -978,7 +988,8 @@ def test_backup_endpoints(env):
                 headers=CSRF)
     assert agent.calls == [
         ("backup.get", {}),
-        ("backup.set", {"target": target, "stop_apps": True, "folders": []}),
+        ("backup.set", {"target": target, "stop_apps": True, "folders": [],
+                        "machines": []}),
         ("backup.key", {}),
         ("backup.snapshots", {}),
         ("backup.restore", {"snapshot": "abc12345", "what": "whoami"}),

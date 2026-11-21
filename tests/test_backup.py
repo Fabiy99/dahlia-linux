@@ -169,6 +169,60 @@ def test_restore_app(b, tmp_path):
         b.restore("../x", "whoami")
 
 
+class IncusRun(FakeRun):
+    """FakeRun that also plays Incus: list, export (writes the file), import."""
+
+    def __init__(self, instances, restored=None):
+        super().__init__()
+        self.instances = instances
+        self.restored = restored
+
+    def __call__(self, cmd, env=None, timeout=None):
+        out = super().__call__(cmd, env, timeout)
+        if cmd[:2] == ["incus", "list"]:
+            return json.dumps([{"name": n, "status": st} for n, st in self.instances.items()])
+        if cmd[:2] == ["incus", "export"]:
+            Path(cmd[3]).write_text("tar")
+        if cmd[0] == "restic" and "restore" in cmd and self.restored:
+            self.restored.parent.mkdir(parents=True, exist_ok=True)
+            self.restored.write_text("tar")
+        return out
+
+
+def test_machines_are_exported_and_saved(b):
+    b.run = IncusRun({"homeassistant": "Running", "build": "Stopped"})
+    b.configure({"type": "folder", "path": "/mnt/disk2/backup"}, True, [],
+                ["homeassistant", "gone"])
+    assert b.settings()["machines"] == ["homeassistant", "gone"]
+    status = b.backup()
+    assert status["machines"] == ["homeassistant"]
+    incus = [c for c in b.run.calls if c[0] == "incus" and c[1] != "list"]
+    assert incus[0] == ["incus", "stop", "homeassistant"]
+    assert incus[1][:2] == ["incus", "export"] and incus[1][3].endswith("homeassistant.tar")
+    assert incus[1][-3:] == ["--instance-only", "--compression", "none"]
+    assert incus[2] == ["incus", "start", "homeassistant"]
+    saved = next(c for c in b.run.calls if c[0] == "restic" and "backup" in c)
+    assert str(b.machines_dir) in saved
+    assert not b.machines_dir.exists()
+    with pytest.raises(BackupError):
+        backup.check_machines(["../x"])
+
+
+def test_machine_restore_next_to_existing(b):
+    b.configure({"type": "folder", "path": "/mnt/disk2/backup"}, True, [])
+    b.run = IncusRun({"homeassistant": "Running"}, restored=b.machines_dir / "homeassistant.tar")
+    got = b.restore("abc12345", "vm:homeassistant")
+    assert got["as"] == "homeassistant-restored"
+    imp = b.run.calls[-1]
+    assert imp[:2] == ["incus", "import"] and imp[-1] == "homeassistant-restored"
+    b.run = IncusRun({}, restored=b.machines_dir / "build.tar")
+    assert b.restore("abc12345", "vm:build")["as"] == "build"
+    b.run = IncusRun({})
+    with pytest.raises(BackupError, match="no export"):
+        b.restore("abc12345", "vm:build")
+    assert not b.machines_dir.exists()
+
+
 @pytest.mark.skipif(not shutil.which("restic"), reason="needs restic")
 def test_real_restic(b, tmp_path, monkeypatch):
     """Back up and restore with restic itself; everything below tmp_path."""

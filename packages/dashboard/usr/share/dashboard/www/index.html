@@ -705,6 +705,10 @@
               </div>
               <label class="check"><input name="stop_apps" type="checkbox" checked><span data-i18n="backup.stop_apps"></span></label>
               <p class="hint" data-i18n="backup.what"></p>
+              <div id="backup-machines-box" hidden>
+                <p class="hint" data-i18n="backup.machines_hint"></p>
+                <div id="backup-machines" class="chip-row"></div>
+              </div>
               <div class="actions">
                 <button type="submit" class="primary" data-i18n="common.save"></button>
                 <button type="button" id="backup-key" data-i18n="backup.show_key"></button>
@@ -1542,6 +1546,30 @@
     <div class="dialog-actions">
       <button value="cancel" formnovalidate data-i18n="common.cancel"></button>
       <button value="ok" class="primary" data-i18n="common.save"></button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="vm-snap-dialog" class="wide-dialog">
+  <form id="vm-snap-form" method="dialog">
+    <h2 id="vm-snap-title"></h2>
+    <p class="hint" data-i18n="snap.hint"></p>
+    <label><span data-i18n="snap.schedule"></span>
+      <select id="vm-snap-schedule">
+        <option value="off" data-i18n="snap.every_off"></option>
+        <option value="daily" data-i18n="snap.every_daily"></option>
+        <option value="weekly" data-i18n="snap.every_weekly"></option>
+      </select></label>
+    <div class="inline-form">
+      <label><span data-i18n="snap.name"></span><input id="vm-snap-name" autocomplete="off" pattern="[a-z0-9][a-z0-9\-]{0,40}" data-i18n-placeholder="snap.name_placeholder"></label>
+      <div class="actions"><button type="button" id="vm-snap-take" class="primary" data-i18n="snap.take"></button></div>
+    </div>
+    <table>
+      <thead><tr><th data-i18n="snap.col_name"></th><th data-i18n="snap.col_time"></th><th></th></tr></thead>
+      <tbody id="vm-snap-list"></tbody>
+    </table>
+    <div class="dialog-actions">
+      <button value="close" class="primary" data-i18n="common.close"></button>
     </div>
   </form>
 </dialog>
