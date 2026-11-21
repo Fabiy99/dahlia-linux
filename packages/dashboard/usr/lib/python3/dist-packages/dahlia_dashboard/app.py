@@ -694,7 +694,7 @@ def create_app(cfg: Config | None = None) -> FastAPI:
             users.create(body.username, body.password)
         except AuthError as e:
             raise ApiError(400, f"error.{e}") from None
-        setupcode.clear(cfg.run_dir)
+        setupcode.clear(cfg.run_dir, Path(cfg.state_dir))
         limiter.reset(ip)
         set_session(response, body.username)
         # The account exists now; a failing hostname change is reported but

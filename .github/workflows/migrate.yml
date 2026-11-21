@@ -1,0 +1,67 @@
+name: migrate
+
+on:
+  pull_request:
+    paths:
+      - "migrate/**"
+      - "packages/**"
+      - "tools/**"
+      - ".github/workflows/migrate.yml"
+  push:
+    branches: [main]
+    paths:
+      - "migrate/**"
+      - "packages/archive-keyring/**"
+      - ".github/workflows/migrate.yml"
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  # Install through the helper's web API onto a loop device, then boot the
+  # result in QEMU (UEFI and BIOS).
+  test:
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            apt-utils gnupg python3-yaml qemu-system-x86 qemu-utils ovmf sshpass curl
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Migration helper end to end
+        run: sudo -E migrate/test-migrate.sh
+
+  # Image for Unraid: ghcr.io/fabiy99/dahlia-linux/migrate (latest from main,
+  # plus the version tag on releases).
+  image:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and push
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REF: ${{ github.ref }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          image=ghcr.io/fabiy99/dahlia-linux/migrate
+          echo "$GH_TOKEN" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          tags=(-t "$image:latest")
+          case "$REF" in refs/tags/v*) tags=(-t "$image:${REF_NAME#v}" -t "$image:latest") ;; esac
+          docker build -f migrate/Dockerfile "${tags[@]}" \
+            --label org.opencontainers.image.source=https://github.com/Fabiy99/dahlia-linux .
+          docker push --all-tags "$image"

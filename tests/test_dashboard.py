@@ -422,6 +422,29 @@ def test_setup_code_format(tmp_path):
     assert not setupcode.check(tmp_path, "ä" * 10)
 
 
+def test_setup_code_preset_by_installer(tmp_path):
+    state = tmp_path / "preset-state"
+    state.mkdir()
+    run = tmp_path / "preset-run"
+    (state / setupcode.PRESET_FILE).write_text("abcde-fgh23\n")
+    assert setupcode.prepare(run, state) == "ABCDE-FGH23"
+    assert setupcode.check(run, "abcdefgh23")
+    setupcode.clear(run, state)
+    assert not (state / setupcode.PRESET_FILE).exists()
+    (state / setupcode.PRESET_FILE).write_text("not a code")
+    assert setupcode.prepare(run, state) != "not a code"
+
+
+def test_setup_removes_the_preset(env):
+    client, _, cfg, _ = env
+    (cfg.state_dir / setupcode.PRESET_FILE).write_text("23456-789AB\n")
+    code = setupcode.prepare(cfg.run_dir, cfg.state_dir)
+    assert code == "23456-789AB"
+    r = do_setup(client, code)
+    assert r.status_code == 200, r.text
+    assert not (cfg.state_dir / setupcode.PRESET_FILE).exists()
+
+
 # --- locales ------------------------------------------------------------------
 
 

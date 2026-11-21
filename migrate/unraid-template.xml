@@ -1,0 +1,21 @@
+<?xml version="1.0"?>
+<!-- Unraid Docker template for the Dahlia migration helper.
+     In Unraid: Docker, "Add Container", "Template repositories" or paste this
+     file's raw URL. The container needs privileged mode to write the new disk
+     and reads /boot/config and /var/local/emhttp read-only. -->
+<Container version="2">
+  <Name>dahlia-migrate</Name>
+  <Repository>ghcr.io/fabiy99/dahlia-linux/migrate:latest</Repository>
+  <Network>host</Network>
+  <Privileged>true</Privileged>
+  <Support>https://github.com/Fabiy99/dahlia-linux</Support>
+  <Project>https://fabiy99.github.io/dahlia-linux/</Project>
+  <Overview>Installs Dahlia Linux onto a free SSD and takes over the Unraid settings (network, disks, shares, SMB users, Docker containers, WireGuard). Unraid keeps running until you shut it down. The access code is in the container log.</Overview>
+  <Category>Tools: Backup:</Category>
+  <WebUI>http://[IP]:[PORT:8484]/</WebUI>
+  <Icon>https://raw.githubusercontent.com/Fabiy99/dahlia-linux/main/docs/img/dahlia-icon.png</Icon>
+  <Config Name="Unraid config" Target="/unraid/config" Default="/boot/config" Mode="ro" Type="Path" Display="always" Required="true">/boot/config</Config>
+  <Config Name="Unraid state" Target="/unraid/emhttp" Default="/var/local/emhttp" Mode="ro" Type="Path" Display="always" Required="true">/var/local/emhttp</Config>
+  <Config Name="Devices" Target="/dev" Default="/dev" Mode="rw" Type="Path" Display="advanced" Required="true">/dev</Config>
+  <Config Name="Port" Target="PORT" Default="8484" Mode="" Type="Variable" Display="advanced" Required="false">8484</Config>
+</Container>

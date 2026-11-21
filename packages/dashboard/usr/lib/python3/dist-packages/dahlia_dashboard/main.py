@@ -33,9 +33,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.prepare:
         if UserStore(Path(cfg.state_dir) / "users.json").has_users():
-            setupcode.clear(cfg.run_dir)
+            setupcode.clear(cfg.run_dir, Path(cfg.state_dir))
         else:
-            setupcode.prepare(cfg.run_dir)
+            setupcode.prepare(cfg.run_dir, Path(cfg.state_dir))
         return 0
 
     import uvicorn
