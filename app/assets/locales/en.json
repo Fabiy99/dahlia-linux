@@ -262,5 +262,6 @@
   "snap.schedule_saved": "Schedule saved.",
   "backup.machines_hint": "Include VMs and containers (stopped for the backup while it runs if stopping apps is on):",
   "backup.what_vm": "VM/container {name}",
-  "backup.restore_vm_confirm": "Restore {what} from {time}? If the instance still exists, the backup comes back beside it as \"{name}-restored\"."
+  "backup.restore_vm_confirm": "Restore {what} from {time}? If the instance still exists, the backup comes back beside it as \"{name}-restored\".",
+  "common.close": "Close"
 }

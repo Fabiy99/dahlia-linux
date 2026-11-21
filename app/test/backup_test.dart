@@ -39,6 +39,7 @@ void main() {
       'target': {'type': 'folder', 'path': '/mnt/external/usb'},
       'stop_apps': false,
       'folders': ['/srv/extra'],
+      'machines': <String>[],
     });
     expect(body('folder'), isNull);
     expect(body('sftp', host: ' nas ', user: 'dahlia', path: 'backup', port: '2222')!['target'],
@@ -49,6 +50,10 @@ void main() {
 
   test('restore choices and times', () {
     expect(restoreChoices([{'id': 'jellyfin', 'name': 'Jellyfin'}], t), [('config', 'backup.what_config'), ('jellyfin', 'Jellyfin')]);
+    final withVms = {'paths': ['/etc/dahlia', '/var/lib/dahlia/backup-machines']};
+    expect(restoreChoices(const [], t, snapshot: withVms, machines: ['ha']).last, ('vm:ha', 'backup.what_vm name=ha'));
+    expect(restoreChoices(const [], t, snapshot: const {'paths': ['/etc/dahlia']}, machines: ['ha']).length, 1);
+    expect(backupMachines({'instances': ['web', 'ha'], 'machines': ['old', 'ha']}), ['ha', 'old', 'web']);
     expect(parseTime('2026-11-14T12:00:00Z')!.toUtc(), DateTime.utc(2026, 11, 14, 12));
     expect(parseTime(0), DateTime.fromMillisecondsSinceEpoch(0));
     expect(parseTime(null), isNull);

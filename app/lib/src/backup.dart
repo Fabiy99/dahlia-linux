@@ -40,20 +40,32 @@ Map<String, Object>? backupBody({
   required String path,
   required bool stopApps,
   List<Object?> folders = const [],
+  List<String> machines = const [],
 }) {
   final Map<String, Object> target = type == 'sftp'
       ? {'type': 'sftp', 'host': host.trim(), 'port': int.tryParse(port.trim()) ?? 22, 'user': user.trim(), 'path': path.trim()}
       : {'type': 'folder', 'path': folder};
   if ('${target['path']}'.isEmpty) return null;
   if (type == 'sftp' && ('${target['host']}'.isEmpty || '${target['user']}'.isEmpty)) return null;
-  return {'target': target, 'stop_apps': stopApps, 'folders': folders};
+  return {'target': target, 'stop_apps': stopApps, 'folders': folders, 'machines': machines};
 }
 
-/// What a snapshot can restore: the configuration, then each installed app.
-List<(String, String)> restoreChoices(List<Map> installed, Translate t) => [
+/// What a snapshot can restore: the configuration, each installed app and,
+/// when the snapshot holds exports of VMs or containers, those [machines].
+List<(String, String)> restoreChoices(List<Map> installed, Translate t,
+        {Map snapshot = const {}, List<String> machines = const []}) =>
+    [
       ('config', t('backup.what_config')),
       for (final a in installed) ('${a['id']}', '${a['name'] ?? a['id']}'),
+      if (snapshot['paths'] is List && (snapshot['paths'] as List).any((p) => '$p'.endsWith('/backup-machines')))
+        for (final m in machines) ('vm:$m', t('backup.what_vm', {'name': m})),
     ];
+
+/// VMs and containers the backup can include: the existing ones and the saved ones.
+List<String> backupMachines(Map data) => {
+      for (final m in [...?(data['instances'] as List?), ...?(data['machines'] as List?)]) '$m',
+    }.toList()
+      ..sort();
 
 /// Times come as ISO text or as milliseconds.
 DateTime? parseTime(Object? v) {

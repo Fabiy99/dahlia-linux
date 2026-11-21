@@ -63,4 +63,18 @@ void main() {
     expect([ct['kind'], ct['source'], ct['memory'], ct['disk'], ct['windows'], ct.containsKey('iso_root')],
         ['container', 'image', 1536, 10, false, false]);
   });
+
+  test('snapshots newest first, names the agent takes', () {
+    final list = parseSnapshots({
+      'snapshots': [
+        {'name': 'before-upgrade', 'created': '2026-11-19T10:00:00Z'},
+        {'name': 'auto-1', 'created': '2026-11-20T03:00:00Z'},
+      ],
+    });
+    expect(list.map((s) => s.name), ['auto-1', 'before-upgrade']);
+    expect(list.first.created, DateTime.utc(2026, 11, 20, 3));
+    expect(parseSnapshots(null), isEmpty);
+    expect(['', 'vor-update', 'a1'].every(snapshotNameRe.hasMatch), isTrue);
+    expect(['Vor Update', '-x', 'a/b'].any(snapshotNameRe.hasMatch), isFalse);
+  });
 }

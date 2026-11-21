@@ -262,5 +262,6 @@
   "snap.schedule_saved": "Zeitplan gespeichert.",
   "backup.machines_hint": "VMs und Container mitsichern (werden für die Sicherung kurz angehalten, wenn Apps anhalten an ist):",
   "backup.what_vm": "VM/Container {name}",
-  "backup.restore_vm_confirm": "{what} vom {time} wiederherstellen? Gibt es die Instanz noch, kommt die Sicherung als „{name}-restored“ daneben."
+  "backup.restore_vm_confirm": "{what} vom {time} wiederherstellen? Gibt es die Instanz noch, kommt die Sicherung als „{name}-restored“ daneben.",
+  "common.close": "Schließen"
 }

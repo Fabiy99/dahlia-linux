@@ -38,6 +38,9 @@ class _BackupPageState extends State<BackupPage> with AreaCalls {
   String type = 'folder';
   String folder = '';
   bool stopApps = true;
+
+  /// VMs and containers picked for the backup.
+  Set<String> machines = {};
   final _host = TextEditingController();
   final _port = TextEditingController(text: '22');
   final _user = TextEditingController();
@@ -85,6 +88,7 @@ class _BackupPageState extends State<BackupPage> with AreaCalls {
           _path.text = '${target['path'] ?? ''}';
         }
         stopApps = data['stop_apps'] != false;
+        machines = {for (final m in data['machines'] is List ? data['machines'] as List : const []) '$m'};
       }
     });
     // A backup or restore runs for minutes: follow it.
@@ -102,6 +106,7 @@ class _BackupPageState extends State<BackupPage> with AreaCalls {
         path: _path.text,
         stopApps: stopApps,
         folders: d?['folders'] is List ? d!['folders'] as List : const [],
+        machines: machines.toList()..sort(),
       );
 
   Future<void> _save() async {
@@ -169,10 +174,13 @@ class _BackupPageState extends State<BackupPage> with AreaCalls {
   Future<void> _restore(Map snap) async {
     final m = ScaffoldMessenger.of(context);
     final id = '${snap['id']}';
-    final choices = restoreChoices(apps, c.t);
+    final choices = restoreChoices(apps, c.t, snapshot: snap, machines: backupMachines(d ?? const {}));
     final what = restoreWhat[id] ?? choices.first.$1;
     final name = choices.firstWhere((e) => e.$1 == what, orElse: () => choices.first).$2;
-    if (!await ask(c.t('backup.restore_confirm', {'what': name, 'time': _time(snap['time'])}), 'backup.restore', danger: true)) return;
+    final text = what.startsWith('vm:')
+        ? c.t('backup.restore_vm_confirm', {'what': name, 'time': _time(snap['time']), 'name': what.substring(3)})
+        : c.t('backup.restore_confirm', {'what': name, 'time': _time(snap['time'])});
+    if (!await ask(text, 'backup.restore', danger: true)) return;
     final r = await call(() => s.post('/api/backup/restore', {'snapshot': id, 'what': what}), m);
     if (r != null) say(m, c.t('backup.restore_started', {'what': name}));
     await _load();
@@ -279,6 +287,17 @@ class _BackupPageState extends State<BackupPage> with AreaCalls {
         title: Text(c.t('backup.stop_apps')),
         onChanged: (v) => setState(() => stopApps = v ?? true),
       ),
+      if (backupMachines(data).isNotEmpty) ...[
+        _hint(p, c.t('backup.machines_hint')),
+        Wrap(spacing: 8, children: [
+          for (final m in backupMachines(data))
+            FilterChip(
+              label: Text(m),
+              selected: machines.contains(m),
+              onSelected: (on) => setState(() => on ? machines.add(m) : machines.remove(m)),
+            ),
+        ]),
+      ],
       const SizedBox(height: 10),
       Wrap(spacing: 10, runSpacing: 10, children: [
         FilledButton(onPressed: !busy && _body != null ? _save : null, child: Text(c.t('common.save'))),
@@ -354,12 +373,16 @@ class _BackupPageState extends State<BackupPage> with AreaCalls {
 
   Widget _snapshotsCard(Palette p) {
     final list = snapshots!;
-    final choices = restoreChoices(apps, c.t);
     final restoring = unitActive(d?['restore']);
     return _card(c.t('backup.snapshots_title'), [
       _hint(p, c.t('backup.restore_hint')),
       if (list.isEmpty) Text(c.t('backup.no_snapshots'), style: TextStyle(color: p.muted)),
       for (final snap in list)
+        _snapshotRow(p, snap, restoreChoices(apps, c.t, snapshot: snap, machines: backupMachines(d ?? const {})), restoring),
+    ]);
+  }
+
+  Widget _snapshotRow(Palette p, Map snap, List<(String, String)> choices, bool restoring) =>
         Container(
           width: double.infinity,
           margin: const EdgeInsets.only(bottom: 8),
@@ -386,7 +409,5 @@ class _BackupPageState extends State<BackupPage> with AreaCalls {
               OutlinedButton(onPressed: restoring ? null : () => _restore(snap), child: Text(c.t('backup.restore'))),
             ]),
           ]),
-        ),
-    ]);
-  }
+        );
 }
