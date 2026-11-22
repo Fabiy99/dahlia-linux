@@ -84,10 +84,22 @@ printf 'DAHLIA_VERSION=%s\nDEBIAN_BASE=%s\n' "$VERSION" "$NETINST" > "$WORK/dahl
 #   dahlia/headless.cfg        answers for headless.sh (host name, PC, token)
 #   boot/grub/dahlia-boot.cfg  sourced by grub.cfg: default entry and timeout
 #   isolinux/dahlia-boot.cfg   included by isolinux.cfg: the same for BIOS
+# Counted, not cut with head: with SIGPIPE ignored an endless printf loop
+# never stops.
 slot() {
-    { printf '#DAHLIA-SLOT:%s:%s\n' "$1" "$2"
-      while :; do printf '%s\n' "###############################################################"; done
-    } | head -c "$2" > "$3" || true
+    local head line left
+    head="$(printf '#DAHLIA-SLOT:%s:%s' "$1" "$2")"
+    line="$(printf '%063d' 0 | tr 0 '#')"
+    {
+        printf '%s\n' "$head"
+        left=$(( $2 - ${#head} - 1 ))
+        while [ "$left" -gt 64 ]; do
+            printf '%s\n' "$line"
+            left=$(( left - 64 ))
+        done
+        if [ "$left" -gt 1 ]; then printf '%s\n' "${line:0:left-1}"; fi
+        if [ "$left" -eq 1 ]; then printf '\n'; fi
+    } > "$3"
     [ "$(wc -c < "$3")" -eq "$2" ]
 }
 mkdir -p "$WORK/slots"

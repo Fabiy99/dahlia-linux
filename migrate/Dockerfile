@@ -16,4 +16,5 @@ COPY migrate/www /opt/migrate/www
 
 WORKDIR /opt/migrate
 EXPOSE 8484
-CMD ["python3", "-I", "-m", "helper.web"]
+# -E -s instead of -I: -I would drop the working directory, where helper/ is.
+CMD ["python3", "-E", "-s", "-m", "helper.web"]
