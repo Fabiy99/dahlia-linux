@@ -27,6 +27,7 @@ DAHLIA_REPO="${DAHLIA_REPO:-https://fabiy99.github.io/dahlia-linux/}"
 SUITE=trixie
 TARGET=/mnt/dahlia-target
 PACKAGES=(base agent dashboard storage archive-keyring)
+APT_TIMEOUT=1800
 
 step() { echo "@@step $1"; }
 die() { echo "@@error $*"; exit 1; }
@@ -179,7 +180,13 @@ Suites: ./
 Signed-By: /usr/share/keyrings/dahlia-archive-keyring.asc
 DAHLIA
 in_target apt-get update -q >/dev/null
-in_target apt-get install -y -q "${PACKAGES[@]}" >/dev/null
+# A time limit and the tail of dpkg's log, so a hanging package script ends
+# with a message in the helper instead of a step that never finishes.
+if ! in_target timeout "$APT_TIMEOUT" apt-get install -y -q "${PACKAGES[@]}" >/dev/null; then
+    tail -n 40 "$TARGET/var/log/apt/term.log" 2>/dev/null || true
+    ps -eo pid,etimes,args | tail -n 30 || true
+    die "installing the Dahlia packages failed"
+fi
 
 # The setup code the person saw in the helper.
 install -d -m 0700 "$TARGET/var/lib/dashboard"

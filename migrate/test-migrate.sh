@@ -118,8 +118,13 @@ setup="$(api -X POST -d "$body" "http://127.0.0.1:$PORT/api/install" \
     | python3 -c 'import json,sys; print(json.load(sys.stdin)["setup_code"])')"
 echo "setup code: $setup"
 
-for _ in $(seq 1 240); do
+# debootstrap, kernel, firmware and the Dahlia dependencies come from the
+# Debian mirror: on a CI runner that takes well over 20 minutes.
+started=$SECONDS
+last=""
+for _ in $(seq 1 480); do
     job="$(api "http://127.0.0.1:$PORT/api/state" | python3 -c 'import json,sys; j=json.load(sys.stdin)["job"]; print(j["state"], j["step"])')"
+    [ "$job" = "$last" ] || { echo "  $(( SECONDS - started ))s: $job"; last="$job"; }
     case "$job" in
         done*) break ;;
         failed*)
@@ -129,7 +134,11 @@ for _ in $(seq 1 240); do
     esac
     sleep 5
 done
-[[ "$job" == done* ]] || { echo "FAIL: install did not finish ($job)" >&2; exit 1; }
+if [[ "$job" != done* ]]; then
+    api "http://127.0.0.1:$PORT/api/state" | python3 -c 'import json,sys; print("\n".join(json.load(sys.stdin)["job"]["log"][-60:]))' >&2 || true
+    echo "FAIL: install did not finish ($job)" >&2
+    exit 1
+fi
 echo "OK: helper installed Dahlia"
 docker rm -f dahlia-migrate-test >/dev/null
 losetup -d "$LOOP"
