@@ -12,6 +12,7 @@ import 'home.dart';
 import 'jobs.dart';
 import 'pages.dart';
 import 'parity.dart';
+import 'security.dart';
 import 'settings.dart';
 import 'shares.dart';
 import 'storage.dart';
@@ -65,8 +66,12 @@ class DahliaApp extends StatelessWidget {
         Stage.fingerprint => FingerprintPage(c),
         Stage.login => LoginPage(c),
         Stage.update => UpdatePage(c),
+        // A family account: own start screen and own password, nothing else.
+        Stage.home when c.isFamily => c.area == Area.settings
+            ? FamilyAccountPage(c)
+            : HomePage(c, key: const ValueKey('family')),
         Stage.home => switch (c.area) {
-          Area.home => HomePage(c),
+          Area.home => HomePage(c, key: ValueKey(c.role)),
           Area.apps => AppsPage(c),
           Area.storage => StoragePage(c),
           Area.files => FilesPage(c),

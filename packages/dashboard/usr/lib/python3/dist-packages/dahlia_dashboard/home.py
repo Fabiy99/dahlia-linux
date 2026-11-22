@@ -4,10 +4,15 @@ The selection is stored per server in home.json in the state directory, so
 every client (browser, desktop app, local screen) shows the same start screen.
 Weather comes from Open-Meteo (no API key). The server fetches it, the
 browser never talks to a third party.
+
+frame.json holds the photo frame of the monitor attached to the server:
+whether it runs, seconds per photo, the Immich album ("" = random photos)
+and whether the clock stays on top.
 """
 
 import json
 import os
+import re
 import threading
 import time
 import urllib.parse
@@ -134,6 +139,54 @@ def clean_look(look: dict, strict: bool) -> dict:
         elif strict:
             raise ValueError("look")
     return out
+
+
+FRAME_DEFAULT = {"enabled": False, "interval": 30, "album": "", "clock": True}
+FRAME_INTERVAL = (5, 3600)
+ALBUM_RE = re.compile(r"^(|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$")
+
+
+def clean_frame(frame: dict, strict: bool) -> dict:
+    out = dict(FRAME_DEFAULT)
+    for key, default in FRAME_DEFAULT.items():
+        if key not in frame:
+            continue
+        v = frame[key]
+        ok = type(v) is type(default)
+        if ok and key == "interval":
+            ok = FRAME_INTERVAL[0] <= v <= FRAME_INTERVAL[1]
+        if ok and key == "album":
+            ok = bool(ALBUM_RE.fullmatch(v))
+        if ok:
+            out[key] = v
+        elif strict:
+            raise ValueError(key)
+    return out
+
+
+class FrameStore:
+    """Photo frame of the local screen (frame.json)."""
+
+    def __init__(self, path: Path):
+        self.path = path
+        self.lock = threading.Lock()
+
+    def get(self) -> dict:
+        try:
+            data = json.loads(self.path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            data = {}
+        return clean_frame(data if isinstance(data, dict) else {}, strict=False)
+
+    def set(self, change: dict) -> dict:
+        with self.lock:
+            new = clean_frame({**self.get(), **change}, strict=True)
+            tmp = self.path.with_name(self.path.name + ".tmp")
+            fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o644)
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                json.dump(new, f, indent=1)
+            tmp.replace(self.path)
+        return new
 
 
 class HomeStore:

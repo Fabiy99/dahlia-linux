@@ -105,6 +105,11 @@ class _VmsPageState extends State<VmsPage> with AreaCalls {
     await _post('/api/vms/${Uri.encodeComponent(v.name)}/settings', body, c.t('vms.saved', {'name': v.name}));
   }
 
+  Future<void> _snapshots(VmInstance v) async {
+    await showDialog<void>(context: context, builder: (_) => _SnapshotsDialog(c: c, area: this, name: v.name));
+    await _load();
+  }
+
   void _console(VmInstance v) => showDialog<void>(
         context: context,
         builder: (_) => VmConsoleDialog(c: c, name: v.name),
@@ -241,6 +246,7 @@ class _VmsPageState extends State<VmsPage> with AreaCalls {
           if (v.iso) btn('vms.eject', () => _op(v, 'eject')),
           btn('vms.delete', () => _op(v, 'delete'), danger: true),
         ],
+        btn('snap.button', () => _snapshots(v)),
         btn('vms.settings', () => _settings(v)),
       ]),
     ]);
@@ -684,3 +690,160 @@ class _VmConsoleDialogState extends State<VmConsoleDialog> {
     );
   }
 }
+
+/// Incus snapshots of one instance: take, restore, delete and the schedule.
+class _SnapshotsDialog extends StatefulWidget {
+  const _SnapshotsDialog({required this.c, required this.area, required this.name});
+
+  final Controller c;
+  final AreaCalls area;
+  final String name;
+
+  @override
+  State<_SnapshotsDialog> createState() => _SnapshotsDialogState();
+}
+
+class _SnapshotsDialogState extends State<_SnapshotsDialog> {
+  List<VmSnapshot>? snaps;
+  String schedule = 'off';
+  bool busy = false;
+  final _name = TextEditingController();
+
+  Controller get c => widget.c;
+  String get base => '/api/vms/${Uri.encodeComponent(widget.name)}/snapshots';
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  @override
+  void dispose() {
+    _name.dispose();
+    super.dispose();
+  }
+
+  Future<void> _load() async {
+    final r = await widget.area.call(() => widget.area.s.get(base), ScaffoldMessenger.of(context));
+    if (!mounted || r is! Map) return;
+    setState(() {
+      snaps = parseSnapshots(r);
+      schedule = snapshotSchedules.contains(r['schedule']) ? '${r['schedule']}' : 'off';
+    });
+  }
+
+  Future<void> _do(Future<Object?> Function() f, [String? done]) async {
+    final m = ScaffoldMessenger.of(context);
+    setState(() => busy = true);
+    final r = await widget.area.call(f, m);
+    if (r != null && done != null) widget.area.say(m, done);
+    if (mounted) setState(() => busy = false);
+    await _load();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+    final list = snaps;
+    final s = widget.area.s;
+    final name = widget.name;
+    final nameOk = snapshotNameRe.hasMatch(_name.text.trim());
+    return AlertDialog(
+      title: Text(c.t('snap.title', {'name': name})),
+      content: SizedBox(
+        width: 560,
+        child: SingleChildScrollView(
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(c.t('snap.hint'), style: TextStyle(color: p.muted, fontSize: 13, height: 1.4)),
+            const SizedBox(height: 14),
+            DropdownButtonFormField<String>(
+              initialValue: schedule,
+              decoration: InputDecoration(labelText: c.t('snap.schedule'), isDense: true),
+              borderRadius: BorderRadius.circular(12),
+              items: [for (final e in snapshotSchedules) DropdownMenuItem(value: e, child: Text(c.t('snap.every_$e')))],
+              onChanged: busy
+                  ? null
+                  : (v) => _do(() => s.post('/api/vms/${Uri.encodeComponent(name)}/snapshot-schedule', {'every': v ?? 'off'}),
+                      c.t('snap.schedule_saved')),
+            ),
+            const SizedBox(height: 14),
+            Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+              Expanded(
+                child: TextField(
+                  controller: _name,
+                  decoration: InputDecoration(
+                    labelText: c.t('snap.name'),
+                    hintText: c.t('snap.name_placeholder'),
+                    isDense: true,
+                  ),
+                  onChanged: (_) => setState(() {}),
+                ),
+              ),
+              const SizedBox(width: 10),
+              FilledButton(
+                onPressed: busy || !nameOk
+                    ? null
+                    : () async {
+                        final m = ScaffoldMessenger.of(context);
+                        setState(() => busy = true);
+                        final r = await widget.area.call(() => s.post(base, {'snapshot': _name.text.trim()}), m);
+                        if (r is Map) {
+                          widget.area.say(m, c.t('snap.taken', {'snap': r['snapshot']}));
+                          _name.clear();
+                        }
+                        if (mounted) setState(() => busy = false);
+                        await _load();
+                      },
+                child: Text(c.t('snap.take')),
+              ),
+            ]),
+            const SizedBox(height: 14),
+            if (list == null) Busy(c.t('common.loading')),
+            if (list != null && list.isEmpty) Text(c.t('snap.none'), style: TextStyle(color: p.muted)),
+            for (final sn in list ?? const <VmSnapshot>[])
+              Padding(
+                padding: const EdgeInsets.only(bottom: 6),
+                child: Row(children: [
+                  Expanded(
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text(sn.name, style: const TextStyle(fontFamily: monoFont, fontFamilyFallback: monoFallback, fontWeight: FontWeight.w600)),
+                      if (sn.created != null)
+                        Text(sn.created!.toLocal().toString().substring(0, 16), style: TextStyle(color: p.muted, fontSize: 12.5)),
+                    ]),
+                  ),
+                  TextButton(
+                    onPressed: busy
+                        ? null
+                        : () async {
+                            if (!await widget.area.ask(c.t('snap.restore_confirm', {'name': name, 'snap': sn.name}), 'snap.restore',
+                                danger: true)) {
+                              return;
+                            }
+                            await _do(() => s.post('$base/${Uri.encodeComponent(sn.name)}/restore'),
+                                c.t('snap.restored', {'name': name, 'snap': sn.name}));
+                          },
+                    child: Text(c.t('snap.restore')),
+                  ),
+                  TextButton(
+                    style: TextButton.styleFrom(foregroundColor: p.danger),
+                    onPressed: busy
+                        ? null
+                        : () async {
+                            if (!await widget.area.ask(c.t('snap.delete_confirm', {'snap': sn.name}), 'snap.delete', danger: true)) {
+                              return;
+                            }
+                            await _do(() => s.post('$base/${Uri.encodeComponent(sn.name)}/delete'));
+                          },
+                    child: Text(c.t('snap.delete')),
+                  ),
+                ]),
+              ),
+          ]),
+        ),
+      ),
+      actions: [TextButton(onPressed: () => Navigator.pop(context), child: Text(c.t('common.close')))],
+    );
+  }
+}
+

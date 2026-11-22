@@ -222,8 +222,13 @@ truncate -s 400M "$WORK/new2.img"
 new2="$(losetup --find --show "$WORK/new2.img")"; LOOPS+=("$new2")
 mkfs.ext4 -q -L new2 "$new2"
 udevadm trigger --action=change "$new2"; udevadm settle
-disk add "$(blkid -s UUID -o value "$new2")" --role data
+if disk add "$(blkid -s UUID -o value "$new2")" --role data --index 1 2>/dev/null; then
+    fail "added a disk with the number of another"
+fi
+disk add "$(blkid -s UUID -o value "$new2")" --role data --index 2
 mountpoint -q /mnt/disk2 || fail "replacement is not /mnt/disk2"
+disk managed --json | jq -e '[.[] | select(.role == "data" and .index == 2 and .mounted)] | length == 1' \
+    >/dev/null || fail "disk managed does not show the replacement"
 dahlia-snapraid fix --disk 2
 check_data d2 /mnt/disk2
 check_data d2 /mnt/user

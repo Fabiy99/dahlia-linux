@@ -285,7 +285,16 @@ class ScreenAgent:
             return {"apps": [{"status": "running"}, {"status": "exited"}]}
         if action == "system.health":
             return {"findings": [], "passed": ["disks"], "skipped": []}
+        if action == "tiles.frame":
+            return {"state": "ok", "photos": [PHOTO], "album": params["album"]}
+        if action == "tiles.image":
+            return {"type": "image/jpeg", "data": "/9g="}
+        if action == "tiles.albums":
+            return {"state": "ok", "albums": [{"id": PHOTO, "name": "Urlaub", "count": 3}]}
         return {}
+
+
+PHOTO = "0b2e3c4d-1111-2222-3333-444455556666"
 
 
 def screen_client(tmp_path, monkeypatch, host="127.0.0.1"):
@@ -327,10 +336,33 @@ def test_screen_refused_from_network(tmp_path, monkeypatch):
     assert c.get("/api/screen", headers={"X-Forwarded-For": "192.168.1.50"}).status_code == 404
 
 
+def test_photo_frame_on_the_local_screen(tmp_path, monkeypatch):
+    c, code = screen_client(tmp_path, monkeypatch)
+    assert c.get("/api/screen").json()["frame"] is None
+    c.post("/api/setup", json={"code": code, "username": "fabian",
+                               "password": "correct horse battery"}, headers=CSRF)
+    got = c.get("/api/frame").json()
+    assert got["enabled"] is False and got["albums"]["albums"][0]["name"] == "Urlaub"
+    r = c.post("/api/frame", json={"enabled": True, "interval": 45, "album": PHOTO},
+               headers=CSRF)
+    assert r.json() == {"enabled": True, "interval": 45, "album": PHOTO, "clock": True}
+    assert c.post("/api/frame", json={"interval": 1}, headers=CSRF).status_code == 400
+    assert c.post("/api/frame", json={"album": "../x"}, headers=CSRF).status_code == 400
+    assert c.get("/api/screen").json()["frame"] == {"interval": 45, "clock": True,
+                                                    "photos": [PHOTO]}
+    r = c.get(f"/api/screen/photo/{PHOTO}")
+    assert r.status_code == 200 and r.content == b"\xff\xd8"
+    assert r.headers["content-type"] == "image/jpeg"
+    assert c.get("/api/screen/photo/nope").status_code == 404
+    assert c.get(f"/api/screen/photo/{PHOTO}",
+                 headers={"X-Forwarded-For": "192.168.1.50"}).status_code == 404
+
+
 def test_nginx_keeps_screen_local():
     conf = (ROOT / "packages/dashboard/etc/nginx/sites-available/dahlia").read_text()
     network, _, local = conf.partition("listen 127.0.0.1:8090;")
-    assert "location = /api/screen {\n        return 404;" in network
+    assert "location ^~ /api/screen {\n        return 404;" in network
+    assert "location ^~ /api/screen/photo/ {" in local
     assert "proxy_pass http://127.0.0.1:8080;" in local and "X-Forwarded-For" not in local
 
 

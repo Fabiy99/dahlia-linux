@@ -8,21 +8,23 @@ the [architecture](architecture.md). Deutsch: [Handbuch](../de/handbuch.md).
 1. [What you need](#what-you-need)
 2. [Making a USB stick](#making-a-usb-stick)
 3. [Installing](#installing)
-4. [First setup](#first-setup)
-5. [Desktop app, browser and phone](#desktop-app-browser-and-phone)
-6. [Start screen](#start-screen)
-7. [Disks and array](#disks-and-array)
-8. [Parity](#parity)
-9. [Shares](#shares)
-10. [Files](#files)
-11. [Apps](#apps)
-12. [VMs and containers](#vms-and-containers)
-13. [Backup](#backup)
-14. [Remote access](#remote-access)
-15. [Updates and snapshots](#updates-and-snapshots)
-16. [Notifications and weekly letter](#notifications-and-weekly-letter)
-17. [Terminal, Docker and log](#terminal-docker-and-log)
-18. [When something does not work](#when-something-does-not-work)
+4. [Moving from Unraid](#moving-from-unraid)
+5. [First setup](#first-setup)
+6. [Desktop app, browser and phone](#desktop-app-browser-and-phone)
+7. [Start screen](#start-screen)
+8. [Disks and array](#disks-and-array)
+9. [Parity](#parity)
+10. [Shares](#shares)
+11. [Family accounts](#family-accounts)
+12. [Files](#files)
+13. [Apps](#apps)
+14. [VMs and containers](#vms-and-containers)
+15. [Backup](#backup)
+16. [Remote access](#remote-access)
+17. [Updates and snapshots](#updates-and-snapshots)
+18. [Notifications and weekly letter](#notifications-and-weekly-letter)
+19. [Terminal, Docker and log](#terminal-docker-and-log)
+20. [When something does not work](#when-something-does-not-work)
 
 ## What you need
 
@@ -57,6 +59,18 @@ sudo dd if=dahlia-linux-<version>-amd64.iso of=/dev/sdX bs=4M conv=fsync status=
 
 `/dev/sdX` is the stick, not a disk with data (`lsblk` shows size and model).
 
+**Server without screen and keyboard** (Windows app): in the USB Creator choose "For a server
+without a screen" and enter server name, account, password, keyboard and time zone. The stick only
+holds the server name, time zone, keyboard, the PC's address and a random token, no password.
+Then:
+
+1. Plug the stick into the server, connect a network cable and boot from the stick. Keep the app
+   open (allow connections on private networks if Windows asks).
+2. The server reports its disks to the app. Pick the system disk there. A disk with data needs
+   its serial number to confirm.
+3. The installation runs and the server reboots. The app pairs through the fingerprint of the
+   local CA and creates the dashboard account by itself.
+
 ## Installing
 
 Boot the PC from the stick (boot menu usually F11, F12 or Esc) and choose "Install Dahlia Linux".
@@ -77,6 +91,30 @@ code. Servers without a screen: choose "serial console" in the boot menu.
 
 "Automatic install" is meant for tests: no questions, account `dahlia-admin` with the initial
 password `dahlia`. With a single disk, that disk is erased without asking.
+
+## Moving from Unraid
+
+The migration helper runs as a container on Unraid and installs Dahlia onto a free SSD in the same
+server. Unraid keeps running; its disks are locked for the helper.
+
+1. On Unraid, under Docker "Add Container", enter the template
+   [`migrate/unraid-template.xml`](https://github.com/Fabiy99/dahlia-linux/blob/main/migrate/unraid-template.xml)
+   (image `ghcr.io/fabiy99/dahlia-linux/migrate`) and start it.
+2. Open the container's web UI (port 8484). The access code is in the container's log.
+3. The helper shows what is taken over: network, server name, time zone, disks (by serial
+   number), shares, SMB users with their password, Docker containers with their appdata and
+   WireGuard. Not taken over: plugins, VM settings, bonding/VLANs, encrypted and ZFS disks and
+   further pools.
+4. Choose a free SSD, enter account and password, "Install Dahlia". At the end the helper shows
+   the setup code.
+5. Stop the array on Unraid, shut the server down, pull the Unraid stick and keep it, start the
+   server. It boots Dahlia from the SSD.
+6. Enter the setup code in the app or the browser. "Disks" then shows "Take over from Unraid"
+   with the list; "Take over now" mounts the data disks without formatting, creates shares and
+   users and turns the containers into apps.
+
+Unraid parity does not fit SnapRAID. It is formatted and recomputed only on request; until then
+the way back is open: plug in the Unraid stick and boot from it.
 
 ## First setup
 
@@ -124,6 +162,11 @@ across updates.
 Keys are entered in the tile itself. The server asks the apps on its own machine; nothing leaves
 the server.
 
+**Photo frame:** under "Customize" > "Photo frame on the server's screen" the monitor on the
+server shows photos from Immich instead of the overview: one album or random from all photos,
+changing after a set number of seconds, with a clock if wanted. The "Photos" tile needs its API
+key for this. While the setup code is shown, the overview stays.
+
 ## Disks and array
 
 "Disks" lists all drives with size, temperature and SMART values.
@@ -143,6 +186,12 @@ formatted.
 
 Encryption (LUKS) can be chosen when formatting. The key is stored on the server or entered in
 the dashboard after each boot.
+
+**Replace a disk:** when a data or parity disk fails or is missing, fit a new blank disk (at least
+as large as the old one) and choose the old one under "Disks" > "Replace a disk". Dahlia formats
+the new disk with the old one's file system (encrypted if the old one was), gives it the same
+number (`/mnt/diskN` stays) and restores it from the parity; for a parity disk the parity is
+computed anew. Progress is shown under "Parity". A data disk needs a parity disk.
 
 ## Parity
 
@@ -169,6 +218,19 @@ Shares make folders from `/mnt/user` available on the network.
 
 Windows: `\\dahlia.local\<share>` in Explorer. macOS: Finder > Go > Connect to Server,
 `smb://dahlia.local/<share>`.
+
+## Family accounts
+
+Under Settings > Security > Dashboard accounts, create an account with the role "Family" and pick
+the apps it should see. A family account has:
+
+- its own start screen (colours, background, weather places only for this account) with the
+  apps given to it and the folders it may open,
+- an SMB user with the same name and password; private shares are given to it like to any SMB
+  user, public and protected ones it always sees,
+- no access to settings, disks, installing apps, terminal or logs.
+
+When the family member changes the password, the SMB password changes with it.
 
 ## Files
 
@@ -218,6 +280,10 @@ down and choose "Eject ISO".
 **Shell of a container:** "Shell" copies the command `incus exec <name> -- bash -l` and opens the
 terminal. Paste it there.
 
+**Snapshots:** "Snapshots" on a machine creates a snapshot, rolls back to one or deletes it.
+Automatic snapshots run daily (kept 7 days) or weekly (kept 4 weeks). Snapshots are on the same
+storage; only the backup helps against a failed disk.
+
 Settings (cores, memory, start with the server) apply to VMs from their next start. Deleting is
 possible for stopped machines only and removes their disk.
 
@@ -231,6 +297,10 @@ all apps, not films or photos in shares.
    restored.
 3. The backup runs daily (time under Settings > Services > Schedules). Running apps pause briefly
    for it.
+
+**VMs and containers:** machines can be added in the backup settings. Dahlia exports them for the
+backup (`incus export`, current state only) and removes the export afterwards. Restoring creates
+the machine again under its name, or as `<name>-restored` when the name is taken.
 
 **Backup probe:** once a month Dahlia restores a sample of files from the latest backup into a
 test folder and compares them. The result is shown on the Backup page; a failure is sent as a
@@ -270,6 +340,11 @@ the bell. More channels (e-mail, ntfy, Gotify) under Settings > Services.
 photos, backups, updates, new apps, warnings, network traffic), on 1 January the year. The
 "Weekly letter" tile shows the latest one; older ones are in the tile's archive.
 
+**Power and cost:** under Settings > Services > "Power and cost" choose where the reading comes
+from: the UPS (draw through NUT) or a smart plug in the LAN (Shelly or Tasmota, read locally,
+without a cloud), plus the price per kWh. Dahlia measures every minute; the weekly letter shows
+the average in watts, the kWh and the cost, the year in review the sum.
+
 ## Terminal, Docker and log
 
 - **Terminal** (More > Terminal): a shell on the server as the Linux account with the dashboard
@@ -289,7 +364,7 @@ photos, backups, updates, new apps, warnings, network traffic), on 1 January the
 | Two-factor phone lost | `sudo dashboard --disable-totp <account>` |
 | The system does not start properly after an update | Boot a snapshot from before the update in the boot menu, then roll back for good in the dashboard. |
 | An app does not run after its update | Apps > the app > "Back to the old version". |
-| A disk failed | Fit a replacement, Parity > Restore a disk. |
+| A disk failed | Fit a replacement, Disks > Replace a disk. |
 | A VM does not start ("no KVM") | Enable virtualisation in the BIOS (VT-x/AMD-V). |
 
 Report problems: [GitHub issues](https://github.com/Fabiy99/dahlia-linux/issues), ideally with the

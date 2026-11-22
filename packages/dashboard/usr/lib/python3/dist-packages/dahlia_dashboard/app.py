@@ -186,6 +186,36 @@ class ApiError(Exception):
         self.detail = detail
 
 
+# What a family account may call; the middleware refuses everything else.
+FAMILY_ROUTES = frozenset({
+    ("GET", "/api/state"),
+    ("POST", "/api/logout"),
+    ("POST", "/api/account/password"),
+    ("GET", "/api/account/totp"),
+    ("POST", "/api/account/totp/begin"),
+    ("POST", "/api/account/totp/confirm"),
+    ("POST", "/api/account/totp/disable"),
+    ("GET", "/api/family"),
+    ("POST", "/api/family/home"),
+    ("POST", "/api/family/home/reset"),
+    ("GET", "/api/family/weather"),
+    ("GET", "/api/family/weather/search"),
+})
+
+
+def family_access(share: dict, smb_user: str | None) -> str:
+    """"rw", "ro" or "" for a family account on a share (smb.py's rules):
+    public is open to everyone, secure readable by everyone and writable by
+    the listed users, private only for the listed users."""
+    listed = (share.get("users") or {}).get(smb_user, "") if smb_user else ""
+    security = share.get("security")
+    if security == "public":
+        return "rw"
+    if security == "secure":
+        return listed or "ro"
+    return listed
+
+
 # --- request bodies -----------------------------------------------------------
 
 # Account names are Linux user names and stored in lower case; "Fabian" in a
@@ -233,6 +263,17 @@ class UserBody(BaseModel):
 
 class RoleBody(BaseModel):
     role: str
+
+
+class UserAppsBody(BaseModel):
+    apps: list[str]
+
+
+class FrameBody(BaseModel):
+    enabled: bool | None = None
+    interval: int | None = None
+    album: str | None = None
+    clock: bool | None = None
 
 
 class ResetPasswordBody(BaseModel):
@@ -345,6 +386,13 @@ class DiskRemoveBody(BaseModel):
     force: bool = False
 
 
+class DiskReplaceBody(BaseModel):
+    uuid: str
+    device: str
+    confirm: str
+    passphrase: str | None = None
+
+
 class TimeBody(BaseModel):
     timezone: str
     ntp: bool
@@ -361,6 +409,15 @@ class BackupBody(BaseModel):
     target: dict
     stop_apps: bool = True
     folders: list[str] = []
+    machines: list[str] = []
+
+
+class VmSnapshotBody(BaseModel):
+    snapshot: str = ""
+
+
+class SnapshotScheduleBody(BaseModel):
+    every: str
 
 
 class RestoreBody(BaseModel):
@@ -463,6 +520,14 @@ class UpsBody(BaseModel):
     shutdown_minutes: int = 0
 
 
+class EnergyBody(BaseModel):
+    source: str
+    plug: str = "shelly"
+    host: str = ""
+    price: int = 35
+    currency: str = "EUR"
+
+
 class AutoUpdatesBody(BaseModel):
     enabled: bool
     reboot: bool
@@ -508,6 +573,15 @@ class WireguardBody(BaseModel):
 
 class PeerBody(BaseModel):
     name: str
+
+
+class UnraidImportBody(BaseModel):
+    parity: bool = False
+    tags: dict[str, str] = {}
+
+
+class UnraidDismissBody(BaseModel):
+    dismissed: bool
 
 
 class TailscaleBody(BaseModel):
@@ -587,11 +661,24 @@ def create_app(cfg: Config | None = None) -> FastAPI:
     agent_open_call = cfg.agent_open or default_agent_open(cfg.agent_socket)
     setup_lock = threading.Lock()
     home_store = home.HomeStore(cfg.state_dir / "home.json")
+    family_dir = cfg.state_dir / "family"
+    frame_store = home.FrameStore(cfg.state_dir / "frame.json")
     weather = home.Weather(fetch=cfg.weather_fetch, clock=cfg.clock)
     pairing_codes = pairing.Codes()
 
     app = FastAPI(title="Dahlia Dashboard", docs_url=None, redoc_url=None, openapi_url=None)
     app.add_middleware(VersionHeader, version=cfg.version)
+
+    @app.middleware("http")
+    async def family_only(request: Request, call_next):
+        # A family account reaches only its own start screen: everything else
+        # under /api is refused, also what a viewer may read.
+        path = request.url.path
+        if path.startswith("/api/") and (request.method, path) not in FAMILY_ROUTES:
+            session = sessions.get(request.cookies.get(COOKIE))
+            if session is not None and users.role(session.username) == "family":
+                return JSONResponse({"error": "error.family_only", "detail": ""}, status_code=403)
+        return await call_next(request)
 
     @app.exception_handler(ApiError)
     def api_error(_request: Request, exc: ApiError):
@@ -694,7 +781,7 @@ def create_app(cfg: Config | None = None) -> FastAPI:
             users.create(body.username, body.password)
         except AuthError as e:
             raise ApiError(400, f"error.{e}") from None
-        setupcode.clear(cfg.run_dir)
+        setupcode.clear(cfg.run_dir, Path(cfg.state_dir))
         limiter.reset(ip)
         set_session(response, body.username)
         # The account exists now; a failing hostname change is reported but
@@ -739,6 +826,7 @@ def create_app(cfg: Config | None = None) -> FastAPI:
             users.change_password(session.username, body.old, body.new)
         except AuthError as e:
             raise ApiError(400, f"error.{e}") from None
+        family_smb_password(session.username, body.new)
         # Other browsers logged in with the old password are logged out.
         sessions.drop_user(session.username, keep=request.cookies.get(COOKIE))
         return {}
@@ -814,7 +902,36 @@ def create_app(cfg: Config | None = None) -> FastAPI:
             users.create(body.name, body.password, body.role)
         except AuthError as e:
             raise user_error(e) from None
-        return {"name": body.name, "role": body.role}
+        out = {"name": body.name, "role": body.role}
+        if body.role == "family":
+            out["smb"] = family_smb_user(body.name, body.password)
+        return out
+
+    def family_smb_user(name: str, password: str) -> str:
+        """A family account gets an SMB user of the same name and password,
+        so the shares open with what the person already knows."""
+        try:
+            if name in agent("shares.list")["users"]:
+                return "exists"
+            agent("shares.user_add", {"name": name, "password": password})
+        except ApiError:
+            return "failed"
+        return "created"
+
+    def family_smb_password(name: str, password: str) -> None:
+        # Keeps the SMB password of a family account equal to its own.
+        if users.role(name) != "family":
+            return
+        with contextlib.suppress(ApiError):
+            if name in agent("shares.list")["users"]:
+                agent("shares.user_password", {"name": name, "password": password})
+
+    @app.post("/api/users/{name}/apps", dependencies=changing)
+    def users_apps(name: str, body: UserAppsBody):
+        try:
+            return {"name": name, "apps": users.set_apps(name, body.apps)}
+        except AuthError as e:
+            raise user_error(e) from None
 
     @app.post("/api/users/{name}/role", dependencies=changing)
     def users_role(name: str, body: RoleBody):
@@ -830,6 +947,7 @@ def create_app(cfg: Config | None = None) -> FastAPI:
             users.reset_password(name, body.password)
         except AuthError as e:
             raise user_error(e) from None
+        family_smb_password(name, body.password)
         sessions.drop_user(name)
         return {}
 
@@ -841,6 +959,7 @@ def create_app(cfg: Config | None = None) -> FastAPI:
             users.delete(name)
         except AuthError as e:
             raise user_error(e) from None
+        (family_dir / f"{name}.json").unlink(missing_ok=True)
         sessions.drop_user(name)
         return {}
 
@@ -901,6 +1020,66 @@ def create_app(cfg: Config | None = None) -> FastAPI:
         except home.WeatherError as e:
             raise ApiError(502, "error.weather", str(e)) from None
 
+    # --- family start screen ------------------------------------------------------
+
+    def require_family(request: Request) -> Session:
+        session = require_user(request)
+        if users.role(session.username) != "family":
+            raise ApiError(403, "error.family_role")
+        return session
+
+    def family_home(name: str) -> home.HomeStore:
+        family_dir.mkdir(mode=0o700, exist_ok=True)
+        return home.HomeStore(family_dir / f"{name}.json")
+
+    @app.get("/api/family")
+    def family_get(session: Annotated[Session, Depends(require_family)]):
+        """The apps an admin gave this account and the shares its SMB user may open."""
+        name = session.username
+        given = set(users.apps(name))
+        installed = [a for a in agent("apps.list")["apps"] if a["id"] in given]
+        apps_out = [{k: a.get(k) for k in ("id", "name", "icon", "status", "public_port", "urls")}
+                    for a in installed]
+        listed = agent("shares.list")
+        smb = name in listed["users"]
+        shares_out = []
+        for sh in listed["shares"]:
+            access = family_access(sh, name if smb else None)
+            if access and sh.get("exists", True):
+                shares_out.append({"name": sh["name"], "comment": sh.get("comment", ""),
+                                   "access": access})
+        try:
+            host = agent("system.info").get("hostname") or socket.gethostname()
+        except ApiError:
+            host = socket.gethostname()
+        return {"name": name, "host": f"{host}.local", "apps": apps_out, "shares": shares_out,
+                "smb": smb, "home": family_home(name).get()}
+
+    @app.post("/api/family/home", dependencies=[Depends(require_csrf)])
+    def family_home_set(body: HomeBody, session: Annotated[Session, Depends(require_family)]):
+        try:
+            return family_home(session.username).set(
+                places=[p.model_dump() for p in body.places] if body.places is not None else None,
+                look=body.look)
+        except ValueError as e:
+            raise ApiError(400, "error.request", str(e)) from None
+
+    @app.post("/api/family/home/reset", dependencies=[Depends(require_csrf)])
+    def family_home_reset(session: Annotated[Session, Depends(require_family)]):
+        return family_home(session.username).reset()
+
+    @app.get("/api/family/weather")
+    def family_weather(session: Annotated[Session, Depends(require_family)]):
+        return {"places": weather.all(family_home(session.username).get()["places"])}
+
+    @app.get("/api/family/weather/search")
+    def family_weather_search(q: str, session: Annotated[Session, Depends(require_family)],
+                              lang: str = "en"):
+        try:
+            return {"results": home.search(q, lang, cfg.weather_fetch)}
+        except home.WeatherError as e:
+            raise ApiError(502, "error.weather", str(e)) from None
+
     # --- local screen -------------------------------------------------------------
 
     screen_cache: dict[str, tuple[float, object]] = {}
@@ -917,6 +1096,40 @@ def create_app(cfg: Config | None = None) -> FastAPI:
         screen_cache[key] = (now, value)
         return value
 
+    def local_only(request: Request) -> None:
+        if "x-forwarded-for" in request.headers or client_ip(request) not in ("127.0.0.1", "::1"):
+            raise ApiError(404, "error.not_found")
+
+    def frame_view(setup_code: str | None) -> dict | None:
+        """The photo frame for the local screen; not while the setup code is shown."""
+        frame = frame_store.get()
+        if not frame["enabled"] or setup_code:
+            return None
+        album = frame["album"]
+        got = cached(f"frame:{album}", 600, lambda: agent("tiles.frame", {"album": album})) or {}
+        return {"interval": frame["interval"], "clock": frame["clock"],
+                "photos": got.get("photos") or []}
+
+    @app.get("/api/screen/photo/{item}")
+    def screen_photo(item: str, request: Request):
+        local_only(request)
+        if not home.ALBUM_RE.fullmatch(item) or not item:
+            raise ApiError(404, "error.not_found")
+        got = agent("tiles.image", {"app": "immich", "item": item})
+        return Response(base64.b64decode(got["data"]), media_type=got["type"],
+                        headers={"Cache-Control": "private, max-age=86400"})
+
+    @app.get("/api/frame", dependencies=admin)
+    def frame_get():
+        return {**frame_store.get(), "albums": agent("tiles.albums")}
+
+    @app.post("/api/frame", dependencies=changing)
+    def frame_set(body: FrameBody):
+        try:
+            return frame_store.set(body.model_dump(exclude_none=True))
+        except ValueError as e:
+            raise ApiError(400, "error.request", str(e)) from None
+
     @app.get("/api/screen")
     def screen(request: Request):
         """Start screen on the monitor attached to the server (screen.service).
@@ -925,8 +1138,7 @@ def create_app(cfg: Config | None = None) -> FastAPI:
         on 127.0.0.1:8090 for the local browser; requests through nginx's
         network site carry X-Forwarded-For.
         """
-        if "x-forwarded-for" in request.headers or client_ip(request) not in ("127.0.0.1", "::1"):
-            raise ApiError(404, "error.not_found")
+        local_only(request)
         info = cached("info", 300, lambda: agent("system.info")) or {}
         stats = cached("stats", 5, lambda: agent("system.stats")) or {}
         address = lan_address(stats)
@@ -954,6 +1166,7 @@ def create_app(cfg: Config | None = None) -> FastAPI:
                      "total": len(apps)},
             "widgets": cfg_home["widgets"],
             "weather": weather.all(cfg_home["places"]),
+            "frame": frame_view(setup_code),
         }
 
     # --- phone and desktop app ------------------------------------------------------
@@ -1076,6 +1289,14 @@ def create_app(cfg: Config | None = None) -> FastAPI:
         if op not in ("stop", "clear"):
             raise ApiError(404, "error.not_found")
         return agent(f"disks.burnin_{op}", body.model_dump())
+
+    @app.get("/api/storage/managed", dependencies=authed)
+    def storage_managed():
+        return agent("storage.managed")
+
+    @app.post("/api/storage/replace", dependencies=changing)
+    def storage_replace(body: DiskReplaceBody):
+        return agent("storage.replace", body.model_dump(exclude_none=True))
 
     @app.post("/api/storage/remove", dependencies=changing)
     def storage_remove(body: DiskRemoveBody):
@@ -1355,6 +1576,26 @@ def create_app(cfg: Config | None = None) -> FastAPI:
     def vm_delete(name: str):
         return agent("vm.delete", {"name": name})
 
+    @app.get("/api/vms/{name}/snapshots", dependencies=authed)
+    def vm_snapshots(name: str):
+        return agent("vm.snapshots", {"name": name})
+
+    @app.post("/api/vms/{name}/snapshots", dependencies=changing)
+    def vm_snapshot(name: str, body: VmSnapshotBody):
+        return agent("vm.snapshot", {"name": name, "snapshot": body.snapshot})
+
+    @app.post("/api/vms/{name}/snapshots/{snapshot}/restore", dependencies=changing)
+    def vm_snapshot_restore(name: str, snapshot: str):
+        return agent("vm.snapshot_restore", {"name": name, "snapshot": snapshot})
+
+    @app.post("/api/vms/{name}/snapshots/{snapshot}/delete", dependencies=changing)
+    def vm_snapshot_delete(name: str, snapshot: str):
+        return agent("vm.snapshot_delete", {"name": name, "snapshot": snapshot})
+
+    @app.post("/api/vms/{name}/snapshot-schedule", dependencies=changing)
+    def vm_snapshot_schedule(name: str, body: SnapshotScheduleBody):
+        return agent("vm.snapshot_schedule", {"name": name, "every": body.every})
+
     @app.post("/api/vms/{name}/{op}", dependencies=changing)
     def vm_op(name: str, op: str):
         if op not in VM_OPS:
@@ -1461,6 +1702,18 @@ def create_app(cfg: Config | None = None) -> FastAPI:
     @app.post("/api/settings/firewall/rules", dependencies=changing)
     def settings_set_firewall_rules(body: FirewallRulesBody):
         return agent("settings.set_firewall_rules", {"rules": body.rules})
+
+    @app.get("/api/unraid", dependencies=authed)
+    def unraid_status():
+        return agent("unraid.status")
+
+    @app.post("/api/unraid/import", dependencies=changing)
+    def unraid_import(body: UnraidImportBody):
+        return agent("unraid.import", body.model_dump())
+
+    @app.post("/api/unraid/dismiss", dependencies=changing)
+    def unraid_dismiss(body: UnraidDismissBody):
+        return agent("unraid.dismiss", body.model_dump())
 
     @app.get("/api/vpn", dependencies=authed)
     def vpn_status():
@@ -1577,6 +1830,14 @@ def create_app(cfg: Config | None = None) -> FastAPI:
     @app.post("/api/ups", dependencies=changing)
     def ups_set(body: UpsBody):
         return agent("ups.set", body.model_dump())
+
+    @app.get("/api/energy", dependencies=authed)
+    def energy_get():
+        return agent("energy.get")
+
+    @app.post("/api/energy", dependencies=changing)
+    def energy_set(body: EnergyBody):
+        return agent("energy.set", body.model_dump())
 
     # --- shares ---------------------------------------------------------------
 

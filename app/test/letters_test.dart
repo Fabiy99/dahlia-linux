@@ -30,6 +30,15 @@ void main() {
     expect(lines.last.$2, endsWith(': Disk hot'));
   });
 
+  test('power and cost in the reader\'s language', () {
+    final l = {'kind': 'week', 'energy': {'watts': 38.4, 'kwh': 6.45, 'cost': 2.26, 'currency': 'EUR'}};
+    final de = letterLines(l, t, 'de').first;
+    expect(de.$1, 'energy');
+    expect(de.$2, 'letter.energy watts=38 kwh=6,5 cost=2,26\u00a0€');
+    expect(letterLines(l, t, 'en').first.$2, 'letter.energy watts=38 kwh=6.5 cost=€2.26');
+    expect(letterLines({'kind': 'week', 'energy': {'kwh': 'x'}}, t).single.$1, 'notices');
+  });
+
   test('a quiet first letter and an empty year', () {
     expect(letterLines({'kind': 'week', 'storage': {'used': 1, 'size': 2}, 'backups': {'runs': 0}}, t).map((l) => l.$2),
         [startsWith('letter.storage '), 'letter.no_backups', 'letter.quiet']);

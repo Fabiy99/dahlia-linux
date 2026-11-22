@@ -15,6 +15,7 @@ import '../src/storage.dart';
 import 'area.dart';
 import 'shell.dart';
 import 'theme.dart';
+import 'unraid.dart';
 import 'widgets.dart';
 
 class StoragePage extends StatefulWidget {
@@ -35,6 +36,9 @@ class _StoragePageState extends State<StoragePage> with AreaCalls {
   Map<String, Map> burnin = const {};
   Map? import_;
   Map crypt = const {'auto_unlock': false, 'disks': []};
+
+  /// Disks Dahlia manages (also missing ones), for the replacement wizard.
+  List<Map> managed = const [];
   bool loaded = false;
   bool _importWasRunning = false;
 
@@ -70,12 +74,14 @@ class _StoragePageState extends State<StoragePage> with AreaCalls {
     final stats = await call(() => s.get('/api/stats'));
     final tests = await call(() => s.get('/api/disks/burnin'));
     final enc = await call(() => s.get('/api/storage/encryption'));
+    final man = await call(() => s.get('/api/storage/managed'));
     if (!mounted) return;
     setState(() {
       if (data is Map) disks = _list(data['disks']);
       if (stats is Map) mounts = _list(stats['filesystems']);
       if (tests is Map) burnin = {for (final t in _list(tests['tests'])) '${t['device']}': t};
       if (enc is Map) crypt = enc;
+      if (man is Map) managed = _list(man['disks']);
       loaded = data is Map || loaded;
     });
     unawaited(_pollImport());
@@ -198,6 +204,18 @@ class _StoragePageState extends State<StoragePage> with AreaCalls {
     await _change(() => s.post('/api/storage/format', {'device': disk, ...body}), c.t('storage.formatted', {'path': disk}));
   }
 
+  Future<void> _replace(Map old) async {
+    final body = await showDialog<Map<String, String>>(
+      context: context,
+      builder: (context) => _ReplaceDialog(c: c, old: old, candidates: replaceCandidates(old, managed, disks)),
+    );
+    if (body == null) return;
+    await _change(
+      () => s.post('/api/storage/replace', {'uuid': old['uuid'], ...body}),
+      c.t('replace.started', {'path': old['mountpoint']}),
+    );
+  }
+
   Future<void> _import(Map d) async {
     final m = ScaffoldMessenger.of(context);
     final target = await showDialog<String>(context: context, builder: (context) => _ImportDialog(c: c, d: d));
@@ -226,6 +244,8 @@ class _StoragePageState extends State<StoragePage> with AreaCalls {
           SizedBox(width: grid.unit, child: Rise(delay: 60 * i, child: _pool(p, mp, name, hint))),
       ]),
       if (job != null) ...[const SizedBox(height: 18), _importBox(p, job)],
+      UnraidCard(c),
+      if (replaceable(managed).isNotEmpty) ...[const SizedBox(height: 18), _replaceCard(p)],
       if (_list(crypt['disks']).isNotEmpty) ...[
         const SizedBox(height: 18),
         _CryptCard(c: c, crypt: crypt, reload: _load, area: this),
@@ -242,6 +262,55 @@ class _StoragePageState extends State<StoragePage> with AreaCalls {
       SizedBox(width: cardWidth, child: _SettingsCard(c: c, area: this)),
     ]);
   }
+
+  Widget _replaceCard(Palette p) => Glass(
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(c.t('replace.title'), style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600)),
+        const SizedBox(height: 6),
+        Text(c.t('replace.intro'), style: TextStyle(color: p.muted, fontSize: 13, height: 1.4)),
+        const SizedBox(height: 12),
+        for (final d in replaceable(managed))
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Wrap(
+              spacing: 10,
+              runSpacing: 6,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                Text(
+                  '${d['mountpoint']}',
+                  style: const TextStyle(
+                    fontFamily: monoFont,
+                    fontFamilyFallback: monoFallback,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                Text(tv(c, 'role', d['role']), style: TextStyle(color: p.muted, fontSize: 13)),
+                if ('${d['model'] ?? ''}'.isNotEmpty || '${d['serial'] ?? ''}'.isNotEmpty)
+                  Text(
+                    [
+                      if ('${d['model'] ?? ''}'.isNotEmpty) '${d['model']}',
+                      if ('${d['serial'] ?? ''}'.isNotEmpty) c.t('storage.serial', {'serial': d['serial']}),
+                    ].join(' · '),
+                    style: TextStyle(color: p.muted, fontSize: 13),
+                  ),
+                d['mounted'] == true ? Tag(c.t('replace.mounted'), p.ok) : Tag(c.t('replace.missing'), p.warn),
+                Tooltip(
+                  message: canReplace(d, managed) ? '' : c.t('replace.no_parity'),
+                  child: OutlinedButton(
+                    style: OutlinedButton.styleFrom(foregroundColor: p.danger),
+                    onPressed: canReplace(d, managed) ? () => _replace(d) : null,
+                    child: Text(c.t('replace.button')),
+                  ),
+                ),
+              ],
+            ),
+          ),
+      ],
+    ),
+  );
 
   Widget _pool(Palette p, String mp, String name, String hint) {
     final f = mounts.where((m) => m['mountpoint'] == mp).firstOrNull;
@@ -706,6 +775,125 @@ class _FormatDialogState extends State<_FormatDialog> {
                   })
               : null,
           child: Text(c.t('storage.format_now')),
+        ),
+      ],
+    );
+  }
+}
+
+/// Picks the new disk for a replacement; pops with device, confirm and passphrase.
+class _ReplaceDialog extends StatefulWidget {
+  const _ReplaceDialog({required this.c, required this.old, required this.candidates});
+
+  final Controller c;
+  final Map old;
+  final List<Map> candidates;
+
+  @override
+  State<_ReplaceDialog> createState() => _ReplaceDialogState();
+}
+
+class _ReplaceDialogState extends State<_ReplaceDialog> {
+  String? device;
+  final _pass = TextEditingController();
+  final _confirm = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    device = widget.candidates.isEmpty ? null : '${widget.candidates.first['disk']}';
+  }
+
+  @override
+  void dispose() {
+    _pass.dispose();
+    _confirm.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+    final c = widget.c;
+    final old = widget.old;
+    final path = '${old['mountpoint']}';
+    final luks = '${old['luks'] ?? ''}'.isNotEmpty;
+    final dev = device;
+    final name = dev == null ? '' : shortName(dev);
+    final ok = dev != null && _confirm.text.trim() == name && (!luks || _pass.text.length >= 8);
+    String label(Map d) => [
+      shortName('${d['disk']}'),
+      bytes((d['size'] as num?) ?? 0, c.t),
+      if ('${d['model'] ?? ''}'.isNotEmpty) '${d['model']}',
+      if ('${d['serial'] ?? ''}'.isNotEmpty) '${d['serial']}',
+    ].join(' · ');
+    return AlertDialog(
+      title: Text(c.t('replace.dialog_title', {'path': path})),
+      content: SizedBox(
+        width: 500,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                c.t(old['role'] == 'parity' ? 'replace.text_parity' : 'replace.text_data', {'path': path}),
+                style: TextStyle(color: p.muted, height: 1.45),
+              ),
+              const SizedBox(height: 16),
+              if (dev == null)
+                Text(
+                  c.t('replace.no_disk', {'size': bytes((old['size'] as num?) ?? 0, c.t)}),
+                  style: TextStyle(color: p.warn, height: 1.4),
+                )
+              else ...[
+                DropdownButtonFormField<String>(
+                  initialValue: dev,
+                  decoration: InputDecoration(labelText: c.t('replace.new_disk')),
+                  borderRadius: BorderRadius.circular(12),
+                  items: [
+                    for (final d in widget.candidates) DropdownMenuItem(value: '${d['disk']}', child: Text(label(d))),
+                  ],
+                  onChanged: (v) => setState(() {
+                    device = v ?? device;
+                    _confirm.clear();
+                  }),
+                ),
+                const SizedBox(height: 10),
+                Text(c.t('replace.warning', {'path': dev}), style: TextStyle(color: p.danger, fontSize: 13)),
+                if (luks) ...[
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: _pass,
+                    obscureText: true,
+                    inputFormatters: [LengthLimitingTextInputFormatter(512)],
+                    decoration: InputDecoration(labelText: c.t('crypt.passphrase')),
+                    onChanged: (_) => setState(() {}),
+                  ),
+                ],
+                const SizedBox(height: 14),
+                TextField(
+                  controller: _confirm,
+                  decoration: InputDecoration(labelText: c.t('storage.format_confirm', {'name': name})),
+                  onChanged: (_) => setState(() {}),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: Text(c.t('common.cancel'))),
+        FilledButton(
+          style: FilledButton.styleFrom(backgroundColor: p.danger, foregroundColor: p.accentFg),
+          onPressed: ok
+              ? () => Navigator.pop<Map<String, String>>(context, {
+                  'device': dev,
+                  'confirm': _confirm.text.trim(),
+                  if (luks) 'passphrase': _pass.text,
+                })
+              : null,
+          child: Text(c.t('replace.start')),
         ),
       ],
     );

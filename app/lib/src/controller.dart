@@ -55,10 +55,19 @@ class Controller extends ChangeNotifier {
   Server? server;
   String? user;
 
-  /// Role of the account (admin, viewer); the server checks it on every call.
+  /// Role of the account (admin, viewer, family); the server checks it on every call.
   String? role;
 
-  bool get isAdmin => role != 'viewer';
+  bool get isAdmin => role != 'viewer' && role != 'family';
+
+  /// A family account has its own start screen (/api/family) and nothing else.
+  bool get isFamily => role == 'family';
+
+  /// Apps and shares of a family account, from /api/family.
+  Map family = const {};
+
+  /// Start screen calls: a family account keeps its own look and weather places.
+  String homePath(String path) => isFamily ? '/api/family/$path' : '/api/$path';
 
   /// Host and CA while the user compares the fingerprint.
   String? pendingHost;
@@ -98,10 +107,12 @@ class Controller extends ChangeNotifier {
       _pendingTimer = Timer.periodic(const Duration(hours: 1), (_) => checkPendingUpdates());
       _noticeTimer?.cancel();
       _noticeTimer = Timer.periodic(const Duration(minutes: 1), (_) => checkNotices());
+      // The role decides which start screen loads and whether the admin
+      // calls (updates, notifications) are made at all.
       unawaited(checkPendingUpdates());
-      unawaited(loadHome());
       unawaited(checkNotices());
-      unawaited(_loadRole());
+      // The role decides which start screen loads (a family account has its own).
+      unawaited(_loadRole().then((_) => loadHome()));
     } else if (s != Stage.home) {
       _pendingTimer?.cancel();
       _pendingTimer = null;
@@ -210,12 +221,39 @@ class Controller extends ChangeNotifier {
 
   void back() => _set(Stage.connect);
 
+  /// After an install without a screen: pins the CA the installer reported
+  /// (SHA-256, lower-case hex), runs the dashboard setup with the code and
+  /// the account from the USB Creator and signs in. Throws PairingError
+  /// while the server is not up yet or the CA does not match.
+  Future<void> pairHeadless(String host, String fingerprintHex, String code, String account, String password) async {
+    final pem = await fetchCa(host);
+    final fp = fingerprint(pemToDer(pem)).replaceAll(':', '').toLowerCase();
+    if (fp != fingerprintHex) throw PairingError('certificate');
+    settings
+      ..host = host
+      ..pem = pem
+      ..username = null;
+    settings.save(settingsFile);
+    await connect();
+    final s = server;
+    if (s == null || stage == Stage.update) return;
+    try {
+      await s.post('/api/setup', {'code': code, 'username': account, 'password': password});
+    } on ApiError catch (e) {
+      // Done already (a second try): the login below is all that is left.
+      if (e.key != 'error.setup_done') rethrow;
+    }
+    await login(account, password);
+  }
+
   /// "Other server": keeps nothing of the old pairing but the language and
   /// the app's own choices (desktop messages, tour).
   Future<void> otherServer() async {
     server?.close();
     server = null;
     user = null;
+    role = null;
+    family = const {};
     settings = Settings(lang: settings.lang, desktopNotices: settings.desktopNotices, tourDone: settings.tourDone);
     settings.save(settingsFile);
     _set(Stage.connect);
@@ -313,6 +351,8 @@ class Controller extends ChangeNotifier {
       await secrets.write(s.host, 'password', null);
     }
     user = null;
+    role = null;
+    family = const {};
     area = Area.home;
     _set(Stage.login);
   }
@@ -320,6 +360,8 @@ class Controller extends ChangeNotifier {
   /// A call failed because the session ended: log in again.
   Future<void> sessionEnded() async {
     user = null;
+    role = null;
+    family = const {};
     await secrets.write(settings.host!, 'session', null);
     await _autoLogin();
   }
@@ -371,9 +413,16 @@ class Controller extends ChangeNotifier {
   /// Loads the start screen; failures keep the last one.
   Future<void> loadHome() async {
     final s = server;
-    if (s == null) return;
+    if (s == null || _disposed) return;
     try {
-      _home(await s.get('/api/home'));
+      if (isFamily) {
+        final r = await s.get('/api/family');
+        if (r is! Map || _disposed) return;
+        family = r;
+        _home(r['home']);
+      } else {
+        _home(await s.get('/api/home'));
+      }
     } on VersionMismatch {
       return;
     } on ApiError {
@@ -382,9 +431,9 @@ class Controller extends ChangeNotifier {
   }
 
   /// Sends the changed parts (tiles, look, places); the server keeps the rest.
-  Future<void> saveHome(Map<String, Object> change) async => _home(await server!.post('/api/home', change));
+  Future<void> saveHome(Map<String, Object> change) async => _home(await server!.post(homePath('home'), change));
 
-  Future<void> resetHome() async => _home(await server!.post('/api/home/reset'));
+  Future<void> resetHome() async => _home(await server!.post(homePath('home/reset')));
 
   /// Installed apps with an update, for the count next to "Apps" in the top bar.
   int appUpdates = 0;
@@ -406,7 +455,7 @@ class Controller extends ChangeNotifier {
   /// Asks the server how many updates are pending; failures leave the banner as it is.
   Future<void> checkPendingUpdates() async {
     final s = server;
-    if (s == null) return;
+    if (s == null || isFamily) return;
     try {
       final r = await s.get('/api/updates/pending');
       final n = r is Map && r['packages'] is List ? (r['packages'] as List).length : 0;
@@ -453,7 +502,7 @@ class Controller extends ChangeNotifier {
   /// after pairing only marks what is already there as seen.
   Future<void> checkNotices() async {
     final s = server;
-    if (s == null) return;
+    if (s == null || isFamily) return;
     final List<Notice> all;
     try {
       all = parseNotices(await s.get('/api/notifications'));
@@ -490,7 +539,7 @@ class Controller extends ChangeNotifier {
   // --- welcome tour --------------------------------------------------------------
 
   /// The tour runs on the first sign-in of this app.
-  bool get tourActive => stage == Stage.home && !settings.tourDone;
+  bool get tourActive => stage == Stage.home && !settings.tourDone && !isFamily;
 
   void finishTour() {
     settings.tourDone = true;

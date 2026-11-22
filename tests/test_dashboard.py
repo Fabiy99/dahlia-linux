@@ -248,6 +248,14 @@ def test_actions_go_to_agent(env):
                                              "confirm": "sdb"}, headers=CSRF)
     client.post("/api/storage/import", json={"uuid": "1234-ABCD", "target": "old"}, headers=CSRF)
     client.get("/api/storage/import")
+    client.get("/api/storage/managed")
+    client.get("/api/vms/web/snapshots")
+    client.post("/api/vms/web/snapshots", json={}, headers=CSRF)
+    client.post("/api/vms/web/snapshots/auto-1/restore", headers=CSRF)
+    client.post("/api/vms/web/snapshots/auto-1/delete", headers=CSRF)
+    client.post("/api/vms/web/snapshot-schedule", json={"every": "daily"}, headers=CSRF)
+    client.post("/api/storage/replace", json={"uuid": "1234-ABCD", "device": "/dev/sde",
+                                              "confirm": "sde"}, headers=CSRF)
     client.post("/api/jobs/mover/start", headers=CSRF)
     client.post("/api/updates/apply", headers=CSRF)
     client.get("/api/updates/progress")
@@ -259,6 +267,13 @@ def test_actions_go_to_agent(env):
         ("storage.format", {"device": "/dev/sdb", "filesystem": "xfs", "confirm": "sdb"}),
         ("storage.import", {"uuid": "1234-ABCD", "target": "old"}),
         ("storage.import_status", {}),
+        ("storage.managed", {}),
+        ("vm.snapshots", {"name": "web"}),
+        ("vm.snapshot", {"name": "web", "snapshot": ""}),
+        ("vm.snapshot_restore", {"name": "web", "snapshot": "auto-1"}),
+        ("vm.snapshot_delete", {"name": "web", "snapshot": "auto-1"}),
+        ("vm.snapshot_schedule", {"name": "web", "every": "daily"}),
+        ("storage.replace", {"uuid": "1234-ABCD", "device": "/dev/sde", "confirm": "sde"}),
         ("job.start", {"job": "mover"}),
         ("updates.apply", {}),
         ("updates.progress", {}),
@@ -420,6 +435,29 @@ def test_setup_code_format(tmp_path):
     assert code in (tmp_path / setupcode.ISSUE_FILE).read_text()
     assert setupcode.check(tmp_path, code.lower())
     assert not setupcode.check(tmp_path, "ä" * 10)
+
+
+def test_setup_code_preset_by_installer(tmp_path):
+    state = tmp_path / "preset-state"
+    state.mkdir()
+    run = tmp_path / "preset-run"
+    (state / setupcode.PRESET_FILE).write_text("abcde-fgh23\n")
+    assert setupcode.prepare(run, state) == "ABCDE-FGH23"
+    assert setupcode.check(run, "abcdefgh23")
+    setupcode.clear(run, state)
+    assert not (state / setupcode.PRESET_FILE).exists()
+    (state / setupcode.PRESET_FILE).write_text("not a code")
+    assert setupcode.prepare(run, state) != "not a code"
+
+
+def test_setup_removes_the_preset(env):
+    client, _, cfg, _ = env
+    (cfg.state_dir / setupcode.PRESET_FILE).write_text("23456-789AB\n")
+    code = setupcode.prepare(cfg.run_dir, cfg.state_dir)
+    assert code == "23456-789AB"
+    r = do_setup(client, code)
+    assert r.status_code == 200, r.text
+    assert not (cfg.state_dir / setupcode.PRESET_FILE).exists()
 
 
 # --- locales ------------------------------------------------------------------
@@ -777,6 +815,9 @@ def test_notify_and_ups_endpoints(env):
     client.post("/api/notify/test", headers=CSRF)
     client.get("/api/ups")
     client.post("/api/ups", json={"mode": "usb", "shutdown_minutes": 5}, headers=CSRF)
+    client.get("/api/energy")
+    client.post("/api/energy", json={"source": "plug", "host": "10.0.0.9", "price": 28},
+                headers=CSRF)
     assert agent.calls == [
         ("notify.get", {}),
         ("notify.set", {"channel": "ntfy", "settings": {"enabled": True, "topic": "x"}}),
@@ -785,6 +826,9 @@ def test_notify_and_ups_endpoints(env):
         ("ups.get", {}),
         ("ups.set", {"mode": "usb", "host": "", "port": 3493, "name": "ups", "user": "",
                      "password": "", "shutdown_minutes": 5}),
+        ("energy.get", {}),
+        ("energy.set", {"source": "plug", "plug": "shelly", "host": "10.0.0.9", "price": 28,
+                        "currency": "EUR"}),
     ]
     assert client.post("/api/notify/test").status_code == 403
 
@@ -950,7 +994,8 @@ def test_backup_endpoints(env):
                 headers=CSRF)
     assert agent.calls == [
         ("backup.get", {}),
-        ("backup.set", {"target": target, "stop_apps": True, "folders": []}),
+        ("backup.set", {"target": target, "stop_apps": True, "folders": [],
+                        "machines": []}),
         ("backup.key", {}),
         ("backup.snapshots", {}),
         ("backup.restore", {"snapshot": "abc12345", "what": "whoami"}),
@@ -981,6 +1026,23 @@ def test_vpn_endpoints(env):
         ("vpn.tailscale_logout", {}),
     ]
     assert client.post("/api/vpn/tailscale/install").status_code == 403
+
+
+def test_unraid_endpoints(env):
+    client, agent, _ = logged_in(env)
+    agent.calls.clear()
+    assert client.get("/api/unraid").json() == {"action": "unraid.status"}
+    client.post("/api/unraid/import", json={"parity": True, "tags": {"ha": "2025.11.3"}},
+                headers=CSRF)
+    client.post("/api/unraid/import", json={}, headers=CSRF)
+    client.post("/api/unraid/dismiss", json={"dismissed": True}, headers=CSRF)
+    assert agent.calls == [
+        ("unraid.status", {}),
+        ("unraid.import", {"parity": True, "tags": {"ha": "2025.11.3"}}),
+        ("unraid.import", {"parity": False, "tags": {}}),
+        ("unraid.dismiss", {"dismissed": True}),
+    ]
+    assert client.post("/api/unraid/import", json={}).status_code == 403
 
 
 def test_disk_tests_routes(env):
@@ -1099,8 +1161,8 @@ def test_viewer_account_reads_but_cannot_change(env):
                                         "role": "viewer"}, headers=CSRF)
     assert r.status_code == 200
     users = client.get("/api/users").json()["users"]
-    assert users == [{"name": "anna", "role": "viewer", "totp": False},
-                     {"name": "fabian", "role": "admin", "totp": False}]
+    assert users == [{"name": "anna", "role": "viewer", "totp": False, "apps": []},
+                     {"name": "fabian", "role": "admin", "totp": False, "apps": []}]
     login_as(client, "anna", "lesen-only-123")
     assert client.get("/api/state").json()["role"] == "viewer"
     assert client.get("/api/system").status_code == 200
@@ -1120,6 +1182,70 @@ def test_viewer_account_reads_but_cannot_change(env):
     assert client.post("/api/account/password", json={"old": "lesen-only-123",
                                                       "new": "neues-passwort-1"},
                        headers=CSRF).status_code == 200
+
+
+def test_family_account_sees_only_its_start_screen(env):
+    client, agent, cfg = logged_in(env)
+    agent.replies["shares.list"] = {"users": ["mia"], "shares": [
+        {"name": "fotos", "comment": "Familie", "security": "private", "users": {"mia": "rw"}},
+        {"name": "filme", "security": "secure", "users": {}},
+        {"name": "offen", "security": "public", "users": {}},
+        {"name": "papa", "security": "private", "users": {"fabian": "rw"}},
+    ]}
+    r = client.post("/api/users", json={"name": "mia", "password": "familie-1234",
+                                        "role": "family"}, headers=CSRF)
+    # The SMB user exists already: not created twice.
+    assert r.json() == {"name": "mia", "role": "family", "smb": "exists"}
+    agent.replies["shares.list"]["users"] = []
+    r = client.post("/api/users", json={"name": "leo", "password": "familie-5678",
+                                        "role": "family"}, headers=CSRF)
+    assert r.json()["smb"] == "created"
+    assert ("shares.user_add", {"name": "leo", "password": "familie-5678"}) in agent.calls
+    agent.replies["shares.list"]["users"] = ["mia", "leo"]
+    assert client.post("/api/users/mia/apps", json={"apps": ["immich", "jellyfin", "immich"]},
+                       headers=CSRF).json() == {"name": "mia", "apps": ["immich", "jellyfin"]}
+    assert client.post("/api/users/mia/apps", json={"apps": ["../x"]},
+                       headers=CSRF).status_code == 400
+    agent.replies["apps.list"] = {"apps": [
+        {"id": "immich", "name": "Immich", "icon": "", "status": "running", "public_port": 2283,
+         "urls": {"mdns": "http://immich.local"}, "login": {"password": "x"}},
+        {"id": "kuma", "name": "Uptime Kuma", "status": "running", "public_port": 3001},
+    ]}
+
+    login_as(client, "mia", "familie-1234")
+    assert client.get("/api/state").json()["role"] == "family"
+    fam = client.get("/api/family").json()
+    assert [a["id"] for a in fam["apps"]] == ["immich"]
+    assert "login" not in fam["apps"][0]
+    assert fam["shares"] == [{"name": "fotos", "comment": "Familie", "access": "rw"},
+                             {"name": "filme", "comment": "", "access": "ro"},
+                             {"name": "offen", "comment": "", "access": "rw"}]
+    # Everything else is refused, also what a viewer may read.
+    agent.calls.clear()
+    for path in ("/api/system", "/api/storage", "/api/apps", "/api/shares", "/api/home",
+                 "/api/users", "/api/stats", "/api/files/list"):
+        r = client.get(path)
+        assert r.status_code == 403 and r.json()["error"] == "error.family_only", path
+    assert client.post("/api/system/reboot", headers=CSRF).status_code == 403
+    assert agent.calls == []
+    # Own look and weather places, apart from the server's start screen.
+    r = client.post("/api/family/home", json={"look": {"theme": "dark", "accent": "teal",
+                                                       "background": "still",
+                                                       "weather_fx": False}}, headers=CSRF)
+    assert r.status_code == 200 and r.json()["look"]["accent"] == "teal"
+    assert (cfg.state_dir / "family" / "mia.json").exists()
+    assert not (cfg.state_dir / "home.json").exists()
+    assert client.get("/api/family").json()["home"]["look"]["theme"] == "dark"
+    # The password change also changes the SMB password.
+    assert client.post("/api/account/password", json={"old": "familie-1234",
+                                                      "new": "familie-neu-99"},
+                       headers=CSRF).status_code == 200
+    assert ("shares.user_password", {"name": "mia", "password": "familie-neu-99"}) in agent.calls
+
+    login_as(client, "fabian", PASSWORD)
+    assert client.get("/api/family").json()["error"] == "error.family_role"
+    assert client.post("/api/users/mia/remove", headers=CSRF).status_code == 200
+    assert not (cfg.state_dir / "family" / "mia.json").exists()
 
 
 def test_user_management_guards(env):

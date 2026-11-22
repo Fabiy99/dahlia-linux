@@ -126,3 +126,24 @@ Map<String, Object?>? vmRequest({
     'windows': vm && windows,
   };
 }
+
+/// One Incus snapshot of an instance (vm.snapshots).
+class VmSnapshot {
+  VmSnapshot(Map m)
+      : name = '${m['name'] ?? ''}',
+        created = DateTime.tryParse('${m['created'] ?? ''}');
+
+  final String name;
+  final DateTime? created;
+}
+
+/// Snapshots newest first, as the list shows them.
+List<VmSnapshot> parseSnapshots(Object? data) {
+  final list = data is Map && data['snapshots'] is List ? (data['snapshots'] as List).whereType<Map>() : const <Map>[];
+  return [for (final m in list) VmSnapshot(m)].reversed.toList();
+}
+
+/// A snapshot name the agent takes (empty: named by the time).
+final snapshotNameRe = RegExp(r'^([a-z0-9][a-z0-9-]{0,40})?$');
+
+const snapshotSchedules = ['off', 'daily', 'weekly'];

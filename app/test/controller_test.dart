@@ -188,6 +188,33 @@ void main() {
     c.dispose();
   });
 
+  test('a family account loads its own start screen and makes no admin calls', () async {
+    fake.role = 'family';
+    final c = make();
+    await c.start();
+    await c.choose(fake.host);
+    await c.confirmFingerprint();
+    await c.login('fabian', 'pw', save: false);
+    // The role arrives in the background, then the family start screen.
+    for (var i = 0; i < 100 && c.family.isEmpty; i++) {
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+    }
+    expect(c.isFamily, isTrue);
+    expect(c.isAdmin, isFalse);
+    expect(c.tourActive, isFalse);
+    expect(c.family['host'], 'dahlia.local');
+    expect(c.home.look.accent, 'amber');
+    await c.saveHome({'look': c.home.look.with_('accent', 'teal').toJson()});
+    expect((fake.familyHome['look'] as Map)['accent'], 'teal');
+    expect(fake.requests.where((r) => r.uri.path == '/api/home'), isEmpty);
+    fake.requests.clear();
+    await c.checkPendingUpdates();
+    await c.checkNotices();
+    expect(fake.requests, isEmpty);
+    c.dispose();
+    fake.role = null;
+  });
+
   test('areas of the top bar; signing out goes back to the start page', () async {
     final c = make();
     await c.start();

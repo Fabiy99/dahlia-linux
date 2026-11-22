@@ -232,3 +232,45 @@ def test_timezone_choices_are_real_zones():
 def test_network_choices_match():
     t = templates()["dahlia/network"]
     assert len(t["Choices-C"].split(", ")) == len(t["Choices"].split(", "))
+
+
+# --- install without a screen (headless.sh) -----------------------------------------
+
+
+def test_headless_values():
+    assert lib("valid_token", "0123456789abcdef0123456789abcdef")
+    for bad in ("0123456789ABCDEF0123456789abcdef", "abc", "0123456789abcdef0123456789abcde/"):
+        assert not lib("valid_token", bad)
+    assert lib("valid_endpoint", "192.168.1.20:8485")
+    for bad in ("192.168.1.20", "192.168.1.20:80", "pc.local:8485", "1.2.3.4:099999", ":8485"):
+        assert not lib("valid_endpoint", bad)
+    assert lib("valid_hex", "67656865696d")
+    for bad in ("", "abc", "XY", "a" * 514):
+        assert not lib("valid_hex", bad)
+    assert lib("valid_setup_code", "ABCDE-FGH23")
+    for bad in ("ABCDE-FGHI2", "abcde-fgh23", "ABCDEFGH23", "ABCDE-FGH2"):
+        assert not lib("valid_setup_code", bad)
+
+
+def test_apply_keymap(target, tmp_path):
+    (target / "etc/default").mkdir(parents=True, exist_ok=True)
+    (target / "etc/default/keyboard").write_text('XKBMODEL="pc105"\nXKBLAYOUT="de"\n')
+    ok = apply(target, tmp_path, "HOSTNAME=nas\nTIMEZONE=Europe/Vienna\nNETWORK=dhcp\nKEYMAP=us\n")
+    assert ok.returncode == 0, ok.stderr
+    assert 'XKBLAYOUT="us"' in (target / "etc/default/keyboard").read_text()
+    bad = apply(target, tmp_path, "HOSTNAME=nas\nNETWORK=dhcp\nKEYMAP=u;s\n")
+    assert bad.returncode != 0 and "keyboard layout" in bad.stderr
+
+
+def test_apply_keymap_writes_missing_file(target, tmp_path):
+    kb = target / "etc/default/keyboard"
+    kb.unlink(missing_ok=True)
+    ok = apply(target, tmp_path, "HOSTNAME=nas\nTIMEZONE=Europe/Vienna\nNETWORK=dhcp\nKEYMAP=fr\n")
+    assert ok.returncode == 0, ok.stderr
+    assert 'XKBLAYOUT="fr"' in kb.read_text().splitlines()
+
+
+def test_report_without_headless_does_nothing(tmp_path):
+    proc = subprocess.run(["sh", str(INSTALLER / "report.sh"), "packages"], capture_output=True,
+                          text=True, env={"PATH": "/usr/bin:/bin", "TMPDIR": str(tmp_path)})
+    assert proc.returncode == 0 and proc.stdout == ""

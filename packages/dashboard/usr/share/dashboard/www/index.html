@@ -175,13 +175,14 @@
             <h2 id="hero-greeting" class="hero-greeting"></h2>
             <p id="hero-status" class="hero-status"><span class="dot"></span><span></span></p>
           </div>
-          <button type="button" id="home-customize" class="hero-btn admin-only" aria-pressed="false"><span data-i18n="home.customize"></span></button>
+          <button type="button" id="home-customize" class="hero-btn admin-only family-ok" aria-pressed="false"><span data-i18n="home.customize"></span></button>
         </div>
         <article id="home-panel" class="card home-panel" hidden>
           <h2 data-i18n="home.customize_title"></h2>
-          <p class="hint" data-i18n="home.customize_hint"></p>
-          <h2 data-i18n="home.tiles"></h2>
-          <div id="home-widgets" class="chip-row" role="group"></div>
+          <p class="hint not-family" data-i18n="home.customize_hint"></p>
+          <p class="hint family-only" data-i18n="family.customize_hint"></p>
+          <h2 data-i18n="home.tiles" class="not-family"></h2>
+          <div id="home-widgets" class="chip-row not-family" role="group"></div>
           <h2 data-i18n="home.look"></h2>
           <div id="home-look" class="look-grid"></div>
           <h2 data-i18n="weather.places"></h2>
@@ -191,7 +192,18 @@
             <button type="submit" data-i18n="weather.search"></button>
           </form>
           <ul id="place-results" class="place-results"></ul>
+          <div id="frame-settings" class="admin-only not-family frame-settings">
+            <h2 data-i18n="frame.title"></h2>
+            <p class="hint" id="frame-hint"></p>
+            <label class="check"><input type="checkbox" id="frame-enabled"><span data-i18n="frame.enabled"></span></label>
+            <div class="frame-row">
+              <label><span data-i18n="frame.album"></span><select id="frame-album"></select></label>
+              <label><span data-i18n="frame.interval"></span><select id="frame-interval"></select></label>
+            </div>
+            <label class="check"><input type="checkbox" id="frame-clock"><span data-i18n="frame.clock"></span></label>
+          </div>
           <div class="panel-actions">
+            <button type="button" id="family-account" class="family-only" data-i18n="family.password"></button>
             <button type="button" id="home-reset" data-i18n="home.reset"></button>
             <button type="button" id="home-done" class="primary" data-i18n="home.done"></button>
           </div>
@@ -207,6 +219,12 @@
           <article class="card tile" data-widget="apps">
             <header><h2 data-i18n="overview.apps"></h2><span id="overview-apps-count" class="tile-note"></span></header>
             <div id="overview-apps" class="app-tiles"></div>
+          </article>
+
+          <article class="card tile size-l" data-widget="family-shares" hidden>
+            <header><h2 data-i18n="family.shares"></h2></header>
+            <div id="family-shares" class="rows"></div>
+            <p id="family-smb-hint" class="tile-note"></p>
           </article>
 
           <article class="card tile" data-widget="storage">
@@ -356,6 +374,22 @@
         <div id="pool-summary" class="tiles pools"></div>
         <p class="hint" data-i18n="storage.hint"></p>
         <div id="import-status" class="notice" hidden></div>
+        <article class="card" id="unraid-card" hidden>
+          <h2 data-i18n="unraid.title"></h2>
+          <p class="hint" data-i18n="unraid.intro"></p>
+          <form id="unraid-form">
+            <div id="unraid-body"></div>
+            <div class="actions" id="unraid-actions">
+              <button type="submit" class="primary" data-i18n="unraid.start"></button>
+              <button type="button" id="unraid-dismiss" data-i18n="unraid.dismiss"></button>
+            </div>
+          </form>
+        </article>
+        <article class="card" id="replace-card" hidden>
+          <h2 data-i18n="replace.title"></h2>
+          <p class="hint" data-i18n="replace.intro"></p>
+          <ul id="replace-disks" class="crypt-list"></ul>
+        </article>
         <article class="card" id="crypt-card" hidden>
           <h2 data-i18n="crypt.title"></h2>
           <ul id="crypt-disks" class="crypt-list"></ul>
@@ -671,6 +705,10 @@
               </div>
               <label class="check"><input name="stop_apps" type="checkbox" checked><span data-i18n="backup.stop_apps"></span></label>
               <p class="hint" data-i18n="backup.what"></p>
+              <div id="backup-machines-box" hidden>
+                <p class="hint" data-i18n="backup.machines_hint"></p>
+                <div id="backup-machines" class="chip-row"></div>
+              </div>
               <div class="actions">
                 <button type="submit" class="primary" data-i18n="common.save"></button>
                 <button type="button" id="backup-key" data-i18n="backup.show_key"></button>
@@ -1039,11 +1077,22 @@
                 <button type="button" id="user-reset-cancel" data-i18n="common.cancel"></button>
               </div>
             </form>
+            <form id="user-apps-form" class="inline-form" hidden>
+              <p class="hint" id="user-apps-title"></p>
+              <input type="hidden" name="name">
+              <div id="user-apps-list" class="chip-row"></div>
+              <div class="actions">
+                <button type="submit" class="primary" data-i18n="common.save"></button>
+                <button type="button" id="user-apps-cancel" data-i18n="common.cancel"></button>
+              </div>
+            </form>
+            <p class="hint" data-i18n="users.family_hint"></p>
             <form id="user-form" class="inline-form">
               <label><span data-i18n="users.name"></span><input name="name" autocomplete="off" required pattern="[A-Za-z][A-Za-z0-9_\-]{1,31}"></label>
               <label><span data-i18n="field.password"></span><input name="password" type="password" autocomplete="new-password" required minlength="10"></label>
               <label><span data-i18n="users.role"></span><select name="role">
                 <option value="viewer" data-i18n="role_name.viewer"></option>
+                <option value="family" data-i18n="role_name.family"></option>
                 <option value="admin" data-i18n="role_name.admin"></option>
               </select></label>
               <div class="actions"><button type="submit" class="primary" data-i18n="users.add"></button></div>
@@ -1174,6 +1223,31 @@
               <button type="submit" data-i18n="common.save"></button>
             </form>
           </article>
+          <article class="card">
+            <h2 data-i18n="energy.title"></h2>
+            <dl id="energy-status" class="facts"></dl>
+            <form id="energy-form">
+              <label><span data-i18n="energy.source"></span>
+                <select name="source">
+                  <option value="off" data-i18n="energy.source_off"></option>
+                  <option value="ups" data-i18n="energy.source_ups"></option>
+                  <option value="plug" data-i18n="energy.source_plug"></option>
+                </select>
+              </label>
+              <div id="energy-plug" class="field-group">
+                <label><span data-i18n="energy.plug"></span>
+                  <select name="plug"></select>
+                </label>
+                <label><span data-i18n="energy.host"></span><input name="host" autocomplete="off" placeholder="192.168.1.50"></label>
+              </div>
+              <label><span data-i18n="energy.price"></span><input name="price" type="number" min="0" max="1000" step="1"></label>
+              <label><span data-i18n="energy.currency"></span>
+                <select name="currency"></select>
+              </label>
+              <p class="hint" data-i18n="energy.hint"></p>
+              <button type="submit" data-i18n="common.save"></button>
+            </form>
+          </article>
         </div>
       </section>
     </main>
@@ -1293,6 +1367,21 @@
     <div class="dialog-actions">
       <button value="cancel" formnovalidate data-i18n="common.cancel"></button>
       <button value="ok" class="danger" data-i18n="storage.format_now"></button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="replace-dialog">
+  <form id="replace-form" method="dialog">
+    <h2 id="replace-title"></h2>
+    <p class="hint" id="replace-text"></p>
+    <label><span data-i18n="replace.new_disk"></span><select name="device" required></select></label>
+    <p class="hint" id="replace-warning"></p>
+    <label id="replace-pass"><span data-i18n="crypt.passphrase"></span><input name="passphrase" type="password" autocomplete="current-password" minlength="8" maxlength="512"></label>
+    <label><span id="replace-confirm-label"></span><input name="confirm" autocomplete="off" required></label>
+    <div class="dialog-actions">
+      <button value="cancel" formnovalidate data-i18n="common.cancel"></button>
+      <button value="ok" class="danger" data-i18n="replace.start"></button>
     </div>
   </form>
 </dialog>
@@ -1482,6 +1571,30 @@
     <div class="dialog-actions">
       <button value="cancel" formnovalidate data-i18n="common.cancel"></button>
       <button value="ok" class="primary" data-i18n="common.save"></button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="vm-snap-dialog" class="wide-dialog">
+  <form id="vm-snap-form" method="dialog">
+    <h2 id="vm-snap-title"></h2>
+    <p class="hint" data-i18n="snap.hint"></p>
+    <label><span data-i18n="snap.schedule"></span>
+      <select id="vm-snap-schedule">
+        <option value="off" data-i18n="snap.every_off"></option>
+        <option value="daily" data-i18n="snap.every_daily"></option>
+        <option value="weekly" data-i18n="snap.every_weekly"></option>
+      </select></label>
+    <div class="inline-form">
+      <label><span data-i18n="snap.name"></span><input id="vm-snap-name" autocomplete="off" pattern="[a-z0-9][a-z0-9\-]{0,40}" data-i18n-placeholder="snap.name_placeholder"></label>
+      <div class="actions"><button type="button" id="vm-snap-take" class="primary" data-i18n="snap.take"></button></div>
+    </div>
+    <table>
+      <thead><tr><th data-i18n="snap.col_name"></th><th data-i18n="snap.col_time"></th><th></th></tr></thead>
+      <tbody id="vm-snap-list"></tbody>
+    </table>
+    <div class="dialog-actions">
+      <button value="close" class="primary" data-i18n="common.close"></button>
     </div>
   </form>
 </dialog>

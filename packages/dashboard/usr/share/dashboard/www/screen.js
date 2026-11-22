@@ -9,6 +9,9 @@ let lang = "en";
 let data = null;
 let placeIndex = 0;
 
+// Photo frame: ids from /api/screen, one shown after the other.
+const frame = { ids: [], index: 0, timer: null, interval: 0, front: 0 };
+
 function t(key, vars) {
   let s = strings[key] ?? key;
   for (const [k, v] of Object.entries(vars || {})) s = s.replaceAll(`{${k}}`, String(v));
@@ -105,6 +108,51 @@ function renderQr(svgText) {
   box.append(document.importNode(svg, true));
 }
 
+function showPhoto() {
+  if (!frame.ids.length) return;
+  const imgs = document.querySelectorAll("#screen-frame img");
+  const next = imgs[1 - frame.front];
+  const id = frame.ids[frame.index % frame.ids.length];
+  frame.index++;
+  next.onload = () => {
+    next.classList.add("on");
+    imgs[frame.front].classList.remove("on");
+    frame.front = 1 - frame.front;
+  };
+  next.src = `/api/screen/photo/${id}`;
+}
+
+function renderFrame() {
+  const f = data.frame;
+  const on = Boolean(f && f.photos && f.photos.length);
+  document.getElementById("screen-frame").hidden = !on;
+  document.body.classList.toggle("framing", on);
+  document.body.classList.toggle("no-clock", on && !f.clock);
+  if (!on) {
+    clearInterval(frame.timer);
+    frame.timer = null;
+    frame.ids = [];
+    return;
+  }
+  // A problem of the server shows over the photos.
+  const findings = (data.health && data.health.findings) || [];
+  const top = findings.find((x) => x.level === "critical") || findings.find((x) => x.level === "warning");
+  const status = document.getElementById("frame-status");
+  status.hidden = !top;
+  if (top) {
+    status.querySelector(".dot").className = `dot ${top.level === "critical" ? "crit" : "warn"}`;
+    status.lastElementChild.textContent = t(`check.${top.id}`, top.params);
+  }
+  const changed = f.photos.join() !== frame.ids.join();
+  if (changed) frame.ids = f.photos;
+  if (!frame.timer || frame.interval !== f.interval) {
+    clearInterval(frame.timer);
+    frame.interval = f.interval;
+    frame.timer = setInterval(showPhoto, f.interval * 1000);
+    showPhoto();
+  }
+}
+
 function render() {
   document.getElementById("screen-host").textContent =
     [data.hostname && `${data.hostname}.local`, data.address].filter(Boolean).join(" · ");
@@ -117,6 +165,7 @@ function render() {
   renderStatus(data.health);
   renderTiles();
   renderQr(data.qr);
+  renderFrame();
 }
 
 async function poll() {

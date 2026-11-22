@@ -8,21 +8,23 @@ der [Architektur](architektur.md). English: [handbook](../en/handbook.md).
 1. [Was du brauchst](#was-du-brauchst)
 2. [USB-Stick erstellen](#usb-stick-erstellen)
 3. [Installieren](#installieren)
-4. [Erste Einrichtung](#erste-einrichtung)
-5. [Desktop-App, Browser und Handy](#desktop-app-browser-und-handy)
-6. [Startbildschirm](#startbildschirm)
-7. [Platten und Array](#platten-und-array)
-8. [Parity](#parity)
-9. [Freigaben](#freigaben)
-10. [Dateien](#dateien)
-11. [Apps](#apps)
-12. [VMs und Container](#vms-und-container)
-13. [Backup](#backup)
-14. [Fernzugriff](#fernzugriff)
-15. [Updates und Snapshots](#updates-und-snapshots)
-16. [Benachrichtigungen und Wochenbrief](#benachrichtigungen-und-wochenbrief)
-17. [Terminal, Docker und Protokoll](#terminal-docker-und-protokoll)
-18. [Wenn etwas nicht geht](#wenn-etwas-nicht-geht)
+4. [Umzug von Unraid](#umzug-von-unraid)
+5. [Erste Einrichtung](#erste-einrichtung)
+6. [Desktop-App, Browser und Handy](#desktop-app-browser-und-handy)
+7. [Startbildschirm](#startbildschirm)
+8. [Platten und Array](#platten-und-array)
+9. [Parity](#parity)
+10. [Freigaben](#freigaben)
+11. [Familienkonten](#familienkonten)
+12. [Dateien](#dateien)
+13. [Apps](#apps)
+14. [VMs und Container](#vms-und-container)
+15. [Backup](#backup)
+16. [Fernzugriff](#fernzugriff)
+17. [Updates und Snapshots](#updates-und-snapshots)
+18. [Benachrichtigungen und Wochenbrief](#benachrichtigungen-und-wochenbrief)
+19. [Terminal, Docker und Protokoll](#terminal-docker-und-protokoll)
+20. [Wenn etwas nicht geht](#wenn-etwas-nicht-geht)
 
 ## Was du brauchst
 
@@ -58,6 +60,18 @@ sudo dd if=dahlia-linux-<version>-amd64.iso of=/dev/sdX bs=4M conv=fsync status=
 
 `/dev/sdX` ist der Stick, nicht eine Platte mit Daten (`lsblk` zeigt Größe und Modell).
 
+**Server ohne Bildschirm und Tastatur** (Windows-App): Im USB Creator „Für einen Server ohne
+Bildschirm“ wählen und Servername, Konto, Passwort, Tastatur und Zeitzone eintragen. Auf dem
+Stick landen nur Servername, Zeitzone, Tastatur, die Adresse des PCs und ein Zufallsschlüssel,
+kein Passwort. Dann:
+
+1. Stick am Server einstecken, Netzwerkkabel anschließen, vom Stick starten. Die App bleibt offen
+   (Windows-Frage nach Verbindungen im privaten Netzwerk zulassen).
+2. Der Server meldet seine Platten an die App. Dort die Systemplatte wählen. Eine Platte mit Daten
+   braucht zur Bestätigung ihre Seriennummer.
+3. Die Installation läuft durch, der Server startet neu. Die App koppelt sich über den
+   Fingerabdruck der lokalen CA und legt das Dashboard-Konto selbst an.
+
 ## Installieren
 
 Den PC vom Stick starten (Boot-Menü meist F11, F12 oder Esc). Im Menü „Install Dahlia Linux“
@@ -78,6 +92,31 @@ Einrichtungscode. Server ohne Bildschirm: „serial console“ im Boot-Menü wä
 
 „Automatic install“ ist für Tests gedacht: keine Fragen, Konto `dahlia-admin` mit Startpasswort
 `dahlia`. Gibt es nur eine Platte, wird sie ohne Rückfrage gelöscht.
+
+## Umzug von Unraid
+
+Der Umzugshelfer läuft als Container in Unraid und installiert Dahlia auf eine freie SSD im selben
+Server. Unraid läuft dabei weiter; seine Platten sind für den Helfer gesperrt.
+
+1. In Unraid unter Docker „Add Container“ die Vorlage
+   [`migrate/unraid-template.xml`](https://github.com/Fabiy99/dahlia-linux/blob/main/migrate/unraid-template.xml)
+   eintragen (Abbild `ghcr.io/fabiy99/dahlia-linux/migrate`) und starten.
+2. Die Weboberfläche des Containers öffnen (Port 8484). Der Zugangscode steht im Log des
+   Containers.
+3. Der Helfer zeigt, was übernommen wird: Netzwerk, Servername, Zeitzone, Platten (über die
+   Seriennummer), Freigaben, SMB-Benutzer mit Passwort, Docker-Container mit Appdaten und
+   WireGuard. Nicht übernommen werden Plugins, VM-Einstellungen, Bonding/VLANs, verschlüsselte
+   und ZFS-Platten und weitere Pools.
+4. Freie SSD wählen, Konto und Passwort eintragen, „Dahlia installieren“. Am Ende zeigt der Helfer
+   den Einrichtungscode.
+5. Array in Unraid stoppen, Server herunterfahren, Unraid-Stick abziehen und aufheben, Server
+   starten. Er startet Dahlia von der SSD.
+6. In der App oder im Browser den Einrichtungscode eingeben. Unter „Platten“ steht dann „Von
+   Unraid übernehmen“ mit der Liste; „Jetzt übernehmen“ hängt die Datenplatten ohne Formatieren
+   ein, legt Freigaben und Benutzer an und macht aus den Containern Apps.
+
+Die Unraid-Parity passt nicht zu SnapRAID. Sie wird nur auf Wunsch formatiert und neu berechnet;
+bis dahin geht der Weg zurück: Unraid-Stick einstecken und davon starten.
 
 ## Erste Einrichtung
 
@@ -125,6 +164,11 @@ bleibt bei Updates erhalten.
 Die Schlüssel trägst du direkt in der Kachel ein. Der Server fragt die Apps auf seinem eigenen
 Rechner ab; nichts geht nach außen.
 
+**Bilderrahmen:** Unter „Anpassen“ > „Bilderrahmen am Server-Bildschirm“ zeigt der Monitor am
+Server Fotos aus Immich statt der Übersicht: ein Album oder zufällig aus allen Fotos, Wechsel
+nach einstellbaren Sekunden, auf Wunsch mit Uhr. Dafür braucht die Kachel „Fotos“ den
+API-Schlüssel. Solange der Einrichtungscode angezeigt wird, bleibt die Übersicht.
+
 ## Platten und Array
 
 Unter „Platten“ siehst du alle Laufwerke mit Größe, Temperatur und SMART-Werten.
@@ -146,6 +190,13 @@ Kopie, bevor die Platte formatiert werden kann.
 
 Verschlüsselung (LUKS) lässt sich beim Formatieren wählen. Der Schlüssel liegt auf dem Server
 oder wird nach jedem Start im Dashboard eingegeben.
+
+**Platte tauschen:** Ist eine Daten- oder Parity-Platte defekt oder fehlt sie, neue leere Platte
+einbauen (mindestens so groß wie die alte) und unter „Platten“ > „Platte tauschen“ die alte
+wählen. Dahlia formatiert die neue mit dem Dateisystem der alten (verschlüsselt, wenn die alte
+es war), gibt ihr dieselbe Nummer (`/mnt/diskN` bleibt) und stellt sie aus der Parity wieder
+her; bei einer Parity-Platte wird die Parity neu berechnet. Der Fortschritt steht unter
+„Parity“. Eine Datenplatte geht nur mit Parity.
 
 ## Parity
 
@@ -174,6 +225,19 @@ Freigaben zeigen Ordner aus `/mnt/user` im Netz.
 
 Windows: im Explorer `\\dahlia.local\<freigabe>`. macOS: Finder > Gehe zu > Mit Server
 verbinden, `smb://dahlia.local/<freigabe>`.
+
+## Familienkonten
+
+Unter Einstellungen > Sicherheit > Dashboard-Konten ein Konto mit der Rolle „Familie“ anlegen und
+die Apps wählen, die es sehen soll. Ein Familienkonto hat:
+
+- einen eigenen Startbildschirm (Farben, Hintergrund, Wetter-Orte nur für dieses Konto) mit den
+  freigegebenen Apps und den Ordnern, die es öffnen darf,
+- einen SMB-Benutzer mit demselben Namen und Passwort; private Freigaben gibst du ihm wie jedem
+  SMB-Benutzer frei, öffentliche und geschützte sieht es immer,
+- keinen Zugriff auf Einstellungen, Platten, Apps installieren, Terminal oder Protokolle.
+
+Ändert das Familienmitglied sein Passwort, ändert sich das SMB-Passwort mit.
 
 ## Dateien
 
@@ -223,6 +287,10 @@ einer ISO die VM herunterfahren und „ISO auswerfen“.
 **Shell eines Containers:** „Shell“ kopiert den Befehl `incus exec <name> -- bash -l` und öffnet
 das Terminal. Dort einfügen.
 
+**Snapshots:** „Snapshots“ an einer Maschine legt einen Snapshot an, setzt auf einen zurück oder
+löscht ihn. Automatisch geht täglich (7 Tage aufbewahrt) oder wöchentlich (4 Wochen). Snapshots
+liegen auf demselben Datenträger; gegen einen Plattenausfall hilft nur das Backup.
+
 Einstellungen (Kerne, Arbeitsspeicher, Start mit dem Server) gelten für VMs ab dem nächsten
 Start. Löschen geht nur bei gestoppten Maschinen und entfernt ihr Laufwerk.
 
@@ -237,6 +305,11 @@ Apps, nicht Filme oder Fotos in Freigaben.
    sich nichts wiederherstellen.
 3. Das Backup läuft täglich (Zeit unter Einstellungen > Dienste > Zeitpläne). Laufende Apps
    halten dafür kurz an.
+
+**VMs und Container:** In den Backup-Einstellungen lassen sich Maschinen dazunehmen. Dahlia
+exportiert sie für das Backup (`incus export`, nur der aktuelle Stand) und entfernt den Export
+danach. Wiederherstellen legt die Maschine unter ihrem Namen neu an, oder als
+`<name>-restored`, wenn es den Namen schon gibt.
 
 **Backup-Probe:** Einmal im Monat stellt Dahlia eine Stichprobe von Dateien aus dem letzten
 Backup in einen Testordner wieder her und vergleicht sie. Das Ergebnis steht auf der
@@ -278,6 +351,11 @@ abschalten. Weitere Wege (E-Mail, ntfy, Gotify) unter Einstellungen > Dienste.
 Fotos, Backups, Updates, neue Apps, Warnungen, Netzwerkverkehr), am 1. Januar das Jahr. Die Kachel „Wochenbrief“ zeigt den
 neuesten; ältere stehen im Archiv der Kachel.
 
+**Strom und Kosten:** Unter Einstellungen > Dienste > „Strom und Kosten“ die Messung wählen: die
+USV (Leistung über NUT) oder eine smarte Steckdose im LAN (Shelly oder Tasmota, lokal abgefragt,
+ohne Cloud), dazu den Preis pro kWh. Dahlia misst jede Minute; der Wochenbrief zeigt den
+Durchschnitt in Watt, die kWh und die Kosten, der Jahresrückblick die Summe.
+
 ## Terminal, Docker und Protokoll
 
 - **Terminal** (Mehr > Terminal): eine Shell auf dem Server als Linux-Konto mit dem Namen des
@@ -297,7 +375,7 @@ neuesten; ältere stehen im Archiv der Kachel.
 | Zwei-Faktor-Handy verloren | `sudo dashboard --disable-totp <konto>` |
 | System startet nach einem Update nicht richtig | Im Bootmenü einen Snapshot von vor dem Update starten, danach im Dashboard dauerhaft zurücksetzen. |
 | App läuft nach dem Update nicht | Apps > die App > „Zurück zur alten Version“. |
-| Platte ausgefallen | Ersatzplatte einbauen, Parity > Platte wiederherstellen. |
+| Platte ausgefallen | Ersatzplatte einbauen, Platten > Platte tauschen. |
 | VM startet nicht („no KVM“) | Virtualisierung im BIOS einschalten (VT-x/AMD-V). |
 
 Fehler melden: [GitHub Issues](https://github.com/Fabiy99/dahlia-linux/issues), am besten mit

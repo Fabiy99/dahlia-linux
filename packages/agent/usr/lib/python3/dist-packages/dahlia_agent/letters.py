@@ -6,7 +6,7 @@ past year. A letter holds numbers only; the dashboard and the desktop app
 turn them into sentences in the reader's language. Each new letter is also
 sent as a short notification (event "letters").
 
-Sources: the history database (CPU, temperature, network), the data pool
+Sources: the history database (CPU, temperature, network, power), the data pool
 or /srv (space used), backup-runs.json, backup-probe.json, the apt history
 log, the installed apps and the notification history. Space added is the
 difference to the previous letter, so the first letter has none.
@@ -25,7 +25,7 @@ import sqlite3
 import sys
 from pathlib import Path
 
-from . import apps, history
+from . import apps, energy, history
 from .actions import Context, Param, action, read_filesystems
 from .protocol import INVALID_PARAMS, AgentError
 from .settings import read_json, write_file
@@ -71,6 +71,7 @@ def history_numbers(ctx: Context, start: int, end: int) -> dict:
         return {}
     cpu = [v for k, v in rows if k == "cpu"]
     temp = [v for k, v in rows if k == "temp_cpu"]
+    power = [v for k, v in rows if k == "power"]
     rx = tx = 0.0
     for key, value in rows:
         kind, _, name = key.partition(":")
@@ -86,6 +87,11 @@ def history_numbers(ctx: Context, start: int, end: int) -> dict:
         out["temp_max"] = round(max(temp), 1)
     if rows:
         out["traffic"] = {"rx": int(rx), "tx": int(tx)}
+    if power:
+        # One row per hour: its average in W is the Wh of that hour. Hours
+        # without a reading (server off) count as nothing.
+        out["energy"] = {"watts": round(sum(power) / len(power), 1), "hours": len(power),
+                         **energy.cost(sum(power) / 1000, energy.load_config(ctx))}
     return out
 
 
@@ -260,6 +266,12 @@ def build_year(ctx: Context, year: int) -> dict:
     out["backups"] = {k: sum((w.get("backups") or {}).get(k, 0) for w in weeks)
                       for k in ("runs", "ok", "added")}
     out["updates"] = sum(w.get("updates", 0) for w in weeks)
+    used = [w["energy"] for w in weeks if isinstance(w.get("energy"), dict)]
+    if used:
+        out["energy"] = {"kwh": round(sum(e.get("kwh", 0) for e in used), 2),
+                         "cost": round(sum(e.get("cost", 0) for e in used), 2),
+                         "currency": used[-1].get("currency", "EUR"), "weeks": len(used),
+                         "watts": round(sum(e.get("watts", 0) for e in used) / len(used), 1)}
     photos = sum(w.get("photos", 0) for w in weeks)
     if photos:
         out["photos"] = photos
@@ -313,6 +325,10 @@ def summary(letter: dict) -> str:
     n = letter.get("notices") or {}
     if n.get("warning") or n.get("critical"):
         lines.append(f"Warnings: {n.get('warning', 0)}, critical: {n.get('critical', 0)}")
+    en = letter.get("energy")
+    if en:
+        lines.append(f"Power: {en['watts']:.0f} W on average, {en['kwh']:.1f} kWh, "
+                     f"{en['cost']:.2f} {en['currency']}")
     t = letter.get("traffic")
     if t:
         lines.append(f"Network: {size(t['rx'])} in, {size(t['tx'])} out")

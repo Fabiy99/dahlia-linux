@@ -31,6 +31,16 @@ class FakeDahlia {
     'places': [],
   };
 
+  /// Role /api/state reports for the signed-in account (null: no role field).
+  String? role;
+
+  /// Start screen of a family account (/api/family/home).
+  Map<String, Object?> familyHome = {
+    'tiles': [],
+    'look': {'theme': 'light', 'accent': 'amber', 'background': 'off', 'weather_fx': true},
+    'places': [],
+  };
+
   /// Notifications /api/notifications offers.
   List<Map> notices = const [];
 
@@ -61,7 +71,23 @@ class FakeDahlia {
         }
       case '/api/state':
         final c = req.cookies.where((c) => c.name == 'dahlia_session');
-        r.write(jsonEncode({'user': c.isEmpty ? null : 'fabian', 'version': version}));
+        r.write(jsonEncode({'user': c.isEmpty ? null : 'fabian', 'version': version, 'role': ?(c.isEmpty ? null : role)}));
+      case '/api/family':
+        r.write(jsonEncode({
+          'name': 'mia',
+          'host': 'dahlia.local',
+          'apps': [
+            {'id': 'immich', 'name': 'Immich', 'status': 'running', 'public_port': 2283},
+          ],
+          'shares': [
+            {'name': 'fotos', 'comment': '', 'access': 'rw'},
+          ],
+          'smb': true,
+          'home': familyHome,
+        }));
+      case '/api/family/home':
+        familyHome = {...familyHome, ...jsonDecode(await utf8.decoder.bind(req).join()) as Map<String, Object?>};
+        r.write(jsonEncode(familyHome));
       case '/api/pairing/proof':
         final body = jsonDecode(await utf8.decoder.bind(req).join());
         final nonce = [for (var i = 0; i < 64; i += 2) int.parse(body['nonce'].substring(i, i + 2), radix: 16)];

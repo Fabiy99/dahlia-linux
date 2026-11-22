@@ -360,7 +360,16 @@ function applyRole(role, name) {
   userRole = role;
   userName = name;
   document.body.classList.toggle("viewer", role === "viewer");
+  document.body.classList.toggle("family", role === "family");
   document.getElementById("viewer-banner").hidden = role !== "viewer";
+  // A family account has its own start screen and nothing else.
+  loaders.overview = role === "family" ? loadFamily : loadOverview;
+  loaders.account = role === "family" ? loadTotp : loadAccount;
+}
+
+// Start screen calls: a family account keeps its own look and weather places.
+function homePath(path) {
+  return userRole === "family" ? `family/${path}` : path;
 }
 
 // After setup or login: role from the server, then the overview.
@@ -656,7 +665,7 @@ function renderOverviewApps(installed) {
     } else {
       tile = el("button", "");
       tile.type = "button";
-      tile.addEventListener("click", () => open("apps"));
+      if (userRole !== "family") tile.addEventListener("click", () => open("apps"));
     }
     tile.classList.add("app-tile");
     const state = app.update
@@ -665,7 +674,7 @@ function renderOverviewApps(installed) {
     tile.append(avatar(app.id, app.name, app.icon), el("span", "name", app.name), state);
     return tile;
   }));
-  if (!installed.length) box.append(el("p", "empty", t("apps.none_installed")));
+  if (!installed.length) box.append(el("p", "empty", t(userRole === "family" ? "family.no_apps" : "apps.none_installed")));
 }
 
 const RESULT_KIND = { success: "ok", "exit-code": "crit", signal: "warn", timeout: "crit" };
@@ -932,6 +941,12 @@ function letterLines(l) {
     out.push(["apps", text]);
   }
   if (l.photos) out.push(["sun", t("letter.photos", { count: l.photos })]);
+  const en = l.energy;
+  if (en && typeof en.kwh === "number") {
+    out.push(["power", t("letter.energy", { watts: Math.round(en.watts),
+      kwh: en.kwh.toLocaleString(lang, { maximumFractionDigits: 1 }),
+      cost: formatMoney(en.cost, en.currency) })]);
+  }
   if (l.traffic) out.push(["network", t("letter.traffic", { rx: formatBytes(l.traffic.rx), tx: formatBytes(l.traffic.tx) })]);
   if (typeof l.cpu_avg === "number") {
     out.push(["cpu", typeof l.temp_max === "number"
@@ -1086,8 +1101,11 @@ function applyWidgets() {
     box.append(card);
     card.hidden = !tile.on;
     for (const size of TILE_SIZES) card.classList.toggle(`size-${size}`, tile.size === size);
-    card.draggable = homeEditing;
+    card.draggable = homeEditing && userRole !== "family";
     tileToolbar(card, tile, shown.indexOf(tile), shown.length);
+  }
+  if (userRole === "family") {
+    for (const c of cards.values()) c.hidden = !FAMILY_TILES.includes(c.dataset.widget);
   }
   box.classList.toggle("editing", homeEditing);
 }
@@ -1198,7 +1216,7 @@ function bindTileDrag() {
 // Sends only the changed part; the server keeps the rest (home.py).
 async function saveHome(change) {
   const before = homeCfg.widgets.weather;
-  homeCfg = await api("POST", "home", change);
+  homeCfg = await api("POST", homePath("home"), change);
   applyLook(homeCfg.look);
   applyWidgets();
   renderHomePanel();
@@ -1258,7 +1276,7 @@ function placeLabel(p) {
 
 async function searchPlaces(q) {
   const list = document.getElementById("place-results");
-  const res = await api("GET", `weather/search?q=${encodeURIComponent(q)}&lang=${lang}`);
+  const res = await api("GET", homePath(`weather/search?q=${encodeURIComponent(q)}&lang=${lang}`));
   list.replaceChildren(...res.results.map((p) => {
     const li = el("li");
     const b = el("button", "", p.name);
@@ -1324,13 +1342,105 @@ async function loadWeather() {
   const card = document.getElementById("weather-card");
   if (card.hidden) { setMood(null); return; }
   try {
-    weatherData = (await api("GET", "weather")).places;
+    weatherData = (await api("GET", homePath("weather"))).places;
   } catch (err) {
     weatherData = [];
     document.getElementById("weather-now").replaceChildren(el("p", "empty", errorText(err)));
     return;
   }
   renderWeather();
+}
+
+// --- photo frame on the server's monitor --------------------------------------------
+
+const FRAME_INTERVALS = [10, 30, 60, 300, 900];
+
+function frameIntervalLabel(s) {
+  const n = Number(s);
+  if (n < 60) return t("frame.seconds", { n });
+  return n === 60 ? t("frame.minute") : t("frame.minutes", { n: Math.round(n / 6) / 10 });
+}
+
+async function loadFrame() {
+  const f = await api("GET", "frame");
+  const albums = f.albums.albums || [];
+  const ready = f.albums.state === "ok";
+  document.getElementById("frame-hint").textContent = t(ready ? "frame.hint" : `frame.state_${f.albums.state}`);
+  const enabled = document.getElementById("frame-enabled");
+  enabled.checked = f.enabled;
+  enabled.disabled = !ready && !f.enabled;
+  const album = document.getElementById("frame-album");
+  album.replaceChildren(el("option", "", t("frame.random")),
+    ...albums.map((a) => {
+      const o = el("option", "", `${a.name} (${a.count})`);
+      o.value = a.id;
+      return o;
+    }));
+  album.firstElementChild.value = "";
+  album.value = albums.some((a) => a.id === f.album) ? f.album : "";
+  const interval = document.getElementById("frame-interval");
+  const choices = FRAME_INTERVALS.includes(f.interval) ? FRAME_INTERVALS : [...FRAME_INTERVALS, f.interval].sort((a, b) => a - b);
+  fillOptions(interval, choices.map(String), frameIntervalLabel);
+  interval.value = String(f.interval);
+  document.getElementById("frame-clock").checked = f.clock;
+}
+
+function bindFrame() {
+  const save = (change) => guarded(null, async () => {
+    await api("POST", "frame", change);
+    say(t("frame.saved"), "ok");
+  });
+  document.getElementById("frame-enabled").addEventListener("change", (e) => save({ enabled: e.target.checked }));
+  document.getElementById("frame-album").addEventListener("change", (e) => save({ album: e.target.value }));
+  document.getElementById("frame-interval").addEventListener("change", (e) => save({ interval: Number(e.target.value) }));
+  document.getElementById("frame-clock").addEventListener("change", (e) => save({ clock: e.target.checked }));
+}
+
+// --- family start screen ---------------------------------------------------------
+// Greeting, weather, the apps an admin gave the account and the shares its
+// SMB user may open. The server refuses everything else for this role.
+
+function renderFamilyShares(data) {
+  const box = document.getElementById("family-shares");
+  box.replaceChildren();
+  for (const s of data.shares) {
+    const row = el("div", "row");
+    const path = `\\\\${data.host}\\${s.name}`;
+    const main = el("div", "share-main");
+    main.append(el("b", "", s.name), el("small", "", s.comment || path));
+    const copy = el("button", "link-btn", t("family.copy"));
+    copy.type = "button";
+    copy.title = path;
+    copy.addEventListener("click", async () => {
+      try {
+        await navigator.clipboard.writeText(path);
+        say(t("family.copied", { path }), "ok");
+      } catch (_) {
+        say(path, "info");
+      }
+    });
+    row.append(main, badge(t(`family.access_${s.access}`), s.access === "rw" ? "ok" : "info"), copy);
+    box.append(row);
+  }
+  if (!data.shares.length) box.append(el("p", "empty", t("family.no_shares")));
+  document.getElementById("family-smb-hint").textContent = data.smb
+    ? t("family.smb_hint", { name: shownName(data.name) }) : t("family.no_smb");
+}
+
+const FAMILY_TILES = ["weather", "apps", "family-shares"];
+
+async function loadFamily() {
+  renderGreeting();
+  const status = document.getElementById("hero-status");
+  status.lastElementChild.textContent = "";
+  const data = await api("GET", "family");
+  homeCfg = data.home;
+  applyLook(homeCfg.look);
+  applyWidgets();
+  renderHomePanel();
+  renderOverviewApps(data.apps);
+  renderFamilyShares(data);
+  await loadWeather();
 }
 
 async function loadHome() {
@@ -1362,19 +1472,22 @@ function bindHome() {
     panel.hidden = !homeEditing;
     btn.setAttribute("aria-pressed", String(homeEditing));
     applyWidgets();
+    if (homeEditing && userRole === "admin") loadFrame().catch(sayError);
   };
+  bindFrame();
   btn.addEventListener("click", toggle);
   document.getElementById("home-done").addEventListener("click", toggle);
   const reset = document.getElementById("home-reset");
   reset.addEventListener("click", () => guarded(reset, async () => {
     if (!(await ask(t("home.reset_ask"), "home.reset"))) return;
-    homeCfg = await api("POST", "home/reset");
+    homeCfg = await api("POST", homePath("home/reset"));
     applyLook(homeCfg.look);
     applyWidgets();
     renderHomePanel();
     await loadWeather();
   }));
   bindTileDrag();
+  document.getElementById("family-account").addEventListener("click", () => open("account"));
   document.getElementById("backdoor-close").addEventListener("click", () => {
     document.getElementById("backdoor-notice").hidden = true;
     try { localStorage.setItem("dahlia-backdoor-closed", "1"); } catch (_) { /* storage blocked */ }
@@ -1392,7 +1505,7 @@ const CHECK_LEVEL = { critical: "crit", warning: "warn", info: "info" };
 // Where the problem is fixed.
 const CHECK_VIEW = { disks: "storage", usage: "storage", array: "storage", parity: "parity",
                      services: "log", time: "account", updates: "updates", backup: "backup",
-                     notify: "account", firewall: "account" };
+                     notify: "account", firewall: "account", unraid: "storage" };
 
 function loadHealth() {
   const summary = document.getElementById("health-summary");
@@ -1909,6 +2022,119 @@ function bindImport() {
   });
 }
 
+// --- Unraid import -----------------------------------------------------------------
+
+// What the migration helper brought from Unraid; the plan and the running import.
+let unraidTimer = null;
+const UNRAID_MARK = { ready: "ok", done: "ok", confirm: "info", needs_tag: "info", skip: "bad" };
+const UNRAID_SECTIONS = ["disks", "shares", "users", "wireguard", "containers"];
+
+function unraidLine(kind, item) {
+  const name = kind === "disks"
+    ? t("unraid.disk", { slot: item.name, role: t(`unraid.role_${item.role}`) })
+    : kind === "wireguard" ? t("unraid.wireguard", { n: (item.peers || []).length }) : item.name;
+  const parts = [t(`unraid.state_${item.state}`)];
+  if (item.reason) parts.push(t(`unraid.reason_${item.reason}`));
+  for (const n of item.notes || []) parts.push(t(`unraid.note_${n.key}`, { value: n.value }));
+  if (item.image) parts.push(item.image);
+  return `${name}: ${parts.join(" · ")}`;
+}
+
+function renderUnraid(data) {
+  const card = document.getElementById("unraid-card");
+  card.hidden = !data.found || (data.dismissed && !data.job);
+  if (card.hidden) return;
+  const body = document.getElementById("unraid-body");
+  const actions = document.getElementById("unraid-actions");
+  body.replaceChildren();
+  const job = data.job;
+  const running = job?.state === "running";
+  if (job) {
+    const box = el("div", `notice ${job.state === "failed" ? "bad" : ""}`);
+    box.append(el("b", "", t(`unraid.job_${job.state}`, { step: t(`unraid.step_${job.step}`) })));
+    const list = el("ul", "checks");
+    for (const i of job.items) {
+      list.append(checkItem(i.state === "done" ? "ok" : "bad",
+        `${i.name}: ${t(`unraid.item_${i.state}`)}${i.error ? ` (${i.error})` : ""}`));
+    }
+    box.append(list);
+    body.append(box);
+  }
+  actions.hidden = running;
+  if (!data.plan) return;
+  const plan = data.plan;
+  for (const kind of UNRAID_SECTIONS) {
+    const items = kind === "wireguard" ? (plan.wireguard ? [plan.wireguard] : []) : plan[kind];
+    if (!items.length) continue;
+    body.append(el("h3", "", t(`unraid.section_${kind}`)));
+    const list = el("ul", "checks");
+    for (const item of items) {
+      const li = checkItem(UNRAID_MARK[item.state] || "info", unraidLine(kind, item));
+      if (item.state === "needs_tag") {
+        const label = el("label");
+        const input = el("input");
+        input.name = `tag:${item.name}`;
+        input.required = true;
+        input.pattern = "[A-Za-z0-9_][A-Za-z0-9_.\\-]{0,127}";
+        input.placeholder = t("unraid.tag_placeholder");
+        label.append(el("span", "", t("unraid.tag", { repo: item.repo })), input);
+        li.append(label);
+      }
+      list.append(li);
+    }
+    body.append(list);
+  }
+  if (plan.disks.some((d) => d.state === "confirm")) {
+    const label = el("label", "check");
+    const box = el("input");
+    box.type = "checkbox";
+    box.name = "parity";
+    label.append(box, el("span", "", t("unraid.parity_confirm")));
+    body.append(label, el("p", "hint", t("unraid.parity_hint")));
+  }
+  if (plan.not_taken.length) {
+    body.append(el("h3", "", t("unraid.section_not_taken")));
+    const list = el("ul", "checks");
+    for (const k of plan.not_taken) list.append(checkItem("bad", t(`unraid.not_${k}`)));
+    body.append(list);
+  }
+  const done = job?.state === "done";
+  document.querySelector("#unraid-form button[type=submit]").textContent =
+    t(done || job?.state === "failed" ? "unraid.again" : "unraid.start");
+}
+
+async function loadUnraid() {
+  clearTimeout(unraidTimer);
+  const data = await api("GET", "unraid");
+  renderUnraid(data);
+  if (data.job?.state === "running" && current === "storage") {
+    unraidTimer = setTimeout(() => loadUnraid().catch(sayError), 3000);
+  }
+}
+
+function bindUnraid() {
+  const form = document.getElementById("unraid-form");
+  form.addEventListener("submit", (e) => {
+    e.preventDefault();
+    guarded(e.submitter, async () => {
+      const tags = {};
+      for (const input of form.querySelectorAll("input[name^='tag:']")) {
+        tags[input.name.slice(4)] = input.value.trim();
+      }
+      const parity = Boolean(form.elements.parity?.checked);
+      if (!(await ask(t(parity ? "unraid.ask_parity" : "unraid.ask"), "unraid.start"))) return;
+      await api("POST", "unraid/import", { parity, tags });
+      say(t("unraid.started"), "ok");
+      await loadUnraid();
+    });
+  });
+  const dismiss = document.getElementById("unraid-dismiss");
+  dismiss.addEventListener("click", () => guarded(dismiss, async () => {
+    await api("POST", "unraid/dismiss", { dismissed: true });
+    await loadUnraid();
+  }));
+}
+
 // --- storage settings -------------------------------------------------------------
 
 const MOVER_AGES = [0, 60, 360, 720, 1440, 4320, 10080, 43200];
@@ -1955,6 +2181,101 @@ function bindStorageSettings() {
       await loadStorageSettings();
     });
   });
+}
+
+// Disk replacement: a managed data or parity disk (also a missing one) gets a
+// new blank disk under the same number, rebuilt from the parity.
+let replaceState = { managed: [], blank: [] };
+
+function renderReplace() {
+  const card = document.getElementById("replace-card");
+  const list = document.getElementById("replace-disks");
+  list.replaceChildren();
+  const disks = replaceState.managed.filter((d) => d.role === "data" || d.role === "parity");
+  const hasParity = disks.some((d) => d.role === "parity");
+  card.hidden = !disks.length;
+  for (const d of disks) {
+    const li = el("li");
+    const model = [d.model, d.serial && t("storage.serial", { serial: d.serial })].filter(Boolean).join(" · ");
+    li.append(el("b", "", d.mountpoint), el("span", "hint", tv("role", d.role)));
+    if (model) li.append(el("span", "hint", model));
+    li.append(d.mounted ? badge(t("replace.mounted"), "ok") : badge(t("replace.missing"), "warn"));
+    const b = button("replace.button", () => openReplaceDialog(d), "danger");
+    if (d.role === "data" && !hasParity) {
+      b.disabled = true;
+      b.title = t("replace.no_parity");
+    }
+    li.append(b);
+    list.append(li);
+  }
+}
+
+function replaceCandidates(old) {
+  const largest = Math.max(0, ...replaceState.managed.filter((d) => d.role === "data").map((d) => d.size || 0));
+  const min = old.role === "parity" ? Math.max(old.size || 0, largest) : (old.size || 0);
+  return replaceState.blank.filter((d) => d.size >= min);
+}
+
+function openReplaceDialog(old) {
+  const form = document.getElementById("replace-form");
+  form.reset();
+  form.dataset.uuid = old.uuid;
+  document.getElementById("replace-title").textContent = t("replace.dialog_title", { path: old.mountpoint });
+  document.getElementById("replace-text").textContent = t(
+    old.role === "parity" ? "replace.text_parity" : "replace.text_data", { path: old.mountpoint });
+  const select = form.elements.device;
+  select.replaceChildren();
+  const candidates = replaceCandidates(old);
+  for (const d of candidates) {
+    const label = [d.disk.replace("/dev/", ""), formatBytes(d.size), d.model, d.serial].filter(Boolean).join(" · ");
+    const o = el("option", "", label);
+    o.value = d.disk;
+    select.append(o);
+  }
+  const none = !candidates.length;
+  select.disabled = none;
+  form.querySelector('button[value="ok"]').disabled = none;
+  const pass = document.getElementById("replace-pass");
+  pass.hidden = !old.luks;
+  form.elements.passphrase.required = Boolean(old.luks);
+  const update = () => {
+    const name = (select.value || "").replace("/dev/", "");
+    document.getElementById("replace-warning").textContent = none
+      ? t("replace.no_disk", { size: formatBytes(old.size || 0) })
+      : t("replace.warning", { path: select.value });
+    document.getElementById("replace-confirm-label").textContent = t("storage.format_confirm", { name });
+    form.elements.confirm.pattern = name;
+  };
+  select.onchange = update;
+  update();
+  document.getElementById("replace-dialog").showModal();
+}
+
+function bindReplace() {
+  const form = document.getElementById("replace-form");
+  form.addEventListener("submit", (e) => {
+    if (e.submitter?.value === "cancel") return;
+    e.preventDefault();
+    const body = { uuid: form.dataset.uuid, device: form.elements.device.value,
+                   confirm: form.elements.confirm.value.trim() };
+    if (form.elements.passphrase.required) body.passphrase = form.elements.passphrase.value;
+    guarded(e.submitter, async () => {
+      const res = await api("POST", "storage/replace", body);
+      document.getElementById("replace-dialog").close();
+      say(t("replace.started", { path: res.mountpoint }), "ok");
+      await loadStorage();
+    });
+  });
+}
+
+async function loadReplace(data) {
+  const res = await api("GET", "storage/managed").catch(() => ({ disks: [] }));
+  replaceState = {
+    managed: res.disks,
+    blank: data.disks.filter((d) => d.kind === "disk" && d.status === "empty" && d.path === d.disk
+                              && !d.removable),
+  };
+  renderReplace();
 }
 
 async function loadStorage() {
@@ -2012,7 +2333,7 @@ async function loadStorage() {
     box.append(card);
   }
   if (!groups.size) box.append(el("p", "empty", t("storage.none")));
-  await Promise.all([pollImport(), loadCrypt()]);
+  await Promise.all([pollImport(), loadCrypt(), loadUnraid(), loadReplace(data)]);
 }
 
 // --- encryption -----------------------------------------------------------------
@@ -2956,6 +3277,7 @@ function vmRow(v) {
     if (v.iso) ops.append(op("eject", "download", "vms.eject"));
     ops.append(op("delete", "trash", "vms.delete", true));
   }
+  ops.append(button("snap.button", () => openVmSnapshots(v.name)));
   ops.append(button("vms.settings", () => vmSettings(v)));
   row.append(ops);
   return row;
@@ -3055,6 +3377,67 @@ async function vmCreate() {
   await api("POST", "vms", body);
   say(t("vms.create_started", { name: body.name }), "ok");
   await loadVms();
+}
+
+// Incus snapshots of one instance: list, take, restore, delete, schedule.
+let vmSnapName = "";
+
+async function renderVmSnapshots() {
+  const name = vmSnapName;
+  const data = await api("GET", `vms/${encodeURIComponent(name)}/snapshots`);
+  const sched = document.getElementById("vm-snap-schedule");
+  sched.value = ["off", "daily", "weekly"].includes(data.schedule) ? data.schedule : "off";
+  const tbody = document.getElementById("vm-snap-list");
+  tbody.replaceChildren();
+  for (const s of [...data.snapshots].reverse()) {
+    const tr = el("tr");
+    cell(tr, el("code", "", s.name));
+    cell(tr, s.created ? new Date(s.created).toLocaleString(lang) : "–");
+    const ops = el("div", "row-ops");
+    const base = `vms/${encodeURIComponent(name)}/snapshots/${encodeURIComponent(s.name)}`;
+    ops.append(button("snap.restore", async () => {
+      if (!await ask(t("snap.restore_confirm", { name, snap: s.name }), "snap.restore", true)) return;
+      await api("POST", `${base}/restore`);
+      say(t("snap.restored", { name, snap: s.name }), "ok");
+      await loadVms();
+    }), button("snap.delete", async () => {
+      if (!await ask(t("snap.delete_confirm", { snap: s.name }), "snap.delete", true)) return;
+      await api("POST", `${base}/delete`);
+      await renderVmSnapshots();
+    }, "danger"));
+    cell(tr, ops);
+    tbody.append(tr);
+  }
+  if (!data.snapshots.length) {
+    const tr = el("tr");
+    cell(tr, t("snap.none")).colSpan = 3;
+    tbody.append(tr);
+  }
+}
+
+async function openVmSnapshots(name) {
+  vmSnapName = name;
+  document.getElementById("vm-snap-title").textContent = t("snap.title", { name });
+  document.getElementById("vm-snap-name").value = "";
+  await renderVmSnapshots();
+  document.getElementById("vm-snap-dialog").showModal();
+}
+
+function bindVmSnapshots() {
+  const take = document.getElementById("vm-snap-take");
+  take.addEventListener("click", () => guarded(take, async () => {
+    const input = document.getElementById("vm-snap-name");
+    if (!input.checkValidity()) { input.reportValidity(); return; }
+    const res = await api("POST", `vms/${encodeURIComponent(vmSnapName)}/snapshots`, { snapshot: input.value.trim() });
+    input.value = "";
+    say(t("snap.taken", { snap: res.snapshot }), "ok");
+    await renderVmSnapshots();
+  }));
+  const sched = document.getElementById("vm-snap-schedule");
+  sched.addEventListener("change", () => guarded(sched, async () => {
+    await api("POST", `vms/${encodeURIComponent(vmSnapName)}/snapshot-schedule`, { every: sched.value });
+    say(t("snap.schedule_saved"), "ok");
+  }));
 }
 
 async function vmSettings(v) {
@@ -3678,6 +4061,9 @@ function renderBackupType() {
   for (const n of ["host", "user", "spath"]) f.elements[n].required = sftp;
 }
 
+let backupFolders = [];
+let backupMachines = [];
+
 async function loadBackup() {
   clearTimeout(backupTimer);
   const [data, list] = await Promise.all([api("GET", "backup"), api("GET", "apps?catalog=false")]);
@@ -3703,6 +4089,20 @@ async function loadBackup() {
     f.elements.spath.value = target.path;
   }
   f.elements.stop_apps.checked = data.stop_apps;
+  backupFolders = data.folders || [];
+  backupMachines = data.instances || [];
+  // VMs and containers (Incus) to include; the ones saved stay even if gone.
+  const names = [...new Set([...backupMachines, ...(data.machines || [])])].sort();
+  document.getElementById("backup-machines-box").hidden = !names.length;
+  document.getElementById("backup-machines").replaceChildren(...names.map((n) => {
+    const label = el("label", "check");
+    const box = el("input");
+    box.type = "checkbox";
+    box.value = n;
+    box.checked = (data.machines || []).includes(n);
+    label.append(box, el("span", "", n));
+    return label;
+  }));
   const key = document.getElementById("backup-pubkey");
   key.hidden = !data.public_key;
   key.textContent = data.public_key || "";
@@ -3754,8 +4154,13 @@ function renderProbe(data) {
   return running;
 }
 
+// Names a VM restore can be asked for: the ones picked for the backup and the existing ones.
+let backupSnapshotMachines = [];
+
 async function loadSnapshots() {
   const { snapshots } = await api("GET", "backup/snapshots");
+  backupSnapshotMachines = [...new Set([...backupMachines,
+    ...[...document.querySelectorAll("#backup-machines input")].map((b) => b.value)])].sort();
   const card = document.getElementById("backup-snapshots-card");
   const tbody = document.getElementById("backup-snapshots");
   card.hidden = false;
@@ -3765,13 +4170,22 @@ async function loadSnapshots() {
     cell(tr, new Date(s.time).toLocaleString(lang));
     cell(tr, el("code", "", s.id));
     const sel = el("select");
-    fillOptions(sel, ["config", ...backupApps.map((a) => a.id)],
-      (v) => (v === "config" ? t("backup.what_config") : backupApps.find((a) => a.id === v).name));
+    // VMs and containers whose export this snapshot holds.
+    const vms = (s.paths || []).some((p) => p.endsWith("/backup-machines")) ? backupSnapshotMachines : [];
+    const whatName = (v) => {
+      if (v === "config") return t("backup.what_config");
+      if (v.startsWith("vm:")) return t("backup.what_vm", { name: v.slice(3) });
+      return backupApps.find((a) => a.id === v).name;
+    };
+    fillOptions(sel, ["config", ...backupApps.map((a) => a.id), ...vms.map((n) => `vm:${n}`)], whatName);
     const go = iconButton("reboot", "backup.restore", async () => {
       const what = sel.value;
-      const name = what === "config" ? t("backup.what_config") : backupApps.find((a) => a.id === what).name;
-      if (!await ask(t("backup.restore_confirm", { what: name, time: new Date(s.time).toLocaleString(lang) }),
-                     "backup.restore", true)) return;
+      const name = whatName(what);
+      const time = new Date(s.time).toLocaleString(lang);
+      const text = what.startsWith("vm:")
+        ? t("backup.restore_vm_confirm", { what: name, time, name: what.slice(3) })
+        : t("backup.restore_confirm", { what: name, time });
+      if (!await ask(text, "backup.restore", true)) return;
       await api("POST", "backup/restore", { snapshot: s.id, what });
       say(t("backup.restore_started", { what: name }), "ok");
       await loadBackup();
@@ -3801,7 +4215,8 @@ function bindBackup() {
       : { type: "folder", path: el_.path.value };
     guarded(e.submitter, async () => {
       if (!target.path) { say(t("backup.choose_target"), "error"); return; }
-      await api("POST", "backup", { target, stop_apps: el_.stop_apps.checked });
+      const machines = [...document.querySelectorAll("#backup-machines input:checked")].map((b) => b.value);
+      await api("POST", "backup", { target, stop_apps: el_.stop_apps.checked, folders: backupFolders, machines });
       say(t("backup.saved"), "ok");
       await loadBackup();
     });
@@ -4323,7 +4738,7 @@ async function loadAccount() {
   document.querySelector("#hostname-form [name=hostname]").value = info.hostname;
   // Each card loads on its own; one failing part does not hide the others.
   await Promise.all([loadTime(), loadNetwork(), loadNetLayout(), loadSpindown(), loadPower(),
-               loadDevices(), loadSyslog(), loadFirewall(), loadSchedules(), loadNotify(), loadUps(),
+               loadDevices(), loadSyslog(), loadFirewall(), loadSchedules(), loadNotify(), loadUps(), loadEnergy(),
                loadInflux(), loadVpn(), loadTotp(),
                ...(userRole === "admin" ? [loadTokens(), loadUsers()] : [])]
     .map((p) => p.catch(sayError)));
@@ -5035,6 +5450,57 @@ async function loadUps() {
   if (s.load !== null) fact(dl, "ups.load", `${s.load} %`);
 }
 
+function renderEnergySource() {
+  const f = document.getElementById("energy-form").elements;
+  document.getElementById("energy-plug").hidden = f.source.value !== "plug";
+}
+
+// Money with two decimals in the reader's language.
+function formatMoney(value, currency) {
+  return new Intl.NumberFormat(lang, { style: "currency", currency: currency || "EUR" }).format(value);
+}
+
+async function loadEnergy() {
+  const data = await api("GET", "energy");
+  const f = document.getElementById("energy-form").elements;
+  fillOptions(f.plug, ["shelly", "tasmota"], (p) => ({ shelly: "Shelly", tasmota: "Tasmota" })[p]);
+  fillOptions(f.currency, ["EUR", "CHF", "GBP", "USD"], (c) => c);
+  f.source.value = data.source;
+  f.plug.value = data.plug;
+  f.host.value = data.host;
+  f.price.value = data.price;
+  f.currency.value = data.currency;
+  renderEnergySource();
+  const dl = document.getElementById("energy-status");
+  dl.replaceChildren();
+  if (data.source === "off") return;
+  if (data.watts === null) {
+    fact(dl, "energy.now", badge(t("energy.no_reading"), "warn"));
+    return;
+  }
+  fact(dl, "energy.now", `${Math.round(data.watts)} W`);
+  // A year at this draw, as a rough guide.
+  const kwh = data.watts * 24 * 365 / 1000;
+  fact(dl, "energy.year", t("energy.year_value", { kwh: Math.round(kwh),
+    cost: formatMoney(kwh * data.price / 100, data.currency) }));
+}
+
+function bindEnergy() {
+  const form = document.getElementById("energy-form");
+  form.elements.source.addEventListener("change", renderEnergySource);
+  form.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const f = form.elements;
+    const body = { source: f.source.value, plug: f.plug.value, host: f.host.value.trim(),
+                   price: Math.round(Number(f.price.value) || 0), currency: f.currency.value };
+    guarded(e.submitter, async () => {
+      await api("POST", "energy", body);
+      say(t("energy.saved"), "ok");
+      await loadEnergy();
+    });
+  });
+}
+
 // --- file manager ---------------------------------------------------------------
 
 const fm = { root: ARRAY, path: "", entries: [], selected: new Set(), writable: false, nameAction: null,
@@ -5411,7 +5877,7 @@ async function loadUsers() {
     const tr = el("tr");
     cell(tr, el("b", "", shownName(u.name)));
     const role = el("select");
-    fillOptions(role, ["admin", "viewer"], (r) => t(`role_name.${r}`));
+    fillOptions(role, ["admin", "viewer", "family"], (r) => t(`role_name.${r}`));
     role.value = u.role;
     role.addEventListener("change", () => guarded(role, async () => {
       try {
@@ -5424,6 +5890,7 @@ async function loadUsers() {
     cell(tr, role);
     cell(tr, u.totp ? badge(t("users.totp_on"), "ok") : "–");
     const ops = el("div", "row-ops");
+    if (u.role === "family") ops.append(button("users.apps", () => openUserApps(u)));
     ops.append(button("users.reset", () => {
       const form = document.getElementById("user-reset-form");
       form.elements.name.value = u.name;
@@ -5444,14 +5911,51 @@ async function loadUsers() {
   }
 }
 
+// Apps a family account sees on its start screen.
+async function openUserApps(u) {
+  const form = document.getElementById("user-apps-form");
+  const { installed } = await api("GET", "apps?catalog=false");
+  const chosen = new Set(u.apps || []);
+  form.elements.name.value = u.name;
+  document.getElementById("user-apps-title").textContent = t("users.apps_prompt", { name: shownName(u.name) });
+  const list = document.getElementById("user-apps-list");
+  list.replaceChildren(...installed.map((a) => {
+    const label = el("label", "check");
+    const box = el("input");
+    box.type = "checkbox";
+    box.value = a.id;
+    box.checked = chosen.has(a.id);
+    label.append(box, el("span", "", a.name));
+    return label;
+  }));
+  if (!installed.length) list.append(el("p", "hint", t("apps.none_installed")));
+  form.hidden = false;
+}
+
 function bindUsers() {
+  const appsForm = document.getElementById("user-apps-form");
+  appsForm.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const name = appsForm.elements.name.value;
+    const apps = [...appsForm.querySelectorAll("#user-apps-list input:checked")].map((b) => b.value);
+    guarded(e.submitter, async () => {
+      await api("POST", `users/${encodeURIComponent(name)}/apps`, { apps });
+      appsForm.hidden = true;
+      say(t("users.apps_saved", { name: shownName(name) }), "ok");
+      await loadUsers();
+    });
+  });
+  document.getElementById("user-apps-cancel").addEventListener("click", () => { appsForm.hidden = true; });
   document.getElementById("user-form").addEventListener("submit", (e) => {
     e.preventDefault();
     const f = formData(e.target);
     guarded(e.submitter, async () => {
-      await api("POST", "users", { name: f.name.trim(), password: f.password, role: f.role });
+      const res = await api("POST", "users", { name: f.name.trim(), password: f.password, role: f.role });
       e.target.reset();
-      say(t("users.added", { name: shownName(f.name.trim().toLowerCase()) }), "ok");
+      const shown = shownName(f.name.trim().toLowerCase());
+      say(t("users.added", { name: shown }), "ok");
+      if (res.smb === "created") say(t("users.family_smb", { name: shown }), "ok");
+      if (res.smb === "failed") say(t("users.family_smb_failed", { name: shown }), "error");
       await loadUsers();
     });
   });
@@ -5915,13 +6419,17 @@ async function start() {
   bindButtons();
   bindShares();
   bindFormat();
+  bindReplace();
+  bindVmSnapshots();
   bindCrypt();
   bindRemotes();
   bindBurnin();
   bindImport();
+  bindUnraid();
   bindFolderPicker();
   bindVms();
   bindNotifyUps();
+  bindEnergy();
   bindTokens();
   bindUsers();
   bindFiles();

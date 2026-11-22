@@ -59,7 +59,14 @@ Updates über das apt-Repo, im Dashboard unter "Updates".
   Backup wieder her und prüft sie; montags ein Wochenbrief, zum Jahreswechsel ein Rückblick;
   Meldungen des Servers in der App (Glocke und Systemmeldung). Kacheln mit Fotos aus Immich,
   Neuem aus Jellyfin und laufenden Downloads.
-- **USB Creator:** die Desktop-App schreibt unter Windows den Installer auf einen USB-Stick.
+- **USB Creator:** die Desktop-App schreibt unter Windows den Installer auf einen USB-Stick,
+  auf Wunsch für einen Server ohne Bildschirm: Plattenwahl und Kopplung dann in der App.
+- **Umzug von Unraid:** ein Helfer-Container installiert Dahlia aus dem laufenden Unraid auf eine
+  freie SSD; danach übernimmt Dahlia Platten, Freigaben, SMB-Benutzer, Container und WireGuard.
+- **Familie und Zuhause:** Familienkonten mit eigenem Startbildschirm, Bilderrahmen mit Fotos aus
+  Immich am Server-Monitor, Strom und Kosten (USV oder smarte Steckdose) im Wochenbrief.
+- **Platte tauschen, Snapshots:** Assistent zum Tauschen einer Daten- oder Parity-Platte;
+  Snapshots von VMs und Containern, die auch ins Backup gehen.
 
 ### In einer VM testen
 
@@ -195,6 +202,13 @@ Nach 1.0 (1.x):
 64. VMs und LXC-Container über Incus, grafische Konsole in Browser und App
 65. USB Creator für Windows in der Desktop-App
 66. Handbuch (DE/EN) und Website auf GitHub Pages
+67. Umzug von Unraid: Umzugshelfer als Unraid-App, Übernahme von Platten, Freigaben, SMB-Benutzern, Containern und WireGuard
+68. Installation ohne Bildschirm: Stick aus dem USB Creator, Plattenwahl und Kopplung in der App
+69. Platte tauschen mit Assistent
+70. Familienkonten
+71. Bilderrahmen am Server-Monitor
+72. Snapshots und Backup für VMs und Container
+73. Strom und Kosten im Wochenbrief
 
 Später: Code-Signierung der Desktop-App (SignPath).
 
@@ -274,7 +288,14 @@ updates from the apt repository, in the dashboard under "Updates".
   and checks it; a weekly letter on Mondays, a review at the turn of the year; the server's
   notifications in the app (bell and system message). Tiles with photos from Immich, new in
   Jellyfin and running downloads.
-- **USB Creator:** on Windows the desktop app writes the installer to a USB stick.
+- **USB Creator:** on Windows the desktop app writes the installer to a USB stick, also for a
+  server without a screen: disk choice and pairing then happen in the app.
+- **Moving from Unraid:** a helper container installs Dahlia from the running Unraid onto a free
+  SSD; Dahlia then takes over disks, shares, SMB users, containers and WireGuard.
+- **Family and home:** family accounts with their own start screen, a photo frame with photos
+  from Immich on the server's monitor, power and cost (UPS or smart plug) in the weekly letter.
+- **Disk replacement, snapshots:** a wizard to replace a data or parity disk; snapshots of VMs
+  and containers, which also go into the backup.
 
 ### Testing in a VM
 
@@ -409,6 +430,13 @@ After 1.0 (1.x):
 64. VMs and LXC containers through Incus, graphical console in browser and app
 65. USB Creator for Windows in the desktop app
 66. Handbook (DE/EN) and website on GitHub Pages
+67. Moving from Unraid: migration helper as an Unraid app, takeover of disks, shares, SMB users, containers and WireGuard
+68. Install without a screen: stick from the USB Creator, disk choice and pairing in the app
+69. Disk replacement wizard
+70. Family accounts
+71. Photo frame on the server monitor
+72. Snapshots and backup for VMs and containers
+73. Power and cost in the weekly letter
 
 Later: code signing of the desktop app (SignPath).
 

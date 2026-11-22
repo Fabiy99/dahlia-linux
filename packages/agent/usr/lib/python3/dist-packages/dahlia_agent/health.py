@@ -198,8 +198,22 @@ def check_firewall(ctx: Context) -> list[dict]:
     return []
 
 
+def check_unraid(ctx: Context) -> list[dict]:
+    """An Unraid setup the migration helper brought along and nobody took over yet."""
+    from . import unraid
+
+    if unraid.load_summary(ctx) is None or unraid.dismissed_file(ctx).exists():
+        return []
+    job = unraid.progress(ctx) or {}
+    if job.get("state") == "failed":
+        return [finding("unraid", "unraid_failed", "warning")]
+    if job.get("state") in ("done", "running"):
+        return []
+    return [finding("unraid", "unraid_found", "info")]
+
+
 CHECKS = ("disks", "cpu", "usage", "array", "parity", "services", "time", "updates", "backup",
-          "notify", "firewall")
+          "notify", "firewall", "unraid")
 
 
 def run_checks(ctx: Context) -> dict:
@@ -209,6 +223,7 @@ def run_checks(ctx: Context) -> dict:
         "array": lambda c: check_array(c, info), "parity": lambda c: check_parity(c, info),
         "services": check_services, "time": check_time, "updates": check_updates,
         "backup": check_backup, "notify": check_notify, "firewall": check_firewall,
+        "unraid": check_unraid,
     }
     findings, passed, skipped = [], [], []
     for name in CHECKS:

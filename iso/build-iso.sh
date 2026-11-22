@@ -63,19 +63,49 @@ chmod u+w "$WORK/initrd.gz" "$WORK/md5sum.txt"
 
 gunzip -c "$WORK/initrd.gz" > "$WORK/initrd.cpio"
 cp "$ROOT/iso/preseed.cfg" "$WORK/initrd-add/preseed.cfg"
-cp "$ROOT/iso/installer/dahlia-auto.cfg" "$ROOT/iso/installer/dahlia-guided.cfg" "$WORK/initrd-add/"
-(cd "$WORK/initrd-add" && printf '%s\n' preseed.cfg dahlia-auto.cfg dahlia-guided.cfg \
+cp "$ROOT/iso/installer/dahlia-auto.cfg" "$ROOT/iso/installer/dahlia-guided.cfg" \
+    "$ROOT/iso/installer/dahlia-headless.cfg" "$WORK/initrd-add/"
+(cd "$WORK/initrd-add" && printf '%s\n' preseed.cfg dahlia-auto.cfg dahlia-guided.cfg dahlia-headless.cfg \
     | cpio --quiet -H newc -R 0:0 -o -A -F "$WORK/initrd.cpio")
 gzip -9 -c "$WORK/initrd.cpio" > "$WORK/initrd-dahlia.gz"
 
 # --- 3./4. payload tree ----------------------------------------------------
 mkdir -p "$WORK/dahlia/pool"
 cp "$BUILD"/pool/*.deb "$WORK/dahlia/pool/"
-for f in pick-disk.sh guided.sh apply-answers.sh lib.sh late-command.sh; do
+for f in pick-disk.sh guided.sh headless.sh report.sh apply-answers.sh lib.sh late-command.sh; do
     install -m 0755 "$ROOT/iso/installer/$f" "$WORK/dahlia/$f"
 done
 install -m 0644 "$ROOT/iso/installer/dahlia.templates" "$WORK/dahlia/dahlia.templates"
 printf 'DAHLIA_VERSION=%s\nDEBIAN_BASE=%s\n' "$VERSION" "$NETINST" > "$WORK/dahlia/release"
+
+# Slots the USB Creator of the Dahlia app fills in its copy of the ISO for an
+# install without a screen: a marker line, then "#" lines up to a fixed size.
+# It overwrites them in place, byte for byte, so the image stays valid.
+#   dahlia/headless.cfg        answers for headless.sh (host name, PC, token)
+#   boot/grub/dahlia-boot.cfg  sourced by grub.cfg: default entry and timeout
+#   isolinux/dahlia-boot.cfg   included by isolinux.cfg: the same for BIOS
+# Counted, not cut with head: with SIGPIPE ignored an endless printf loop
+# never stops.
+slot() {
+    local head line left
+    head="$(printf '#DAHLIA-SLOT:%s:%s' "$1" "$2")"
+    line="$(printf '%063d' 0 | tr 0 '#')"
+    {
+        printf '%s\n' "$head"
+        left=$(( $2 - ${#head} - 1 ))
+        while [ "$left" -gt 64 ]; do
+            printf '%s\n' "$line"
+            left=$(( left - 64 ))
+        done
+        if [ "$left" -gt 1 ]; then printf '%s\n' "${line:0:left-1}"; fi
+        if [ "$left" -eq 1 ]; then printf '\n'; fi
+    } > "$3"
+    [ "$(wc -c < "$3")" -eq "$2" ]
+}
+mkdir -p "$WORK/slots"
+slot headless 4096 "$WORK/dahlia/headless.cfg"
+slot grub 512 "$WORK/slots/grub.cfg"
+slot isolinux 512 "$WORK/slots/isolinux.cfg"
 
 # md5sum.txt: drop entries for replaced files, add the new ones, so the
 # installer's "check CD integrity" stays usable.
@@ -88,7 +118,8 @@ grep -vE '  \./(install\.amd/initrd\.gz|isolinux/isolinux\.cfg|isolinux/splash\.
     md5_line "$ROOT/iso/splash.png" isolinux/splash.png
     md5_line "$ROOT/iso/grub.cfg" boot/grub/grub.cfg
     (cd "$ROOT/iso/grub-theme" && for f in *; do md5_line "$f" "boot/grub/dahlia/$f"; done)
-    (cd "$WORK" && find dahlia -type f | sort | while read -r f; do md5_line "$f" "$f"; done)
+    # Not the slots: the USB Creator changes them.
+    (cd "$WORK" && find dahlia -type f ! -name headless.cfg | sort | while read -r f; do md5_line "$f" "$f"; done)
 } >> "$WORK/md5sum.new"
 
 # --- 5. write the ISO -------------------------------------------------------
@@ -98,6 +129,8 @@ xorriso -indev "$CACHE/$NETINST" -outdev "$OUT" \
     -map "$ROOT/iso/isolinux.cfg" /isolinux/isolinux.cfg \
     -map "$ROOT/iso/splash.png" /isolinux/splash.png \
     -map "$ROOT/iso/grub.cfg" /boot/grub/grub.cfg \
+    -map "$WORK/slots/grub.cfg" /boot/grub/dahlia-boot.cfg \
+    -map "$WORK/slots/isolinux.cfg" /isolinux/dahlia-boot.cfg \
     -map "$ROOT/iso/grub-theme" /boot/grub/dahlia \
     -map "$WORK/dahlia" /dahlia \
     -map "$WORK/md5sum.new" /md5sum.txt \

@@ -1106,3 +1106,86 @@ file the app polls. CI tests the script on Windows against a virtual disk (VHD).
 Handbook: `docs/de/handbuch.md` and `docs/en/handbook.md`. `tools/build-site.py` builds the
 website on GitHub Pages from `site/` and the handbook, next to the apt repository. Details:
 [apt-repo.md](apt-repo.md).
+
+## Moving from Unraid (from milestone 67)
+
+The migration helper (`migrate/`) is a privileged container for Unraid
+(`ghcr.io/fabiy99/dahlia-linux/migrate`, template `migrate/unraid-template.xml`, built by
+`.github/workflows/migrate.yml`). It reads `/boot/config` and `/var/local/emhttp` read-only,
+locks every disk Unraid uses (array, parity, pools, stick) and installs Debian 13 by debootstrap
+plus the Dahlia packages onto the chosen disk with `migrate/install.sh`, in the same layout as
+the ISO install (GPT, BIOS boot, ESP, Btrfs with `@rootfs`). The helper takes over the network
+(interface by MAC address), server name and time zone directly. The web UI (port 8484) needs an
+access code from the container log. The setup code is preset as `setup-code.preset` in the
+dashboard's state and shown at the end.
+
+The Unraid configuration goes to `/var/lib/dahlia/unraid/` (`unraid.json` and raw files).
+`unraid.status` builds the plan from it and the connected disks, `unraid.import` starts
+`unraid-import.service`. Steps: disks in Unraid's slot order and the cache by serial number,
+without formatting (shares at the top of the cache move to `/mnt/cache/shares`); parity only on
+request (format, recompute); SMB users with their NT hash (`pdbedit`); shares with security and
+user list; WireGuard `wg0` with key and peers; Docker templates as custom containers (appdata to
+`appdata/<id>/<name>`). Every step can run again, what exists stays. Not taken over: plugins,
+VMs, bonding/VLAN/bridges, LUKS and ZFS disks, further pools.
+
+## Install without a screen (from milestone 68)
+
+The ISO has three fixed-size slots (`build-iso.sh`, header line `#DAHLIA-SLOT:<name>:<size>` at
+the start of a sector): `headless` (4096 bytes, `dahlia/headless.cfg`), `grub` and `isolinux`
+(512 bytes each, default boot entry). The USB Creator copies the ISO and fills the slots
+(`app/lib/src/headless.dart`): server name, time zone, keyboard, the PC's addresses and a random
+token; no secret. The boot entry "Install without screen" sets `dahlia.mode=headless`.
+
+`iso/installer/headless.sh` runs as `partman/early_command`, reports the disks to the app
+(`GET /headless/<token>/hello?disks=…`, port 8485) and polls `answer` until the pick arrives:
+`DISK`, `ACCOUNT`, `PASSWORD` (hex), `SETUP_CODE`, `CONFIRM`. A disk with data needs its serial
+number in `CONFIRM`; invalid answers are reported as `progress?step=rejected_<reason>`.
+`report.sh` reports the steps, at the end with the SHA-256 of the local CA. The app pairs with it
+without asking and sets up the dashboard account with the setup code. Tested by
+`iso/test-install.sh headless` and `iso/headless-test-app.py`.
+
+## Replacing a disk (from milestone 69)
+
+`storage.managed` lists all managed disks, missing ones too. `storage.replace` (data or parity
+disk, new blank disk at least as large, parity at least as large as the largest data disk) runs
+in this order: `disk remove` (data stays), format with the old disk's file system (LUKS if the
+old one was encrypted), `disk add --index N` (`/mnt/diskN` and the SnapRAID name stay), then
+`dahlia-snapraid fix --disk N` or a forced sync for parity. If formatting or adding fails, the
+old disk is added back as far as it is still there. Nothing starts while a sync, scrub, mover or
+repair runs.
+
+## Family accounts (from milestone 70)
+
+A third role `family` next to `admin` and `viewer` in `users.json`, with a list of app IDs given
+to it (`POST /api/users/<name>/apps`). A middleware allows family accounts only a fixed list of
+API paths; everything else returns 403 `error.family_only`. `/api/family` returns name, apps,
+shares and the account's own start screen (`/var/lib/dashboard/family/<name>.json`). Shares:
+public = read and write, protected = as listed or read, private = only as listed. Creating the
+account also creates an SMB user with the same name and password; password changes follow.
+
+## Photo frame on the server's monitor (from milestone 71)
+
+Settings in `/var/lib/dashboard/frame.json` (on, interval 5–3600 s, album UUID or all, clock).
+`tiles.frame` gets the photo IDs from Immich (album or random), `tiles.albums` the albums.
+`/api/screen` returns the list, `/api/screen/photo/<id>` the image; both local only: the nginx
+site for the network returns 404 for `/api/screen`, only the kiosk's local site passes it on.
+`screen.js` crossfades two images. While the setup code is valid, the overview stays.
+
+## Snapshots and backup of VMs and containers (from milestone 72)
+
+Actions `vm.snapshots`, `vm.snapshot`, `vm.snapshot_restore`, `vm.snapshot_delete` and
+`vm.snapshot_schedule`. Automatic snapshots set `snapshots.schedule` (`@daily` with
+`snapshots.expiry` 7d or `@weekly` with 4w) and `snapshots.pattern` `auto-%d`. The backup takes
+chosen machines (setting `machines`). Before restic runs, `incus export --instance-only
+--compression none` writes them to `/var/lib/dahlia/backup-machines`; the export is removed
+afterwards. Restoring (`vm:<name>`) imports under the old name or as `<name>-restored`.
+
+## Power and cost (from milestone 73)
+
+`/etc/dahlia/energy.json`: source (`off`, `ups`, `plug`), plug (`shelly`, `tasmota`), address,
+price in cents per kWh and currency. UPS: `ups.realpower`, else `ups.load` times
+`ups.realpower.nominal`. Plug: local HTTP API without a cloud (Shelly Gen2
+`/rpc/Switch.GetStatus`, Gen1 `/meter/0`, Tasmota `Status 10`). `history` stores the draw every
+minute as `power`; the weekly letter turns the hour averages into kWh (hours without a reading
+count as nothing) and stores watts, kWh, price and cost, the year in review the sum. Actions
+`energy.get` and `energy.set` (a plug must answer when saving).

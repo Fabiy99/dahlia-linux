@@ -79,6 +79,26 @@ case "$net" in
     *) fail "invalid network mode '$net'" ;;
 esac
 
+# Keyboard layout of the installed system (install without a screen).
+keymap="$(answer KEYMAP "$ANSWERS")"
+if [ -n "$keymap" ]; then
+    case "$keymap" in
+        *[!a-z]*) fail "invalid keyboard layout '$keymap'" ;;
+    esac
+    kb="$TARGET/etc/default/keyboard"
+    if [ -f "$kb" ] && grep -q '^XKBLAYOUT=' "$kb"; then
+        sed "s/^XKBLAYOUT=.*/XKBLAYOUT=\"$keymap\"/" "$kb" > "$kb.new"
+        cat "$kb.new" > "$kb"
+        rm -f "$kb.new"
+    else
+        # keyboard-configuration is not in every target; console-setup and
+        # the local screen read this file once it is.
+        mkdir -p "$TARGET/etc/default"
+        printf 'XKBMODEL="pc105"\nXKBLAYOUT="%s"\nXKBVARIANT=""\nXKBOPTIONS=""\nBACKSPACE="guess"\n' \
+            "$keymap" > "$kb"
+    fi
+fi
+
 if [ -n "$KEYFILE" ] && [ -s "$KEYFILE" ]; then
     key="$(head -n1 "$KEYFILE")"
     valid_ssh_key "$key" || fail "invalid SSH key"

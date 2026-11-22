@@ -4,6 +4,12 @@ What is saved: /etc/dahlia, the installed apps (/var/lib/dahlia/apps:
 templates, state, secrets), the dashboard accounts (/var/lib/dashboard),
 the appdata folder of every installed app and extra folders the admin picks.
 Shares (films, photos) are not included unless picked as a folder.
+VMs and system containers (Incus) the admin picks are exported with
+`incus export --instance-only --compression none` into
+/var/lib/dahlia/backup-machines and saved with the rest (uncompressed, so
+restic can deduplicate between runs); the export is removed afterwards.
+A restore imports the export again, as "<name>-restored" when an instance
+of that name exists.
 
 Target: a folder (another disk, a USB disk, a share of another server
 mounted somewhere) or an SFTP server. The repository is encrypted with a
@@ -29,7 +35,7 @@ the probe reads a part of the repository's data (restic check
 snapshot into /var/lib/dahlia/backup-probe and lets restic verify their
 content (restore --verify). A failed probe is sent as a notification.
 
-CLI: backup run | probe | snapshots | restore SNAPSHOT (config|APP_ID)
+CLI: backup run | probe | snapshots | restore SNAPSHOT (config|APP_ID|vm:NAME)
 """
 
 import argparse
@@ -54,6 +60,9 @@ STATE = Path("/var/lib/dahlia")
 DASHBOARD_STATE = Path("/var/lib/dashboard")
 KEEP = {"daily": 7, "weekly": 4, "monthly": 6}
 MAX_FOLDERS = 20
+MAX_MACHINES = 20
+MACHINE_RE = re.compile(r"^[a-z]([a-z0-9-]{0,30}[a-z0-9])?$")
+EXPORT_TIMEOUT = 6 * 3600
 # A folder target: an absolute path below /mnt or /media, no "..".
 FOLDER_TARGET_RE = re.compile(r"^/(mnt|media)(/[A-Za-z0-9][A-Za-z0-9 ._()+,-]{0,99}){1,10}$")
 HOST_RE = re.compile(r"^[A-Za-z0-9]([A-Za-z0-9.-]{0,252}[A-Za-z0-9])?$")
@@ -102,6 +111,15 @@ def check_target(target) -> dict:
     if type(port) is not int or not 1 <= port <= 65535:
         raise BackupError("target.port: 1-65535")
     return {"type": "sftp", "host": host, "port": port, "user": user, "path": path}
+
+
+def check_machines(machines) -> list[str]:
+    """Names of Incus instances to include."""
+    if not isinstance(machines, list) or len(machines) > MAX_MACHINES:
+        raise BackupError(f"machines: at most {MAX_MACHINES}")
+    if not all(isinstance(m, str) and MACHINE_RE.fullmatch(m) for m in machines):
+        raise BackupError("machines: names of VMs or containers")
+    return list(dict.fromkeys(machines))
 
 
 def check_folders(folders, paths: apps.Paths) -> list[str]:
@@ -155,6 +173,10 @@ class Backup:
     def probe_dir(self) -> Path:
         return self.state / "backup-probe"
 
+    @property
+    def machines_dir(self) -> Path:
+        return self.state / "backup-machines"
+
     def settings(self) -> dict:
         try:
             data = json.loads(self.config_file.read_text())
@@ -170,8 +192,12 @@ class Backup:
             folders = check_folders(data.get("folders", []), self.paths)
         except BackupError:
             folders = []
+        try:
+            machines = check_machines(data.get("machines", []))
+        except BackupError:
+            machines = []
         return {"target": target, "stop_apps": data.get("stop_apps", True) is not False,
-                "folders": folders}
+                "folders": folders, "machines": machines}
 
     def status(self) -> dict:
         try:
@@ -196,9 +222,10 @@ class Backup:
 
     # --- settings -------------------------------------------------------------
 
-    def configure(self, target, stop_apps: bool, folders) -> dict:
+    def configure(self, target, stop_apps: bool, folders, machines=()) -> dict:
         settings = {"target": check_target(target), "stop_apps": bool(stop_apps),
-                    "folders": check_folders(folders, self.paths)}
+                    "folders": check_folders(folders, self.paths),
+                    "machines": check_machines(list(machines))}
         self.config_file.parent.mkdir(parents=True, exist_ok=True)
         if not self.password_file.exists():
             fd = os.open(self.password_file, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
@@ -255,7 +282,41 @@ class Backup:
             if d.is_dir():
                 out.append(str(d))
         out += self.settings()["folders"]
+        if any(self.machines_dir.glob("*.tar")):
+            out.append(str(self.machines_dir))
         return [p for p in dict.fromkeys(out) if Path(p).exists()]
+
+    # --- VMs and system containers (Incus) ---------------------------------------
+
+    def machines(self) -> dict[str, str]:
+        """Incus instances and their status; empty without Incus."""
+        try:
+            data = json.loads(self.run(["incus", "list", "--format", "json"], timeout=60) or "[]")
+        except (BackupError, ValueError, OSError):
+            return {}
+        return {m["name"]: m.get("status", "") for m in data
+                if isinstance(m, dict) and isinstance(m.get("name"), str)}
+
+    def export_machines(self, names: list[str], stop: bool) -> list[str]:
+        """Exports the picked instances into machines_dir; returns the exported names."""
+        present = self.machines()
+        shutil.rmtree(self.machines_dir, ignore_errors=True)
+        self.machines_dir.mkdir(mode=0o700, parents=True)
+        done = []
+        for name in names:
+            if name not in present:
+                continue
+            running = present[name] == "Running"
+            if stop and running:
+                self.run(["incus", "stop", name], timeout=600)
+            try:
+                self.run(["incus", "export", name, str(self.machines_dir / f"{name}.tar"),
+                          "--instance-only", "--compression", "none"], timeout=EXPORT_TIMEOUT)
+            finally:
+                if stop and running:
+                    self.run(["incus", "start", name], timeout=600)
+            done.append(name)
+        return done
 
     def _manager(self):
         if self.app_manager is None:
@@ -307,6 +368,9 @@ class Backup:
                 stopped = self._running_apps()
                 for app_id in stopped:
                     self._compose(app_id, "stop")
+            if settings["machines"]:
+                status["machines"] = self.export_machines(settings["machines"],
+                                                          settings["stop_apps"])
             out = self.restic("backup", "--json", "--tag", "dahlia", *self.sources())
             summary = next((json.loads(ln) for ln in out.splitlines()
                             if '"message_type":"summary"' in ln.replace(" ", "")), {})
@@ -317,6 +381,7 @@ class Backup:
             status["error"] = str(e)
             raise BackupError(str(e)) from None
         finally:
+            shutil.rmtree(self.machines_dir, ignore_errors=True)
             errors = []
             for app_id in stopped:
                 try:
@@ -416,6 +481,8 @@ class Backup:
             self.restic("restore", snapshot, "--target", "/",
                         *[a for p in includes for a in ("--include", p)])
             return {"restored": "config", "snapshot": snapshot}
+        if what.startswith("vm:"):
+            return self.restore_machine(snapshot, what[3:])
         if what not in apps.installed(self.paths):
             raise BackupError(f"{what} is not installed")
         t, state = apps.load_installed(self.paths, what)
@@ -429,6 +496,26 @@ class Backup:
             if was_running:
                 self._compose(what, "up", "-d")
         return {"restored": what, "snapshot": snapshot}
+
+
+    def restore_machine(self, snapshot: str, name: str) -> dict:
+        """Import a VM or container from its export; beside an existing one of that name."""
+        if not MACHINE_RE.fullmatch(name):
+            raise BackupError("invalid instance name")
+        export = self.machines_dir / f"{name}.tar"
+        shutil.rmtree(self.machines_dir, ignore_errors=True)
+        try:
+            self.restic("restore", snapshot, "--target", "/", "--include", str(export),
+                        timeout=EXPORT_TIMEOUT)
+            if not export.is_file():
+                raise BackupError(f"the snapshot holds no export of {name}")
+            new = name if name not in self.machines() else f"{name[:24]}-restored"
+            if new in self.machines():
+                raise BackupError(f"{new} exists already; delete or rename it first")
+            self.run(["incus", "import", str(export), new], timeout=EXPORT_TIMEOUT)
+        finally:
+            shutil.rmtree(self.machines_dir, ignore_errors=True)
+        return {"restored": f"vm:{name}", "as": new, "snapshot": snapshot}
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -485,7 +572,7 @@ from .actions import Context, Param, action, unit_state  # noqa: E402
 from .protocol import FAILED, INVALID_PARAMS, AgentError  # noqa: E402
 
 RESTORE_UNIT = "backup-restore.service"
-WHAT_RE = re.compile(r"^(config|[a-z][a-z0-9-]{1,30})$")
+WHAT_RE = re.compile(r"^(config|[a-z][a-z0-9-]{1,30}|vm:[a-z]([a-z0-9-]{0,30}[a-z0-9])?)$")
 
 
 def backup_of(ctx: Context) -> Backup:
@@ -530,6 +617,9 @@ def backup_get(ctx: Context):
         "public_key": b.public_key(),
         "job": unit_state(ctx, "backup.service"),
         "restore": unit_state(ctx, RESTORE_UNIT),
+        # VMs and containers that can be included (Incus; none without it).
+        "instances": sorted(b.machines()) if ctx.runner.run(
+            ["test", "-x", "/usr/bin/incus"], check=False).returncode == 0 else [],
     }
 
 
@@ -537,15 +627,16 @@ def backup_get(ctx: Context):
     "backup.set",
     mutating=True,
     params={"target": Param(dict), "stop_apps": Param(bool, required=False, default=True),
-            "folders": Param(list, required=False, default=[])},
+            "folders": Param(list, required=False, default=[]),
+            "machines": Param(list, required=False, default=[])},
 )
-def backup_set(ctx: Context, target: dict, stop_apps: bool, folders: list):
-    """Set the target (folder or SFTP) and extra folders; switches the daily timer on."""
+def backup_set(ctx: Context, target: dict, stop_apps: bool, folders: list, machines: list):
+    """Set the target (folder or SFTP), extra folders and VMs; switches the daily timer on."""
     from . import settings as schedules
 
     b = backup_of(ctx)
     try:
-        result = b.configure(target, stop_apps, folders)
+        result = b.configure(target, stop_apps, folders, machines)
     except BackupError as e:
         raise AgentError(INVALID_PARAMS, str(e)) from None
     saved = schedules.saved_schedules(ctx)
@@ -580,7 +671,8 @@ def backup_snapshots(ctx: Context):
 )
 def backup_restore(ctx: Context, snapshot: str, what: str):
     """Restore one app's data or the configuration, in the background."""
-    if what != "config" and what not in apps.installed(apps.Paths(apps=ctx.var / "apps")):
+    if what != "config" and not what.startswith("vm:") \
+            and what not in apps.installed(apps.Paths(apps=ctx.var / "apps")):
         raise AgentError(INVALID_PARAMS, f"{what} is not installed")
     state = unit_state(ctx, RESTORE_UNIT)
     if state["active"] in ("active", "activating"):

@@ -6,14 +6,16 @@
 #   guided  "Install Dahlia Linux" entry with every question answered by a
 #           preseed file (tests guided.sh and apply-answers.sh, not the screens):
 #           static address, SSH key, own server name and time zone
+#   headless "Install without screen": slots filled as the app's USB Creator
+#           does, iso/headless-test-app.py answers headless.sh in its place
 #
-# Usage: iso/test-install.sh <bios|uefi> <path-to-iso> [auto|guided]
+# Usage: iso/test-install.sh <bios|uefi> <path-to-iso> [auto|guided|headless]
 # Needs: qemu-system-x86_64, qemu-img, xorriso, sshpass, ssh-keygen, /dev/kvm;
 #        for uefi also OVMF
 # Logs:  build/test-<firmware>-<install>/install.log and boot.log
 set -euo pipefail
 
-usage="usage: $0 <bios|uefi> <iso> [auto|guided]"
+usage="usage: $0 <bios|uefi> <iso> [auto|guided|headless]"
 MODE="${1:?$usage}"
 ISO="${2:?$usage}"
 INSTALL="${3:-auto}"
@@ -27,6 +29,13 @@ GUIDED_HOST=nas-test
 GUIDED_USER=fabi
 GUIDED_PASS='Dahlia-Test-Pass-9'
 GUIDED_TZ=Europe/Vienna
+# Values of iso/headless-test-app.py.
+HEADLESS_HOST=nas-headless
+HEADLESS_USER=fabi
+HEADLESS_PASS='Dahlia-Headless-9'
+HEADLESS_CODE=HEAD7-SAFE2
+HEADLESS_PORT=18485
+HEADLESS_TOKEN=0123456789abcdef0123456789abcdef
 
 INSTALL_TIMEOUT=1800
 BOOT_TIMEOUT=600
@@ -96,12 +105,20 @@ case "$INSTALL" in
         } > "$OUTDIR/test-answers.cfg"
         map_answers=(-map "$OUTDIR/test-answers.cfg" /dahlia/test-answers.cfg)
         ;;
+    headless)
+        # The default entry comes from the slots, as on a stick from the
+        # USB Creator. The installed system gets the serial console too, so
+        # the setup code banner can be read.
+        grub_default=0
+        syslinux_default=dahlia
+        ;;
     *) echo "unknown install mode: $INSTALL" >&2; exit 2 ;;
 esac
+serial_installed='/dahlia.mode=headless/s|--- quiet$|--- quiet console=tty0 console=ttyS0,115200n8|'
 sed -e "s/^set default=0\$/set default=$grub_default/" -e "/vmlinuz/s| ---| $extra ---|" \
-    "$ROOT/iso/grub.cfg" > "$OUTDIR/grub.cfg"
+    -e "$serial_installed" "$ROOT/iso/grub.cfg" > "$OUTDIR/grub.cfg"
 sed -e "s/^default dahlia\$/default $syslinux_default/" -e "/append/s| ---| $extra ---|" \
-    "$ROOT/iso/isolinux.cfg" > "$OUTDIR/isolinux.cfg"
+    -e "$serial_installed" "$ROOT/iso/isolinux.cfg" > "$OUTDIR/isolinux.cfg"
 grep -q "^set default=$grub_default\$" "$OUTDIR/grub.cfg"
 grep -q "^default $syslinux_default\$" "$OUTDIR/isolinux.cfg"
 xorriso -indev "$ISO" -outdev "$TEST_ISO" \
@@ -109,6 +126,14 @@ xorriso -indev "$ISO" -outdev "$TEST_ISO" \
     -map "$OUTDIR/isolinux.cfg" /isolinux/isolinux.cfg \
     "${map_answers[@]}" \
     -boot_image any replay 2>"$OUTDIR/xorriso.log"
+app_pid=""
+if [ "$INSTALL" = headless ]; then
+    python3 -I "$ROOT/iso/headless-test-app.py" patch "$TEST_ISO" "$HEADLESS_TOKEN" \
+        "10.0.2.2:$HEADLESS_PORT"
+    python3 -I "$ROOT/iso/headless-test-app.py" serve "$HEADLESS_PORT" "$HEADLESS_TOKEN" \
+        "$OUTDIR" &
+    app_pid=$!
+fi
 
 # Collect the installer syslog: the serial console only shows the dialog
 # screen, the syslog shows what late_command and apt are doing.
@@ -121,7 +146,7 @@ with open(sys.argv[1], "ab", buffering=0) as f:
         f.write(s.recv(65535).rstrip(b"\n") + b"\n")
 ' "$OUTDIR/installer-syslog.log" "$SYSLOG_PORT" &
 syslog_pid=$!
-trap 'kill "$syslog_pid" 2>/dev/null || true' EXIT
+trap 'kill "$syslog_pid" $app_pid 2>/dev/null || true' EXIT
 
 install_failed() {
     echo "$1" >&2
@@ -140,10 +165,12 @@ timeout "$INSTALL_TIMEOUT" qemu-system-x86_64 "${qemu_args[@]}" \
     -cdrom "$TEST_ISO" -boot d -no-reboot \
     -serial "file:$OUTDIR/install.log" &
 install_pid=$!
-trap 'kill "$syslog_pid" "$install_pid" 2>/dev/null || true' EXIT
+trap 'kill "$syslog_pid" "$install_pid" $app_pid 2>/dev/null || true' EXIT
 # A failed late_command leaves d-i waiting at an error dialog: stop early.
 while kill -0 "$install_pid" 2>/dev/null; do
-    if grep -q "dahlia-install: FAILED" "$OUTDIR/installer-syslog.log" 2>/dev/null; then
+    # A rejected answer is asked again forever; in the test it is a failure.
+    if grep -q "dahlia-install: FAILED\|dahlia-headless: FAILED\|dahlia-headless: answer rejected" \
+            "$OUTDIR/installer-syslog.log" 2>/dev/null; then
         sleep 5 # let the rest of the diagnostics arrive
         kill "$install_pid" 2>/dev/null || true
         install_failed "late_command failed"
@@ -153,7 +180,19 @@ done
 if ! wait "$install_pid"; then
     install_failed "install did not finish within ${INSTALL_TIMEOUT}s or QEMU failed"
 fi
-kill "$syslog_pid" 2>/dev/null || true
+kill "$syslog_pid" $app_pid 2>/dev/null || true
+
+if [ "$INSTALL" = headless ]; then
+    echo "== headless reports ($MODE)"
+    cat "$OUTDIR/disks.txt"; echo
+    cat "$OUTDIR/steps.txt"
+    grep -q '^/dev/vda\.21474836480\.' "$OUTDIR/disks.txt" || install_failed "disk list not reported"
+    for s in partition packages finished; do
+        grep -qx "$s" "$OUTDIR/steps.txt" || install_failed "step $s not reported"
+    done
+    grep -qE '^[0-9a-f]{64}$' "$OUTDIR/fingerprint.txt" || install_failed "no CA fingerprint reported"
+    echo "OK: disk list, steps and CA fingerprint reached the app"
+fi
 
 echo "== first boot ($MODE)"
 qemu-system-x86_64 "${qemu_args[@]}" -boot c \
@@ -190,7 +229,30 @@ ssh_fail() {
     exit 1
 }
 
-if [ "$INSTALL" = auto ]; then
+if [ "$INSTALL" = headless ]; then
+    HOST="$HEADLESS_HOST"
+    echo "== ssh login with the account from the app ($MODE)"
+    ssh_ok=0
+    for _ in $(seq 1 24); do
+        if out="$(timeout 30 sshpass -p "$HEADLESS_PASS" ssh "${ssh_opts[@]}" \
+                -o PubkeyAuthentication=no "$HEADLESS_USER@127.0.0.1" \
+                'hostname; cat /etc/timezone; grep XKBLAYOUT /etc/default/keyboard' 2>&1)"; then
+            ssh_ok=1
+            break
+        fi
+        printf '%s\n' "$out" >> "$OUTDIR/ssh.log"
+        if grep -qi "permission denied" <<<"$out"; then
+            ssh_fail "ssh rejected the password from the app"
+        fi
+        sleep 5
+    done
+    [ "$ssh_ok" = 1 ] || ssh_fail "no ssh answer on port $SSH_PORT"
+    echo "$out"
+    grep -qx "$HEADLESS_HOST" <<<"$out" || ssh_fail "host name not $HEADLESS_HOST"
+    grep -qx Europe/Vienna <<<"$out" || ssh_fail "time zone not Europe/Vienna"
+    grep -qx 'XKBLAYOUT="us"' <<<"$out" || ssh_fail "keyboard layout not us"
+    echo "OK: password from the app, host name, time zone, keyboard"
+elif [ "$INSTALL" = auto ]; then
     HOST=dahlia
     # SSH with the initial password. It is expired on purpose, so a correct
     # password ends in the forced password change; a wrong one in "denied".
@@ -266,6 +328,9 @@ code="$(grep -aoE 'enter the code [2-9A-Z]{5}-[2-9A-Z]{5}' "$OUTDIR/boot.log" \
     | tail -n1 | awk '{print $4}')"
 [ -n "$code" ] || dashboard_fail "setup code not shown on the console"
 echo "setup code from console: $code"
+if [ "$INSTALL" = headless ] && [ "$code" != "$HEADLESS_CODE" ]; then
+    dashboard_fail "setup code is $code, not the one from the app ($HEADLESS_CODE)"
+fi
 
 if web "$BASE/api/setup" -H 'Content-Type: application/json' \
         -d '{"code": "WRONG-CODE0", "username": "admin", "password": "dahlia-test-pass"}' \
@@ -322,6 +387,12 @@ echo "OK: dashboard setup, login and agent calls work"
 echo "== certificates ($MODE, $INSTALL)"
 web "$BASE/dahlia-ca.crt" -o "$OUTDIR/dahlia-ca.crt"
 grep -q 'BEGIN CERTIFICATE' "$OUTDIR/dahlia-ca.crt" || dashboard_fail "CA not served"
+if [ "$INSTALL" = headless ]; then
+    served="$(sed '/-----/d' "$OUTDIR/dahlia-ca.crt" | base64 -d | sha256sum | cut -d' ' -f1)"
+    [ "$served" = "$(cat "$OUTDIR/fingerprint.txt")" ] \
+        || dashboard_fail "reported CA fingerprint differs from the served CA"
+    echo "OK: the app can pin the CA the installer reported"
+fi
 curl -sf --max-time 30 --cacert "$OUTDIR/dahlia-ca.crt" \
     --resolve "$HOST.local:$HTTPS_PORT:127.0.0.1" \
     "https://$HOST.local:$HTTPS_PORT/api/state" >/dev/null \

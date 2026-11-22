@@ -11,8 +11,10 @@ and one step early or late. Ten recovery codes, stored as SHA-256 hashes
 (they are random, so a slow hash adds nothing), each work once.
 
 Roles: "admin" may change everything; "viewer" sees the dashboard but
-changes nothing except its own password and second factor. Accounts from
-before roles existed are admins. At least one admin always remains.
+changes nothing except its own password and second factor; "family" sees
+only its own start screen with the apps an admin gave it and the shares
+its SMB user may open. Accounts from before roles existed are admins.
+At least one admin always remains.
 """
 
 import base64
@@ -32,7 +34,9 @@ from urllib.parse import quote
 USERNAME_RE = re.compile(r"^[a-z][a-z0-9_-]{1,31}$")
 MIN_PASSWORD = 10
 MAX_PASSWORD = 1024
-ROLES = ("admin", "viewer")
+ROLES = ("admin", "viewer", "family")
+APP_ID_RE = re.compile(r"^[a-z][a-z0-9-]{1,30}$")
+MAX_APPS = 100
 MAX_USERS = 20
 
 SCRYPT_N = 2**14
@@ -177,7 +181,26 @@ class UserStore:
     def list_users(self) -> list[dict]:
         users = self._load()["users"]
         return [{"name": name, "role": u.get("role") if u.get("role") in ROLES else "admin",
-                 "totp": bool(u.get("totp"))} for name, u in sorted(users.items())]
+                 "totp": bool(u.get("totp")), "apps": list(u.get("apps") or [])}
+                for name, u in sorted(users.items())]
+
+    def apps(self, username: str) -> list[str]:
+        """Apps an admin gave a family account."""
+        user = self._load()["users"].get(username) or {}
+        return list(user.get("apps") or [])
+
+    def set_apps(self, username: str, apps: list[str]) -> list[str]:
+        clean = sorted(set(apps))
+        if len(clean) > MAX_APPS or not all(APP_ID_RE.fullmatch(a) for a in clean):
+            raise AuthError("apps")
+        with self.lock:
+            data = self._load()
+            user = data["users"].get(username)
+            if user is None:
+                raise AuthError("unknown_user")
+            user["apps"] = clean
+            self._save(data)
+        return clean
 
     def _admins(self, data: dict) -> list[str]:
         return [n for n, u in data["users"].items() if u.get("role", "admin") == "admin"]

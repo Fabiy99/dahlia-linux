@@ -63,4 +63,16 @@ void main() {
     expect(codeLeft(now.add(const Duration(seconds: 5)), now), '0:05');
     expect(codeLeft(now, now), isNull);
   });
+
+  test('power source body and facts', () {
+    expect(energyBody(source: 'plug', plug: 'tasmota', host: ' 10.0.0.9 ', price: '32', currency: 'CHF'),
+        {'source': 'plug', 'plug': 'tasmota', 'host': '10.0.0.9', 'price': 32, 'currency': 'CHF'});
+    expect(energyBody(source: 'ups', plug: 'shelly', host: 'x', price: '', currency: 'EUR')['host'], '');
+    expect(energyBody(source: 'ups', plug: 'shelly', host: '', price: '5000', currency: 'EUR')['price'], 1000);
+    expect(energyFacts({'source': 'off'}, t, 'en'), isEmpty);
+    expect(energyFacts({'source': 'ups', 'watts': null}, t, 'en').single.$3, 'warn');
+    final f = energyFacts({'source': 'plug', 'watts': 40, 'price': 30, 'currency': 'EUR'}, t, 'en');
+    expect(f[0].$2, '40 W');
+    expect(f[1].$2, 'energy.year_value kwh=350 cost=€105.12');
+  });
 }

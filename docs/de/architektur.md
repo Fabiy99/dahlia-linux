@@ -1134,3 +1134,90 @@ Windows gegen eine virtuelle Platte (VHD).
 Handbuch: `docs/de/handbuch.md` und `docs/en/handbook.md`. Die Website auf GitHub Pages baut
 `tools/build-site.py` aus `site/` und dem Handbuch, neben dem apt-Repo. Details:
 [apt-repo.md](apt-repo.md).
+
+## Umzug von Unraid (ab Meilenstein 67)
+
+Der Umzugshelfer (`migrate/`) ist ein privilegierter Container für Unraid
+(`ghcr.io/fabiy99/dahlia-linux/migrate`, Vorlage `migrate/unraid-template.xml`, gebaut von
+`.github/workflows/migrate.yml`). Er liest `/boot/config` und `/var/local/emhttp` nur lesend,
+sperrt alle Platten, die Unraid nutzt (Array, Parity, Pools, Stick), und installiert mit
+`migrate/install.sh` Debian 13 per debootstrap und die Dahlia-Pakete auf die gewählte Platte,
+mit demselben Layout wie die ISO-Installation (GPT, BIOS-Boot, ESP, Btrfs mit `@rootfs`).
+Netzwerk (Schnittstelle über die MAC-Adresse), Servername und Zeitzone übernimmt der Helfer
+direkt. Die Weboberfläche (Port 8484) braucht einen Zugangscode aus dem Container-Log. Der
+Einrichtungscode wird als `setup-code.preset` im Zustand des Dashboards vorgegeben und am Ende
+angezeigt.
+
+Die Unraid-Konfiguration landet in `/var/lib/dahlia/unraid/` (`unraid.json` und Rohdateien).
+`unraid.status` baut daraus und aus den angeschlossenen Platten den Plan, `unraid.import`
+startet `unraid-import.service`. Schritte: Platten in Unraids Slot-Reihenfolge und Cache über
+die Seriennummer, ohne Formatieren (Freigaben oben auf dem Cache wandern nach
+`/mnt/cache/shares`); Parity nur auf Wunsch (formatieren, neu berechnen); SMB-Benutzer mit
+NT-Hash (`pdbedit`); Freigaben mit Sicherheit und Benutzerliste; WireGuard `wg0` mit Schlüssel
+und Peers; Docker-Vorlagen als eigene Container (Appdaten nach `appdata/<id>/<name>`). Jeder
+Schritt lässt sich wiederholen, Vorhandenes bleibt. Nicht übernommen: Plugins, VMs,
+Bonding/VLAN/Bridges, LUKS- und ZFS-Platten, weitere Pools.
+
+## Installation ohne Bildschirm (ab Meilenstein 68)
+
+Die ISO hat drei Slots fester Größe (`build-iso.sh`, Kopfzeile `#DAHLIA-SLOT:<name>:<größe>`
+am Sektoranfang): `headless` (4096 Byte, `dahlia/headless.cfg`), `grub` und `isolinux` (je
+512 Byte, Standard-Booteintrag). Der USB Creator kopiert die ISO und füllt die Slots
+(`app/lib/src/headless.dart`): Servername, Zeitzone, Tastatur, die Adressen des PCs und ein
+Zufallstoken; kein Geheimnis. Booteintrag „Install without screen“ setzt `dahlia.mode=headless`.
+
+`iso/installer/headless.sh` läuft als `partman/early_command`, meldet die Platten an die App
+(`GET /headless/<token>/hello?disks=…`, Port 8485) und fragt `answer` ab, bis die Wahl kommt:
+`DISK`, `ACCOUNT`, `PASSWORD` (hex), `SETUP_CODE`, `CONFIRM`. Eine Platte mit Daten braucht ihre
+Seriennummer in `CONFIRM`; ungültige Antworten meldet `progress?step=rejected_<grund>`.
+`report.sh` meldet die Schritte, am Ende mit dem SHA-256 der lokalen CA. Die App koppelt
+damit ohne Rückfrage und richtet mit dem Einrichtungscode das Dashboard-Konto ein. Getestet mit
+`iso/test-install.sh headless` und `iso/headless-test-app.py`.
+
+## Platte tauschen (ab Meilenstein 69)
+
+`storage.managed` listet alle verwalteten Platten, auch fehlende. `storage.replace` (Daten- oder
+Parity-Platte, neue leere Platte mindestens gleich groß, Parity mindestens so groß wie die
+größte Datenplatte) läuft in dieser Reihenfolge: `disk remove` (Daten bleiben), Formatieren mit
+dem Dateisystem der alten Platte (LUKS, wenn die alte verschlüsselt war), `disk add --index N`
+(`/mnt/diskN` und der SnapRAID-Name bleiben), dann `dahlia-snapraid fix --disk N` bzw. ein
+erzwungener Sync für Parity. Schlägt Formatieren oder Hinzufügen fehl, kommt die alte Platte
+zurück, sofern sie noch da ist. Während Sync, Scrub, Mover oder Reparatur startet nichts.
+
+## Familienkonten (ab Meilenstein 70)
+
+Dritte Rolle `family` neben `admin` und `viewer` in `users.json`, mit einer Liste freigegebener
+App-IDs (`POST /api/users/<name>/apps`). Eine Middleware lässt für Familienkonten nur eine feste
+Liste von API-Pfaden zu, alles andere gibt 403 `error.family_only`. `/api/family` liefert Name,
+Apps, Freigaben und den eigenen Startbildschirm (`/var/lib/dashboard/family/<name>.json`).
+Freigaben: öffentlich = lesen und schreiben, geschützt = laut Liste oder lesen, privat = nur
+laut Liste. Beim Anlegen entsteht ein SMB-Benutzer mit demselben Namen und Passwort;
+Passwortänderungen gehen mit.
+
+## Bilderrahmen am Server-Monitor (ab Meilenstein 71)
+
+Einstellungen in `/var/lib/dashboard/frame.json` (an, Intervall 5–3600 s, Album-UUID oder alle,
+Uhr). `tiles.frame` holt die Foto-IDs aus Immich (Album oder zufällig), `tiles.albums` die
+Alben. `/api/screen` liefert die Liste, `/api/screen/photo/<id>` das Bild; beide nur lokal: die
+nginx-Seite fürs Netz gibt für `/api/screen` 404, nur die lokale Seite des Kiosks reicht sie
+durch. `screen.js` blendet zwei Bilder ineinander über. Solange der Einrichtungscode gilt,
+bleibt die Übersicht.
+
+## Snapshots und Backup für VMs und Container (ab Meilenstein 72)
+
+Aktionen `vm.snapshots`, `vm.snapshot`, `vm.snapshot_restore`, `vm.snapshot_delete` und
+`vm.snapshot_schedule`. Automatische Snapshots setzen `snapshots.schedule` (`@daily` mit
+`snapshots.expiry` 7d oder `@weekly` mit 4w) und `snapshots.pattern` `auto-%d`. Im Backup
+wählt man Maschinen (Einstellung `machines`). Vor restic exportiert `incus export --instance-only
+--compression none` sie nach `/var/lib/dahlia/backup-machines`, danach wird der Export gelöscht.
+Wiederherstellen (`vm:<name>`) importiert unter dem alten Namen oder als `<name>-restored`.
+
+## Strom und Kosten (ab Meilenstein 73)
+
+`/etc/dahlia/energy.json`: Quelle (`off`, `ups`, `plug`), Steckdose (`shelly`, `tasmota`),
+Adresse, Preis in Cent pro kWh und Währung. USV: `ups.realpower`, sonst `ups.load` mal
+`ups.realpower.nominal`. Steckdose: lokale HTTP-API ohne Cloud (Shelly Gen2
+`/rpc/Switch.GetStatus`, Gen1 `/meter/0`, Tasmota `Status 10`). `history` speichert die Leistung
+jede Minute als `power`; der Wochenbrief rechnet die Stundenmittel in kWh um (Stunden ohne
+Messwert zählen nicht) und speichert Watt, kWh, Preis und Kosten, der Jahresrückblick die Summe.
+Aktionen `energy.get` und `energy.set` (eine Steckdose muss beim Speichern antworten).

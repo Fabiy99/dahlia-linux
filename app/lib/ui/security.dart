@@ -67,6 +67,29 @@ class _SecuritySectionState extends State<SecuritySection> {
   }
 }
 
+/// Settings of a family account: its password and second factor.
+class FamilyAccountPage extends StatelessWidget {
+  const FamilyAccountPage(this.c, {super.key});
+
+  final Controller c;
+
+  @override
+  Widget build(BuildContext context) {
+    final grid = pageGrid(MediaQuery.of(context).size.width);
+    final full = grid.unit * grid.cols + 18 * (grid.cols - 1);
+    final half = grid.cols == 1 ? full : (full - 18) / 2;
+    return PageFrame(c: c, children: [
+      const SizedBox(height: 40),
+      AreaTitle(c.t('nav.account')),
+      const SizedBox(height: 28),
+      Wrap(spacing: 18, runSpacing: 18, children: [
+        SizedBox(width: half, child: _PasswordCard(c)),
+        SizedBox(width: half, child: _TotpCard(c)),
+      ]),
+    ]);
+  }
+}
+
 TextStyle _head(BuildContext context) => TextStyle(color: context.palette.muted, fontSize: 12.5, fontWeight: FontWeight.w600);
 
 const _mono = TextStyle(fontFamily: monoFont, fontFamilyFallback: monoFallback, fontSize: 12.5, height: 1.4);
@@ -880,14 +903,43 @@ class _UsersCardState extends State<_UsersCard> with AreaCalls, CardLoad {
   Future<void> _add() async {
     final name = _name.text.trim();
     final password = _password.text;
-    await save(() => s.post('/api/users', {'name': name, 'password': password, 'role': role}), '');
-    if (!mounted || d == null) return;
-    if (maps(d!['users']).any((u) => u['name'] == name.toLowerCase())) {
-      say(ScaffoldMessenger.of(context), c.t('users.added', {'name': displayName(name.toLowerCase())}));
-      _name.clear();
-      _password.clear();
-      setState(() {});
-    }
+    final m = ScaffoldMessenger.of(context);
+    setState(() => busy = true);
+    final r = await call(() => s.post('/api/users', {'name': name, 'password': password, 'role': role}), m);
+    if (mounted) setState(() => busy = false);
+    await load();
+    if (r is! Map || !mounted) return;
+    final shown = displayName(name.toLowerCase());
+    // A family account gets an SMB user of the same name and password.
+    final smb = r['smb'];
+    say(
+      m,
+      smb == 'created'
+          ? '${c.t('users.added', {'name': shown})} ${c.t('users.family_smb', {'name': shown})}'
+          : c.t('users.added', {'name': shown}),
+    );
+    if (smb == 'failed') say(m, c.t('users.family_smb_failed', {'name': shown}), error: true);
+    _name.clear();
+    _password.clear();
+    setState(() {});
+  }
+
+  /// Apps a family account sees on its start screen.
+  Future<void> _apps(Map u) async {
+    final m = ScaffoldMessenger.of(context);
+    final r = await call(() => s.get('/api/apps?catalog=false'), m);
+    if (r is! Map || !mounted) return;
+    final installed = maps(r['installed']);
+    final name = '${u['name']}';
+    final chosen = await showDialog<Set<String>>(
+      context: context,
+      builder: (context) => _AppsDialog(c: c, name: name, installed: installed,
+          chosen: {for (final a in u['apps'] is List ? u['apps'] as List : const []) '$a'}),
+    );
+    if (chosen == null) return;
+    final ok = await call(() => s.post('${_user(name)}/apps', {'apps': chosen.toList()..sort()}), m);
+    if (ok != null) say(m, c.t('users.apps_saved', {'name': displayName(name)}));
+    await load();
   }
 
   Future<void> _role(Map u, String to) async {
@@ -927,7 +979,7 @@ class _UsersCardState extends State<_UsersCard> with AreaCalls, CardLoad {
     final data = d;
     if (data == null) return SettingsCard(c.t('users.title'), [Busy(c.t('common.loading'))]);
     final list = maps(data['users']);
-    final roles = [for (final r in ['admin', 'viewer']) (r, c.t('role_name.$r'))];
+    final roles = [for (final r in ['admin', 'viewer', 'family']) (r, c.t('role_name.$r'))];
     final canAdd = accountNameRe.hasMatch(_name.text.trim()) && _password.text.length >= minPassword;
     return SettingsCard(c.t('users.title'), [
       cardHint(context, c.t('users.hint')),
@@ -948,7 +1000,7 @@ class _UsersCardState extends State<_UsersCard> with AreaCalls, CardLoad {
               DataRow(cells: [
                 DataCell(Text(displayName('${u['name']}'), style: const TextStyle(fontWeight: FontWeight.w600))),
                 DataCell(DropdownButton<String>(
-                  value: u['role'] == 'admin' ? 'admin' : 'viewer',
+                  value: const ['admin', 'family'].contains(u['role']) ? '${u['role']}' : 'viewer',
                   underline: const SizedBox(),
                   borderRadius: BorderRadius.circular(12),
                   items: [for (final (v, text) in roles) DropdownMenuItem(value: v, child: Text(text))],
@@ -956,6 +1008,7 @@ class _UsersCardState extends State<_UsersCard> with AreaCalls, CardLoad {
                 )),
                 DataCell(u['totp'] == true ? Tag(c.t('users.totp_on'), p.ok) : const Text('–')),
                 DataCell(Row(mainAxisSize: MainAxisSize.min, children: [
+                  if (u['role'] == 'family') TextButton(onPressed: () => _apps(u), child: Text(c.t('users.apps'))),
                   TextButton(onPressed: () => setState(() => resetting = '${u['name']}'), child: Text(c.t('users.reset'))),
                   if (u['name'] != c.user)
                     TextButton(
@@ -984,6 +1037,7 @@ class _UsersCardState extends State<_UsersCard> with AreaCalls, CardLoad {
         ]),
       ],
       const SizedBox(height: 18),
+      cardHint(context, c.t('users.family_hint')),
       Wrap(spacing: 12, crossAxisAlignment: WrapCrossAlignment.start, children: [
         SizedBox(width: 220, child: cardField(_name, c.t('users.name'), formatters: [LengthLimitingTextInputFormatter(32)], onChanged: (_) => setState(() {}))),
         SizedBox(width: 260, child: cardField(_password, c.t('field.password'), obscure: true, onChanged: (_) => setState(() {}))),
@@ -994,5 +1048,50 @@ class _UsersCardState extends State<_UsersCard> with AreaCalls, CardLoad {
         ),
       ]),
     ]);
+  }
+}
+
+/// Check list of the installed apps; pops with the chosen ids.
+class _AppsDialog extends StatefulWidget {
+  const _AppsDialog({required this.c, required this.name, required this.installed, required this.chosen});
+
+  final Controller c;
+  final String name;
+  final List<Map> installed;
+  final Set<String> chosen;
+
+  @override
+  State<_AppsDialog> createState() => _AppsDialogState();
+}
+
+class _AppsDialogState extends State<_AppsDialog> {
+  late final Set<String> chosen = {...widget.chosen};
+
+  @override
+  Widget build(BuildContext context) {
+    final c = widget.c;
+    return AlertDialog(
+      title: Text(c.t('users.apps_prompt', {'name': displayName(widget.name)})),
+      content: SizedBox(
+        width: 420,
+        child: SingleChildScrollView(
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            if (widget.installed.isEmpty) Text(c.t('apps.none_installed')),
+            for (final a in widget.installed)
+              CheckboxListTile(
+                value: chosen.contains('${a['id']}'),
+                contentPadding: EdgeInsets.zero,
+                controlAffinity: ListTileControlAffinity.leading,
+                title: Text('${a['name'] ?? a['id']}'),
+                onChanged: (v) => setState(() => v == true ? chosen.add('${a['id']}') : chosen.remove('${a['id']}')),
+              ),
+          ]),
+        ),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: Text(c.t('common.cancel'))),
+        FilledButton(onPressed: () => Navigator.pop(context, chosen), child: Text(c.t('common.save'))),
+      ],
+    );
   }
 }

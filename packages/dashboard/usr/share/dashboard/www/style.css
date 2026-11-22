@@ -571,6 +571,18 @@ body.viewer main :is(button, input, select, textarea) { pointer-events: none; op
 body.viewer main :is(.viewer-ok, .viewer-ok *, [data-viewer-ok], [data-goto], .link-btn, .seg button) {
   pointer-events: auto; opacity: 1;
 }
+/* family accounts: own start screen, own password; nothing of the server */
+.family-only { display: none; }
+body.family .family-only { display: revert; }
+body.family :is(.admin-only, .not-family, #phone, #nav > button[data-view]:not([data-view="overview"]), #menu ~ div .more-views,
+  .tile-edit):not(.family-ok) { display: none !important; }
+body.family #view-account article.card:not(.viewer-ok) { display: none; }
+body.family .home-tiles { cursor: default; }
+body.family #hero-status { display: none; }
+#family-shares .row { align-items: center; }
+#family-shares .share-main { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+#family-shares .share-main small { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
 body.viewer .admin-only, body.viewer #nav [data-view="terminal"],
 body.viewer #nav [data-view="files"] { display: none; }
 
@@ -744,6 +756,23 @@ main > section:not([hidden]) { animation: rise .55s cubic-bezier(.2, .7, .2, 1) 
 
 /* --- local screen (screen.html) ------------------------------------------ */
 body.screen { overflow: hidden; cursor: none; }
+.frame-settings .frame-row { display: flex; flex-wrap: wrap; gap: 0 1rem; }
+.frame-settings .frame-row label { flex: 1 1 14rem; }
+
+/* photo frame (Immich): two pictures cross-fade; the clock stays on top if wanted */
+.screen-frame { position: fixed; inset: 0; z-index: 2; background: #000; }
+.screen-frame[hidden] { display: none; }
+.screen-frame img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain;
+  opacity: 0; transition: opacity 1.6s ease; }
+.screen-frame img.on { opacity: 1; }
+body.framing .screen-main { z-index: 3; pointer-events: none; }
+body.framing .screen-info { display: none; }
+body.framing.no-clock .screen-clock { display: none; }
+body.framing .screen-clock { color: #fff; text-shadow: 0 2px 12px rgba(0, 0, 0, .6); }
+body.framing .screen-clock span:last-child { color: rgba(255, 255, 255, .85); }
+.frame-status { position: absolute; left: 4vw; bottom: 4vh; color: #fff; z-index: 3;
+  background: rgba(0, 0, 0, .55); padding: .5rem 1rem; border-radius: 999px; }
+.frame-status[hidden] { display: none; }
 .screen-main { position: relative; z-index: 1; height: 100vh; display: flex; justify-content: flex-end;
                padding: 4vh 4vw; }
 .screen-clock { position: absolute; top: 4vh; right: 4vw; display: grid; justify-items: end; }

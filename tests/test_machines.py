@@ -80,7 +80,7 @@ def test_status_before_and_after_install(ctx):
                    "memory": 1024,
                    "autostart": True, "image": "Debian trixie amd64", "addresses": ["10.12.0.5"],
                    "network": "nat", "console": False, "iso": False, "memory_used": 52428800,
-                   "created": "2026-11-18T10:00:00Z"}
+                   "created": "2026-11-18T10:00:00Z", "snapshot_schedule": "off"}
     assert [win["type"], win["memory"], win["network"], win["console"], win["iso"]] == [
         "vm", 8192, "lan", True, True]
     assert st["error"] is None
@@ -238,3 +238,43 @@ def test_console(ctx):
 def test_memory_values():
     assert [machines.memory_mib(v) for v in ("512MiB", "2GiB", "1073741824", "50%", "1GB")] == [
         512, 2048, 1024, None, 953]
+
+
+SNAPS = json.dumps([
+    {"name": "web/auto-1", "created_at": "2026-11-20T03:00:00Z", "stateful": False},
+    {"name": "web/before-upgrade", "created_at": "2026-11-19T10:00:00Z", "stateful": False},
+])
+
+
+def test_snapshots_list_take_restore_delete(ctx):
+    machines.INCUS.write_text("")
+    inc = str(machines.INCUS)
+    ctx.runner.answers[(inc, "query")] = (0, SNAPS, "")
+    got = run(ctx, "vm.snapshots", {"name": "web"})["result"]
+    assert [sn["name"] for sn in got["snapshots"]] == ["before-upgrade", "auto-1"]
+    assert got["schedule"] == "off"
+    assert ["query", "/1.0/instances/web/snapshots?recursion=1"] in incus_calls(ctx)
+    ctx.clock = lambda: 1795000000.0
+    got = run(ctx, "vm.snapshot", {"name": "web"})["result"]
+    assert got["snapshot"].startswith("snap-2026")
+    assert ["snapshot", "create", "--", "web", got["snapshot"]] in incus_calls(ctx)
+    assert err_code(run(ctx, "vm.snapshot", {"name": "web", "snapshot": "auto-1"})) == FAILED
+    bad = run(ctx, "vm.snapshot", {"name": "web", "snapshot": "Bad Name"})
+    assert err_code(bad) == INVALID
+    run(ctx, "vm.snapshot_restore", {"name": "web", "snapshot": "before-upgrade"})
+    assert ["snapshot", "restore", "--", "web", "before-upgrade"] in incus_calls(ctx)
+    assert err_code(run(ctx, "vm.snapshot_restore", {"name": "web", "snapshot": "nope"})) == FAILED
+    run(ctx, "vm.snapshot_delete", {"name": "web", "snapshot": "auto-1"})
+    assert ["snapshot", "delete", "--", "web", "auto-1"] in incus_calls(ctx)
+
+
+def test_snapshot_schedule(ctx):
+    machines.INCUS.write_text("")
+    run(ctx, "vm.snapshot_schedule", {"name": "web", "every": "daily"})
+    assert ["config", "set", "web", "snapshots.schedule=@daily", "snapshots.expiry=7d",
+            "snapshots.pattern=auto-%d"] in incus_calls(ctx)
+    run(ctx, "vm.snapshot_schedule", {"name": "web", "every": "off"})
+    assert ["config", "unset", "web", "snapshots.schedule"] in incus_calls(ctx)
+    assert err_code(run(ctx, "vm.snapshot_schedule", {"name": "web", "every": "hourly"})) == INVALID
+    assert machines.schedule_name("@weekly") == "weekly"
+    assert machines.schedule_name("0 4 * * *") == "custom"

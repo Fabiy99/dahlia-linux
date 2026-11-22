@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dahlia</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main>
+  <header class="top">
+    <svg viewBox="0 0 24 24" class="logo" aria-hidden="true"><g fill="currentColor"><ellipse cx="12" cy="5" rx="2.4" ry="4"/><ellipse cx="12" cy="19" rx="2.4" ry="4"/><ellipse cx="5" cy="12" rx="4" ry="2.4"/><ellipse cx="19" cy="12" rx="4" ry="2.4"/><circle cx="12" cy="12" r="2.6"/></g></svg>
+    <div><h1 data-i18n="title"></h1><p class="muted" data-i18n="subtitle"></p></div>
+    <button type="button" id="lang" class="ghost"></button>
+  </header>
+
+  <section id="view-code" class="card" hidden>
+    <h2 data-i18n="code.title"></h2>
+    <p class="muted" data-i18n="code.text"></p>
+    <form id="code-form" class="row">
+      <input id="code" autocomplete="off" spellcheck="false" placeholder="XXXXX-XXXXX" required>
+      <button type="submit" data-i18n="code.ok"></button>
+    </form>
+    <p class="error" id="code-error" hidden></p>
+  </section>
+
+  <section id="view-form" hidden>
+    <div class="card">
+      <h2 data-i18n="take.title"></h2>
+      <p class="muted" id="take-none" data-i18n="take.none" hidden></p>
+      <div class="cols">
+        <div><h3 data-i18n="take.yes"></h3><ul id="take-yes" class="list ok"></ul></div>
+        <div><h3 data-i18n="take.no"></h3><ul id="take-no" class="list no"></ul></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2 data-i18n="disk.title"></h2>
+      <p class="muted" data-i18n="disk.text"></p>
+      <div id="disks"></div>
+      <label id="confirm-row" hidden><span data-i18n="disk.confirm"></span>
+        <input id="confirm" autocomplete="off" spellcheck="false"></label>
+    </div>
+
+    <form id="settings" class="card">
+      <h2 data-i18n="set.title"></h2>
+      <div class="grid">
+        <label><span data-i18n="set.hostname"></span><input name="hostname" required></label>
+        <label><span data-i18n="set.account"></span><input name="account" autocomplete="username" required></label>
+        <label><span data-i18n="set.password"></span><input name="password" type="password" autocomplete="new-password" required></label>
+        <label><span data-i18n="set.password2"></span><input name="password2" type="password" autocomplete="new-password" required></label>
+        <label><span data-i18n="set.timezone"></span><input name="timezone" required></label>
+        <label><span data-i18n="set.keymap"></span><select name="keymap"></select></label>
+      </div>
+      <fieldset><legend data-i18n="set.network"></legend>
+        <label class="radio" id="net-unraid-row"><input type="radio" name="network" value="unraid" checked> <span id="net-unraid"></span></label>
+        <label class="radio"><input type="radio" name="network" value="dhcp"> <span data-i18n="set.dhcp"></span></label>
+      </fieldset>
+      <p class="warn" data-i18n="set.warning"></p>
+      <p class="error" id="form-error" hidden></p>
+      <button type="submit" id="start" data-i18n="set.start"></button>
+    </form>
+  </section>
+
+  <section id="view-job" class="card" hidden>
+    <h2 id="job-title"></h2>
+    <ol id="steps" class="steps"></ol>
+    <p class="error" id="job-error" hidden></p>
+    <div id="done" hidden>
+      <p data-i18n="done.code"></p>
+      <p class="code" id="setup-code"></p>
+      <ol class="next">
+        <li data-i18n="done.step1"></li>
+        <li data-i18n="done.step2"></li>
+        <li data-i18n="done.step3"></li>
+        <li data-i18n="done.step4"></li>
+      </ol>
+      <p class="muted" data-i18n="done.back"></p>
+    </div>
+    <details><summary data-i18n="job.log"></summary><pre id="log"></pre></details>
+  </section>
+</main>
+<script src="app.js"></script>
+</body>
+</html>
