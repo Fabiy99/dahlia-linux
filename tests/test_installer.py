@@ -262,6 +262,14 @@ def test_apply_keymap(target, tmp_path):
     assert bad.returncode != 0 and "keyboard layout" in bad.stderr
 
 
+def test_apply_keymap_writes_missing_file(target, tmp_path):
+    kb = target / "etc/default/keyboard"
+    kb.unlink(missing_ok=True)
+    ok = apply(target, tmp_path, "HOSTNAME=nas\nTIMEZONE=Europe/Vienna\nNETWORK=dhcp\nKEYMAP=fr\n")
+    assert ok.returncode == 0, ok.stderr
+    assert 'XKBLAYOUT="fr"' in kb.read_text().splitlines()
+
+
 def test_report_without_headless_does_nothing(tmp_path):
     proc = subprocess.run(["sh", str(INSTALLER / "report.sh"), "packages"], capture_output=True,
                           text=True, env={"PATH": "/usr/bin:/bin", "TMPDIR": str(tmp_path)})

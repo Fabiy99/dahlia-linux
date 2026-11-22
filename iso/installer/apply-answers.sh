@@ -90,6 +90,12 @@ if [ -n "$keymap" ]; then
         sed "s/^XKBLAYOUT=.*/XKBLAYOUT=\"$keymap\"/" "$kb" > "$kb.new"
         cat "$kb.new" > "$kb"
         rm -f "$kb.new"
+    else
+        # keyboard-configuration is not in every target; console-setup and
+        # the local screen read this file once it is.
+        mkdir -p "$TARGET/etc/default"
+        printf 'XKBMODEL="pc105"\nXKBLAYOUT="%s"\nXKBVARIANT=""\nXKBOPTIONS=""\nBACKSPACE="guess"\n' \
+            "$keymap" > "$kb"
     fi
 fi
 
