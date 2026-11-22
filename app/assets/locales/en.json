@@ -263,5 +263,21 @@
   "backup.machines_hint": "Include VMs and containers (stopped for the backup while it runs if stopping apps is on):",
   "backup.what_vm": "VM/container {name}",
   "backup.restore_vm_confirm": "Restore {what} from {time}? If the instance still exists, the backup comes back beside it as \"{name}-restored\".",
-  "common.close": "Close"
+  "common.close": "Close",
+  "energy.title": "Power and cost",
+  "energy.source": "Reading from",
+  "energy.source_off": "No reading",
+  "energy.source_ups": "UPS",
+  "energy.source_plug": "Smart plug",
+  "energy.plug": "Plug",
+  "energy.host": "Address of the plug",
+  "energy.price": "Price per kWh (cents)",
+  "energy.currency": "Currency",
+  "energy.hint": "The UPS reports the draw through NUT. A Shelly or Tasmota plug in the LAN is read locally, without a cloud. The weekly letter shows the use and the cost.",
+  "energy.saved": "Power settings saved.",
+  "energy.now": "Draw now",
+  "energy.no_reading": "no reading",
+  "energy.year": "Over a year",
+  "energy.year_value": "{kwh} kWh, about {cost}",
+  "letter.energy": "{watts} W on average, {kwh} kWh in all for {cost}."
 }

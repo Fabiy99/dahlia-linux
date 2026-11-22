@@ -1,4 +1,4 @@
-"""History of CPU, memory, network and CPU temperature, optional InfluxDB export.
+"""History of CPU, memory, network, CPU temperature and power draw, optional InfluxDB export.
 
 history (history.service) takes a sample every minute and
 stores it in /var/lib/dahlia/history.db (SQLite). Three resolutions are
@@ -85,6 +85,15 @@ class Sampler:
                 "net": {i["name"]: (i["rx_bytes"], i["tx_bytes"])
                         for i in read_network(self.ctx.proc)}}
 
+    def watts(self) -> float | None:
+        """Power draw from the UPS or the smart plug (energy.json); errors only cost the value."""
+        from . import energy
+
+        try:
+            return energy.read_watts(self.ctx, fetch=energy.plug_fetch(self.ctx))
+        except (OSError, ValueError, AgentError):
+            return None
+
     def sample(self) -> dict[str, float]:
         now = self.read()
         last, self.last = self.last, now
@@ -96,6 +105,9 @@ class Sampler:
         temp = cpu_temperature(self.ctx.sys)
         if temp is not None:
             values["temp_cpu"] = temp
+        watts = self.watts()
+        if watts is not None:
+            values["power"] = watts
         if last is None:
             return values
         total = now["cpu"]["total"] - last["cpu"]["total"]

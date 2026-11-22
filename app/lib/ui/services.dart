@@ -33,6 +33,7 @@ class ServicesSection extends StatelessWidget {
       SizedBox(width: full, child: _NotifyCard(c)),
       SizedBox(width: half, child: _InfluxCard(c)),
       SizedBox(width: half, child: _UpsCard(c)),
+      SizedBox(width: half, child: _EnergyCard(c)),
       SizedBox(width: full, child: PhoneCard(c)),
     ]);
   }
@@ -497,6 +498,80 @@ class _UpsCardState extends State<_UpsCard> with AreaCalls, CardLoad {
                     const Duration(minutes: 1),
                   ),
                   'ups.saved',
+                ),
+        child: Text(c.t('common.save')),
+      ),
+    ]);
+  }
+}
+
+// --- power and cost -------------------------------------------------------------
+
+class _EnergyCard extends StatefulWidget {
+  const _EnergyCard(this.c);
+
+  final Controller c;
+
+  @override
+  State<_EnergyCard> createState() => _EnergyCardState();
+}
+
+class _EnergyCardState extends State<_EnergyCard> with AreaCalls, CardLoad {
+  String source = 'off';
+  String plug = 'shelly';
+  String currency = 'EUR';
+  final _host = TextEditingController();
+  final _price = TextEditingController();
+
+  @override
+  Controller get c => widget.c;
+
+  @override
+  String get path => '/api/energy';
+
+  @override
+  void fill(Map data) {
+    source = energySources.contains(data['source']) ? '${data['source']}' : 'off';
+    plug = energyPlugs.containsKey(data['plug']) ? '${data['plug']}' : 'shelly';
+    currency = energyCurrencies.contains(data['currency']) ? '${data['currency']}' : 'EUR';
+    _host.text = '${data['host'] ?? ''}';
+    _price.text = '${data['price'] ?? 35}';
+  }
+
+  @override
+  void dispose() {
+    _host.dispose();
+    _price.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+    final data = d;
+    if (data == null) return SettingsCard(c.t('energy.title'), [Busy(c.t('common.loading'))]);
+    return SettingsCard(c.t('energy.title'), [
+      for (final (key, value, level) in energyFacts(data, c.t, c.settings.lang))
+        _fact(context, c.t(key), level.isEmpty ? SelectableText(value) : Align(alignment: Alignment.centerLeft, child: Tag(value, _level(p, level)))),
+      const SizedBox(height: 8),
+      cardSelect(c.t('energy.source'), source, [for (final s in energySources) (s, c.t('energy.source_$s'))], (v) => setState(() => source = v)),
+      if (source == 'plug') ...[
+        cardSelect(c.t('energy.plug'), plug, [for (final e in energyPlugs.entries) (e.key, e.value)], (v) => setState(() => plug = v)),
+        cardField(_host, c.t('energy.host'), hint: '192.168.1.50'),
+      ],
+      cardField(_price, c.t('energy.price'), formatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(4)]),
+      cardSelect(c.t('energy.currency'), currency, [for (final x in energyCurrencies) (x, x)], (v) => setState(() => currency = v)),
+      cardHint(context, c.t('energy.hint')),
+      FilledButton(
+        onPressed: busy
+            ? null
+            : () => save(
+                  () => s.post(
+                    '/api/energy',
+                    energyBody(source: source, plug: plug, host: _host.text, price: _price.text, currency: currency),
+                    const Duration(seconds: 30),
+                  ),
+                  'energy.saved',
                 ),
         child: Text(c.t('common.save')),
       ),

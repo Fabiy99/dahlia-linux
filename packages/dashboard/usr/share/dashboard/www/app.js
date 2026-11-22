@@ -941,6 +941,12 @@ function letterLines(l) {
     out.push(["apps", text]);
   }
   if (l.photos) out.push(["sun", t("letter.photos", { count: l.photos })]);
+  const en = l.energy;
+  if (en && typeof en.kwh === "number") {
+    out.push(["power", t("letter.energy", { watts: Math.round(en.watts),
+      kwh: en.kwh.toLocaleString(lang, { maximumFractionDigits: 1 }),
+      cost: formatMoney(en.cost, en.currency) })]);
+  }
   if (l.traffic) out.push(["network", t("letter.traffic", { rx: formatBytes(l.traffic.rx), tx: formatBytes(l.traffic.tx) })]);
   if (typeof l.cpu_avg === "number") {
     out.push(["cpu", typeof l.temp_max === "number"
@@ -4732,7 +4738,7 @@ async function loadAccount() {
   document.querySelector("#hostname-form [name=hostname]").value = info.hostname;
   // Each card loads on its own; one failing part does not hide the others.
   await Promise.all([loadTime(), loadNetwork(), loadNetLayout(), loadSpindown(), loadPower(),
-               loadDevices(), loadSyslog(), loadFirewall(), loadSchedules(), loadNotify(), loadUps(),
+               loadDevices(), loadSyslog(), loadFirewall(), loadSchedules(), loadNotify(), loadUps(), loadEnergy(),
                loadInflux(), loadVpn(), loadTotp(),
                ...(userRole === "admin" ? [loadTokens(), loadUsers()] : [])]
     .map((p) => p.catch(sayError)));
@@ -5442,6 +5448,57 @@ async function loadUps() {
   if (s.charge !== null) fact(dl, "ups.charge", `${s.charge} %`);
   if (s.runtime !== null) fact(dl, "ups.runtime", t("ups.minutes", { n: Math.round(s.runtime / 60) }));
   if (s.load !== null) fact(dl, "ups.load", `${s.load} %`);
+}
+
+function renderEnergySource() {
+  const f = document.getElementById("energy-form").elements;
+  document.getElementById("energy-plug").hidden = f.source.value !== "plug";
+}
+
+// Money with two decimals in the reader's language.
+function formatMoney(value, currency) {
+  return new Intl.NumberFormat(lang, { style: "currency", currency: currency || "EUR" }).format(value);
+}
+
+async function loadEnergy() {
+  const data = await api("GET", "energy");
+  const f = document.getElementById("energy-form").elements;
+  fillOptions(f.plug, ["shelly", "tasmota"], (p) => ({ shelly: "Shelly", tasmota: "Tasmota" })[p]);
+  fillOptions(f.currency, ["EUR", "CHF", "GBP", "USD"], (c) => c);
+  f.source.value = data.source;
+  f.plug.value = data.plug;
+  f.host.value = data.host;
+  f.price.value = data.price;
+  f.currency.value = data.currency;
+  renderEnergySource();
+  const dl = document.getElementById("energy-status");
+  dl.replaceChildren();
+  if (data.source === "off") return;
+  if (data.watts === null) {
+    fact(dl, "energy.now", badge(t("energy.no_reading"), "warn"));
+    return;
+  }
+  fact(dl, "energy.now", `${Math.round(data.watts)} W`);
+  // A year at this draw, as a rough guide.
+  const kwh = data.watts * 24 * 365 / 1000;
+  fact(dl, "energy.year", t("energy.year_value", { kwh: Math.round(kwh),
+    cost: formatMoney(kwh * data.price / 100, data.currency) }));
+}
+
+function bindEnergy() {
+  const form = document.getElementById("energy-form");
+  form.elements.source.addEventListener("change", renderEnergySource);
+  form.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const f = form.elements;
+    const body = { source: f.source.value, plug: f.plug.value, host: f.host.value.trim(),
+                   price: Math.round(Number(f.price.value) || 0), currency: f.currency.value };
+    guarded(e.submitter, async () => {
+      await api("POST", "energy", body);
+      say(t("energy.saved"), "ok");
+      await loadEnergy();
+    });
+  });
 }
 
 // --- file manager ---------------------------------------------------------------
@@ -6372,6 +6429,7 @@ async function start() {
   bindFolderPicker();
   bindVms();
   bindNotifyUps();
+  bindEnergy();
   bindTokens();
   bindUsers();
   bindFiles();

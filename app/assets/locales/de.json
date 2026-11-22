@@ -263,5 +263,21 @@
   "backup.machines_hint": "VMs und Container mitsichern (werden für die Sicherung kurz angehalten, wenn Apps anhalten an ist):",
   "backup.what_vm": "VM/Container {name}",
   "backup.restore_vm_confirm": "{what} vom {time} wiederherstellen? Gibt es die Instanz noch, kommt die Sicherung als „{name}-restored“ daneben.",
-  "common.close": "Schließen"
+  "common.close": "Schließen",
+  "energy.title": "Strom und Kosten",
+  "energy.source": "Messung",
+  "energy.source_off": "Keine Messung",
+  "energy.source_ups": "USV",
+  "energy.source_plug": "Smarte Steckdose",
+  "energy.plug": "Steckdose",
+  "energy.host": "Adresse der Steckdose",
+  "energy.price": "Preis pro kWh (Cent)",
+  "energy.currency": "Währung",
+  "energy.hint": "Die USV liefert die Leistung über NUT. Eine Shelly- oder Tasmota-Steckdose im LAN wird lokal abgefragt, ohne Cloud. Der Wochenbrief zeigt Verbrauch und Kosten.",
+  "energy.saved": "Strom-Einstellungen gespeichert.",
+  "energy.now": "Leistung jetzt",
+  "energy.no_reading": "kein Messwert",
+  "energy.year": "Hochgerechnet aufs Jahr",
+  "energy.year_value": "{kwh} kWh, etwa {cost}",
+  "letter.energy": "Im Schnitt {watts} W, zusammen {kwh} kWh für {cost}."
 }

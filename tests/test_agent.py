@@ -651,6 +651,8 @@ def test_action_list_is_fixed():
         "docker.stats",
         "domains.get",
         "domains.set",
+        "energy.get",
+        "energy.set",
         "files.browse",
         "files.cancel",
         "files.create_dir",

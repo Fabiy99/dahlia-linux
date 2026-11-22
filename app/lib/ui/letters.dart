@@ -17,6 +17,7 @@ const letterIcons = {
   'network': Icons.swap_vert_rounded,
   'cpu': Icons.memory_rounded,
   'uptime': Icons.power_settings_new_rounded,
+  'energy': Icons.bolt_rounded,
   'notices': Icons.notifications_none_rounded,
 };
 
@@ -34,7 +35,7 @@ class LetterLines extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        for (final (kind, text) in letterLines(letter, c.t))
+        for (final (kind, text) in letterLines(letter, c.t, c.settings.lang))
           Padding(
             padding: const EdgeInsets.only(bottom: 9),
             child: Row(

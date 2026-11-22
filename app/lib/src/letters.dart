@@ -10,7 +10,7 @@ typedef LetterLine = (String, String);
 
 num? _num(Object? v) => v is num ? v : null;
 
-List<LetterLine> letterLines(Map l, Translate t) {
+List<LetterLine> letterLines(Map l, Translate t, [String lang = 'en']) {
   final out = <LetterLine>[];
   final year = l['kind'] == 'year';
   final st = l['storage'];
@@ -47,6 +47,17 @@ List<LetterLine> letterLines(Map l, Translate t) {
     out.add(('apps', text));
   }
   if ((_num(l['photos']) ?? 0) > 0) out.add(('photos', t('letter.photos', {'count': l['photos']})));
+  final en = l['energy'];
+  if (en is Map && en['kwh'] is num && en['cost'] is num) {
+    out.add((
+      'energy',
+      t('letter.energy', {
+        'watts': (_num(en['watts']) ?? 0).round(),
+        'kwh': NumberFormat('0.#', lang).format(en['kwh']),
+        'cost': money(en['cost'] as num, '${en['currency'] ?? 'EUR'}', lang),
+      }),
+    ));
+  }
   final tr = l['traffic'];
   if (tr is Map && tr['rx'] is num && tr['tx'] is num) {
     out.add(('network', t('letter.traffic', {'rx': bytes(tr['rx'] as num, t), 'tx': bytes(tr['tx'] as num, t)})));
@@ -74,6 +85,10 @@ List<LetterLine> letterLines(Map l, Translate t) {
   }
   return out;
 }
+
+/// "2,26 €" / "€2.26" in the reader's language.
+String money(num value, String currency, String lang) =>
+    NumberFormat.simpleCurrency(locale: lang, name: currency).format(value);
 
 String letterTitle(Map l, Translate t) {
   if (l['kind'] == 'year') return t(l['preview'] == true ? 'letter.year_now' : 'letter.year', {'year': l['id']});

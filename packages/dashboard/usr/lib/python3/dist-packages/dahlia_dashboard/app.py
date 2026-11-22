@@ -520,6 +520,14 @@ class UpsBody(BaseModel):
     shutdown_minutes: int = 0
 
 
+class EnergyBody(BaseModel):
+    source: str
+    plug: str = "shelly"
+    host: str = ""
+    price: int = 35
+    currency: str = "EUR"
+
+
 class AutoUpdatesBody(BaseModel):
     enabled: bool
     reboot: bool
@@ -1822,6 +1830,14 @@ def create_app(cfg: Config | None = None) -> FastAPI:
     @app.post("/api/ups", dependencies=changing)
     def ups_set(body: UpsBody):
         return agent("ups.set", body.model_dump())
+
+    @app.get("/api/energy", dependencies=authed)
+    def energy_get():
+        return agent("energy.get")
+
+    @app.post("/api/energy", dependencies=changing)
+    def energy_set(body: EnergyBody):
+        return agent("energy.set", body.model_dump())
 
     # --- shares ---------------------------------------------------------------
 

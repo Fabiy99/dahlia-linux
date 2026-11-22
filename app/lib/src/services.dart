@@ -3,6 +3,7 @@
 // dashboard's settings page.
 
 import 'format.dart';
+import 'letters.dart';
 
 String _text(Object? v) => v == null ? '' : '$v';
 
@@ -122,6 +123,32 @@ List<(String, String, String)> upsFacts(Object? s, Translate t) {
     if (s['charge'] != null) ('ups.charge', '${s['charge']} %', ''),
     if (s['runtime'] is num) ('ups.runtime', t('ups.minutes', {'n': ((s['runtime'] as num) / 60).round()}), ''),
     if (s['load'] != null) ('ups.load', '${s['load']} %', ''),
+  ];
+}
+
+const energySources = ['off', 'ups', 'plug'];
+const energyPlugs = {'shelly': 'Shelly', 'tasmota': 'Tasmota'};
+const energyCurrencies = ['EUR', 'CHF', 'GBP', 'USD'];
+
+/// Body of `POST /api/energy`; the plug only for source "plug".
+Map<String, Object> energyBody({required String source, required String plug, required String host, required String price, required String currency}) => {
+      'source': source,
+      'plug': plug,
+      'host': source == 'plug' ? host.trim() : '',
+      'price': (num.tryParse(price.trim().replaceAll(',', '.')) ?? 0).round().clamp(0, 1000),
+      'currency': currency,
+    };
+
+/// Draw now and over a year at that draw: locale key, value, level ('' plain).
+List<(String, String, String)> energyFacts(Map data, Translate t, String lang) {
+  if (data['source'] == 'off') return [];
+  final w = data['watts'];
+  if (w is! num) return [('energy.now', t('energy.no_reading'), 'warn')];
+  final kwh = w * 24 * 365 / 1000;
+  final price = data['price'] is num ? data['price'] as num : 0;
+  return [
+    ('energy.now', '${w.round()} W', ''),
+    ('energy.year', t('energy.year_value', {'kwh': kwh.round(), 'cost': money(kwh * price / 100, '${data['currency'] ?? 'EUR'}', lang)}), ''),
   ];
 }
 

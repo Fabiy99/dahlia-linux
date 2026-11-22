@@ -815,6 +815,9 @@ def test_notify_and_ups_endpoints(env):
     client.post("/api/notify/test", headers=CSRF)
     client.get("/api/ups")
     client.post("/api/ups", json={"mode": "usb", "shutdown_minutes": 5}, headers=CSRF)
+    client.get("/api/energy")
+    client.post("/api/energy", json={"source": "plug", "host": "10.0.0.9", "price": 28},
+                headers=CSRF)
     assert agent.calls == [
         ("notify.get", {}),
         ("notify.set", {"channel": "ntfy", "settings": {"enabled": True, "topic": "x"}}),
@@ -823,6 +826,9 @@ def test_notify_and_ups_endpoints(env):
         ("ups.get", {}),
         ("ups.set", {"mode": "usb", "host": "", "port": 3493, "name": "ups", "user": "",
                      "password": "", "shutdown_minutes": 5}),
+        ("energy.get", {}),
+        ("energy.set", {"source": "plug", "plug": "shelly", "host": "10.0.0.9", "price": 28,
+                        "currency": "EUR"}),
     ]
     assert client.post("/api/notify/test").status_code == 403
 

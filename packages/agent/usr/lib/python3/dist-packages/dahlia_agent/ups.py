@@ -38,7 +38,7 @@ EVENTS = {
 }
 NOTIFY_FLAGS = tuple(EVENTS)
 STATUS_KEYS = ("device.model", "device.mfr", "ups.status", "battery.charge", "battery.runtime",
-               "ups.load", "input.voltage", "ups.realpower.nominal")
+               "ups.load", "input.voltage", "ups.realpower", "ups.realpower.nominal")
 
 
 def config_file(ctx: Context) -> Path:
@@ -160,6 +160,8 @@ def read_status(ctx: Context, cfg: dict) -> dict | None:
         "runtime": num("battery.runtime"),
         "load": num("ups.load"),
         "input_voltage": num("input.voltage"),
+        "realpower": num("ups.realpower"),
+        "realpower_nominal": num("ups.realpower.nominal"),
     }
 
 

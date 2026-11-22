@@ -1223,6 +1223,31 @@
               <button type="submit" data-i18n="common.save"></button>
             </form>
           </article>
+          <article class="card">
+            <h2 data-i18n="energy.title"></h2>
+            <dl id="energy-status" class="facts"></dl>
+            <form id="energy-form">
+              <label><span data-i18n="energy.source"></span>
+                <select name="source">
+                  <option value="off" data-i18n="energy.source_off"></option>
+                  <option value="ups" data-i18n="energy.source_ups"></option>
+                  <option value="plug" data-i18n="energy.source_plug"></option>
+                </select>
+              </label>
+              <div id="energy-plug" class="field-group">
+                <label><span data-i18n="energy.plug"></span>
+                  <select name="plug"></select>
+                </label>
+                <label><span data-i18n="energy.host"></span><input name="host" autocomplete="off" placeholder="192.168.1.50"></label>
+              </div>
+              <label><span data-i18n="energy.price"></span><input name="price" type="number" min="0" max="1000" step="1"></label>
+              <label><span data-i18n="energy.currency"></span>
+                <select name="currency"></select>
+              </label>
+              <p class="hint" data-i18n="energy.hint"></p>
+              <button type="submit" data-i18n="common.save"></button>
+            </form>
+          </article>
         </div>
       </section>
     </main>
