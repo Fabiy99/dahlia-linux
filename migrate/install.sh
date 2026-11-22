@@ -168,12 +168,17 @@ in_target passwd -l root >/dev/null
 
 # --- Dahlia ------------------------------------------------------------------------
 step dahlia
-install -m 0644 "$KEYRING" "$TARGET/usr/share/keyrings/dahlia-archive-keyring.asc"
-cat > "$TARGET/etc/apt/sources.list.d/dahlia.sources" <<DAHLIA
+# A source of its own for this run: archive-keyring ships dahlia.sources and the
+# key as conffile and file, an existing dahlia.sources would stop dpkg with a
+# conffile question.
+boot_key=/etc/apt/keyrings/dahlia-migrate.asc
+boot_src="$TARGET/etc/apt/sources.list.d/dahlia-migrate.sources"
+install -D -m 0644 "$KEYRING" "$TARGET$boot_key"
+cat > "$boot_src" <<DAHLIA
 Types: deb
 URIs: $DAHLIA_REPO
 Suites: ./
-Signed-By: /usr/share/keyrings/dahlia-archive-keyring.asc
+Signed-By: $boot_key
 DAHLIA
 in_target apt-get update -q >/dev/null
 # A time limit and the tail of apt's output, so a hanging download or package
@@ -181,12 +186,11 @@ in_target apt-get update -q >/dev/null
 apt_log="$TARGET/var/log/dahlia-install-apt.log"
 if ! in_target timeout "$APT_TIMEOUT" apt-get install -y -q -o Dpkg::Use-Pty=0 \
         "${PACKAGES[@]}" >"$apt_log" 2>&1; then
-    tail -n 60 "$apt_log" || true
-    for cmd in /proc/[0-9]*/cmdline; do
-        tr '\0' ' ' < "$cmd" 2>/dev/null && echo
-    done | grep -E 'apt|dpkg|http|postinst|config' | tail -n 20 || true
+    grep -B2 -A8 -E '^(dpkg|E):|error processing' "$apt_log" | tail -n 60 || true
+    tail -n 20 "$apt_log" || true
     die "installing the Dahlia packages failed"
 fi
+rm -f "$boot_src" "$TARGET$boot_key"
 
 # The setup code the person saw in the helper.
 install -d -m 0700 "$TARGET/var/lib/dashboard"
