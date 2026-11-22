@@ -33,7 +33,7 @@ GUIDED_TZ=Europe/Vienna
 HEADLESS_HOST=nas-headless
 HEADLESS_USER=fabi
 HEADLESS_PASS='Dahlia-Headless-9'
-HEADLESS_CODE=HEAD7-LESS2
+HEADLESS_CODE=HEAD7-SAFE2
 HEADLESS_PORT=18485
 HEADLESS_TOKEN=0123456789abcdef0123456789abcdef
 
@@ -168,7 +168,9 @@ install_pid=$!
 trap 'kill "$syslog_pid" "$install_pid" $app_pid 2>/dev/null || true' EXIT
 # A failed late_command leaves d-i waiting at an error dialog: stop early.
 while kill -0 "$install_pid" 2>/dev/null; do
-    if grep -q "dahlia-install: FAILED\|dahlia-headless: FAILED" "$OUTDIR/installer-syslog.log" 2>/dev/null; then
+    # A rejected answer is asked again forever; in the test it is a failure.
+    if grep -q "dahlia-install: FAILED\|dahlia-headless: FAILED\|dahlia-headless: answer rejected" \
+            "$OUTDIR/installer-syslog.log" 2>/dev/null; then
         sleep 5 # let the rest of the diagnostics arrive
         kill "$install_pid" 2>/dev/null || true
         install_failed "late_command failed"
