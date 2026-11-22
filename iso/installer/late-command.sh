@@ -93,6 +93,8 @@ if [ -f /tmp/dahlia-setup-code ]; then
 fi
 if [ -f /tmp/dahlia-headless-pc ]; then
     # The app pins the server's CA by this SHA-256 (DER), so it pairs on its own.
-    fp="$(in-target sh -c "sed '/-----/d' /etc/dahlia/tls/ca.crt | base64 -d | sha256sum" | cut -d' ' -f1)"
+    # in-target sends the command's output to the log, chroot keeps it on stdout.
+    fp="$(chroot /target sh -c "sed '/-----/d' /etc/dahlia/tls/ca.crt | base64 -d | sha256sum" | cut -d' ' -f1 || true)"
+    [ -n "$fp" ] || log "no CA fingerprint for the app: /etc/dahlia/tls/ca.crt unreadable"
     sh "$DIR/report.sh" finished "$fp"
 fi
