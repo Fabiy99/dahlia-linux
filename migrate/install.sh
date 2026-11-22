@@ -180,11 +180,15 @@ Suites: ./
 Signed-By: /usr/share/keyrings/dahlia-archive-keyring.asc
 DAHLIA
 in_target apt-get update -q >/dev/null
-# A time limit and the tail of dpkg's log, so a hanging package script ends
-# with a message in the helper instead of a step that never finishes.
-if ! in_target timeout "$APT_TIMEOUT" apt-get install -y -q "${PACKAGES[@]}" >/dev/null; then
-    tail -n 40 "$TARGET/var/log/apt/term.log" 2>/dev/null || true
-    ps -eo pid,etimes,args | tail -n 30 || true
+# A time limit and the tail of apt's output, so a hanging download or package
+# script ends with a message in the helper instead of a step that never finishes.
+apt_log="$TARGET/var/log/dahlia-install-apt.log"
+if ! in_target timeout "$APT_TIMEOUT" apt-get install -y -q -o Dpkg::Use-Pty=0 \
+        "${PACKAGES[@]}" >"$apt_log" 2>&1; then
+    tail -n 60 "$apt_log" || true
+    for cmd in /proc/[0-9]*/cmdline; do
+        tr '\0' ' ' < "$cmd" 2>/dev/null && echo
+    done | grep -E 'apt|dpkg|http|postinst|config' | tail -n 20 || true
     die "installing the Dahlia packages failed"
 fi
 
