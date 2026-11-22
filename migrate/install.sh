@@ -156,10 +156,6 @@ in_target apt-get install -y -q --no-install-recommends \
     grub-efi-amd64 grub-pc-bin less nano curl >/dev/null
 mkdir -p "$TARGET/etc/network"
 mv "$TARGET/etc/network/interfaces.new" "$TARGET/etc/network/interfaces"
-if [ "$NET_MODE" = static ]; then
-    rm -f "$TARGET/etc/resolv.conf"
-    for dns in $NET_DNS; do printf 'nameserver %s\n' "$dns"; done > "$TARGET/etc/resolv.conf"
-fi
 
 # Account as the ISO installer creates it: UID 1001, sudo, no root password.
 in_target useradd -m -u 1001 -s /bin/bash -G sudo,users "$ACCOUNT"
@@ -219,5 +215,12 @@ in_target update-grub >/dev/null 2>&1
 
 rm -f "$TARGET/usr/sbin/policy-rc.d"
 in_target apt-get clean
+# The server's own name servers only now: until here apt resolves through the
+# helper's resolv.conf, the server's LAN DNS may not answer from where the
+# helper runs.
+if [ "$NET_MODE" = static ]; then
+    rm -f "$TARGET/etc/resolv.conf"
+    for dns in $NET_DNS; do printf 'nameserver %s\n' "$dns"; done > "$TARGET/etc/resolv.conf"
+fi
 sync
 step finished
